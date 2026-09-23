@@ -1,0 +1,70 @@
+{
+  "name": "knjiga-budzeta",
+  "version": "1.4.0",
+  "description": "Knjiga budžeta — desktop aplikacija",
+  "author": "Vanja Cernjakovski",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "copy-web": "node scripts/copy-web.js",
+    "start": "npm run copy-web && electron .",
+    "test": "node --test test/core.test.js",
+    "smoke": "npm run copy-web && node test/smoke.js",
+    "dist": "npm test && npm run copy-web && electron-builder --win --publish never",
+    "release": "npm run dist && node scripts/release.js",
+    "push-source": "node scripts/push-source.js"
+  },
+  "devDependencies": {
+    "electron": "^44.4.5",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.vanja.knjigabudzeta",
+    "productName": "Knjiga budzeta",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "Vanja2424",
+        "repo": "knjiga-budzeta",
+        "releaseType": "release"
+      }
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "quick-add.html",
+      "budzet-tracker.html",
+      "budzet-core.js",
+      "xlsx.core.min.js",
+      "build/icon.png"
+    ],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Knjiga budžeta",
+      "include": "build/installer.nsh",
+      "artifactName": "Knjiga-budzeta-Setup-${version}.${ext}"
+    }
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
+  }
+}

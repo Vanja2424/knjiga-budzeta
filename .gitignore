@@ -1,0 +1,15 @@
+# Lični podaci — nikad u repozitorijum
+*.xlsx
+podaci*.json
+Rezervne kopije/
+
+# Build i zavisnosti
+node_modules/
+app/dist/
+app/budzet-tracker.html
+app/budzet-core.js
+app/xlsx.core.min.js
+
+# Lokalne kopije verzija
+verzije/
+.gstack/

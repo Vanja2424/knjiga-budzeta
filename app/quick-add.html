@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<title>Brzi unos</title>
+<style>
+  :root{
+    --font: "Segoe UI Variable Text", "Segoe UI", -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    --paper: #F5F6F8; --paper-line: #E3E6EB; --ink: #101828; --ink-soft: #667085;
+    --ledger: #6366F1; --ledger-solid: #6366F1; --ledger-solid-hover: #4338CA;
+    --rust: #EF4444; --rust-solid: #DC2626; --card: #FFFFFF; --radius: 10px;
+    --surface: color-mix(in srgb, var(--paper) 100%, transparent);
+  }
+  [data-theme="dark"]{
+    --paper: #0F1115; --paper-line: #2C313C; --ink: #F0F1F3; --ink-soft: #9099A8;
+    --ledger: #818CF8; --ledger-solid: #4F46E5; --ledger-solid-hover: #4338CA;
+    --rust: #F87171; --rust-solid: #DC2626; --card: #191B21;
+  }
+  html.mica{ --surface: color-mix(in srgb, var(--paper) 55%, transparent); }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; height:100%; }
+  body{
+    background: var(--surface); color: var(--ink); font-family: var(--font); font-size: 14px;
+    -webkit-font-smoothing: antialiased; user-select: none; overflow: hidden;
+  }
+  .wrap{ padding: 0 20px 18px; }
+  .bar{
+    height: 44px; display:flex; align-items:center; justify-content:space-between;
+    -webkit-app-region: drag; padding: 0 6px 0 20px;
+  }
+  .bar .title{ font-size: 12px; font-weight: 600; letter-spacing: .3px; color: var(--ink-soft); display:flex; align-items:center; gap:8px; }
+  .bar .logo{ width:18px; height:18px; border-radius:5px; background: var(--ledger-solid); color:#fff; font-size:11px; font-weight:700; display:grid; place-items:center; }
+  .close{
+    -webkit-app-region: no-drag; width: 36px; height: 32px; border:none; background:none; border-radius: 6px;
+    color: var(--ink-soft); font-size: 15px; cursor: pointer;
+  }
+  .close:hover{ background: color-mix(in srgb, var(--rust) 85%, transparent); color:#fff; }
+
+  .seg{ display:grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border-radius: 999px;
+        background: color-mix(in srgb, var(--card) 70%, transparent); border: 1px solid var(--paper-line); }
+  .seg button{
+    border:none; background:none; padding: 7px 0; border-radius: 999px; font: inherit; font-weight: 600;
+    color: var(--ink-soft); cursor:pointer; transition: background-color .18s, color .18s;
+  }
+  .seg button.on.expense{ background: var(--rust-solid); color:#fff; }
+  .seg button.on.income{ background: var(--ledger-solid); color:#fff; }
+
+  .amount{
+    display:flex; align-items:baseline; justify-content:center; gap: 8px; margin: 18px 0 14px;
+  }
+  .amount input{
+    field-sizing: content; min-width: 1.2ch; max-width: 280px; text-align: right; border:none; background: none; outline: none; padding: 0;
+    font: 700 40px/1.1 var(--font); letter-spacing: -1px; color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .amount input::placeholder{ color: color-mix(in srgb, var(--ink-soft) 55%, transparent); }
+  .amount .cur{ font-size: 15px; font-weight: 600; color: var(--ink-soft); }
+  .amount input::-webkit-inner-spin-button{ display:none; }
+
+  label{ display:block; font-size: 11.5px; color: var(--ink-soft); margin: 12px 0 5px; letter-spacing: .3px; }
+  input.f, select.f{
+    width:100%; padding: 9px 11px; border-radius: var(--radius); border: 1px solid var(--paper-line);
+    background: color-mix(in srgb, var(--card) 85%, transparent); color: var(--ink); font: inherit; user-select: text;
+  }
+  input.f:focus, select.f:focus{ outline: 2px solid var(--ledger); outline-offset: 0; border-color: transparent; }
+  input[type="date"]::-webkit-calendar-picker-indicator{ filter: var(--date-filter, none); cursor:pointer; }
+  [data-theme="dark"] input[type="date"]{ --date-filter: invert(0.85); }
+  .row{ display:grid; grid-template-columns: 1fr 150px; gap: 10px; }
+  .paid{ display:flex; align-items:center; gap: 8px; margin-top: 14px; font-size: 13px; cursor:pointer; }
+  .paid input{ width:16px; height:16px; accent-color: var(--ledger); margin:0; }
+
+  .foot{ display:flex; align-items:center; justify-content:space-between; margin-top: 18px; gap: 10px; }
+  .keys{ font-size: 11.5px; color: var(--ink-soft); }
+  kbd{ font: 600 10.5px var(--font); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--paper-line); background: color-mix(in srgb, var(--card) 80%, transparent); }
+  .add{
+    border:none; border-radius: var(--radius); padding: 10px 22px; font: 600 14px var(--font); color:#fff; cursor:pointer;
+    background: var(--rust-solid); transition: transform .12s, filter .12s;
+  }
+  .add.income{ background: var(--ledger-solid); }
+  .add:hover{ filter: brightness(1.08); transform: translateY(-1px); }
+  .add:disabled{ opacity: .6; cursor: default; transform:none; }
+  .err{ color: var(--rust); font-size: 12px; min-height: 16px; margin-top: 8px; }
+
+  .done{
+    position: fixed; inset: 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 10px;
+    background: var(--surface); opacity: 0; pointer-events:none; transition: opacity .18s;
+  }
+  .done.show{ opacity: 1; }
+  .done svg{ width: 64px; height: 64px; }
+  .done circle{ fill: color-mix(in srgb, var(--ledger) 16%, transparent); }
+  .done path{ fill:none; stroke: var(--ledger); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; }
+  .done.show path{ animation: draw .35s .08s ease forwards; }
+  .done .msg{ font-weight: 600; }
+  @keyframes draw{ to{ stroke-dashoffset: 0; } }
+</style>
+<script>
+  const qs = new URLSearchParams(location.search);
+  document.documentElement.setAttribute('data-theme', qs.get('theme') === 'dark' ? 'dark' : 'light');
+  if(qs.get('mica') === '1') document.documentElement.classList.add('mica');
+</script>
+</head>
+<body>
+  <div class="bar">
+    <div class="title"><span class="logo">K</span>BRZI UNOS</div>
+    <button class="close" id="closeBtn" title="Zatvori (Esc)">✕</button>
+  </div>
+  <form class="wrap" id="form" autocomplete="off">
+    <div class="seg" role="tablist">
+      <button type="button" data-type="expense" class="expense">Rashod</button>
+      <button type="button" data-type="income" class="income">Prihod</button>
+    </div>
+
+    <div class="amount">
+      <input id="amount" type="number" min="0" step="1" placeholder="0" inputmode="numeric" aria-label="Iznos">
+      <span class="cur">RSD</span>
+    </div>
+
+    <label for="desc">Opis</label>
+    <input class="f" id="desc" list="descList" placeholder="npr. Namirnice (ili Namirnice 1500)">
+    <datalist id="descList"></datalist>
+
+    <div class="row">
+      <div>
+        <label for="category">Kategorija</label>
+        <select class="f" id="category"></select>
+      </div>
+      <div>
+        <label for="date">Datum</label>
+        <input class="f" id="date" type="date">
+      </div>
+    </div>
+
+    <label class="paid" id="paidRow"><input type="checkbox" id="paid" checked> Plaćeno</label>
+
+    <div class="err" id="err"></div>
+    <div class="foot">
+      <span class="keys"><kbd>Enter</kbd> dodaj · <kbd>Esc</kbd> zatvori</span>
+      <button class="add" id="addBtn" type="submit">Dodaj rashod</button>
+    </div>
+  </form>
+
+  <div class="done" id="done">
+    <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30"/><path d="M20 33 l8 8 l16 -18"/></svg>
+    <div class="msg" id="doneMsg">Dodato</div>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let type = qs.get('type') === 'income' ? 'income' : 'expense';
+  let data = { expenseCats: [], incomeCats: [], history: [], rules: [] };
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+
+  function setType(t){
+    type = t;
+    document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.type === t));
+    const cats = t === 'expense' ? data.expenseCats : data.incomeCats;
+    const sel = $('category'); const prev = sel.value;
+    sel.innerHTML = cats.map(c => `<option>${c.replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]))}</option>`).join('');
+    if(cats.includes(prev)) sel.value = prev;
+    $('descList').innerHTML = [...new Set(data.history.filter(h => h.type === t).map(h => h.desc))]
+      .slice(0, 200).map(d => `<option value="${d.replace(/"/g, '&quot;')}"></option>`).join('');
+    $('paidRow').style.display = t === 'expense' ? 'flex' : 'none';
+    $('addBtn').textContent = t === 'expense' ? 'Dodaj rashod' : 'Dodaj prihod';
+    $('addBtn').classList.toggle('income', t === 'income');
+    $('err').textContent = '';
+    fit();
+  }
+  // Predlog kategorije: prvo pravila (opis sadrzi rec), pa poslednja upotrebljena kategorija za isti opis.
+  function suggestCategory(){
+    const desc = $('desc').value.trim().toLowerCase().replace(/\s+[\d.,]*\d$/, '');
+    if(!desc) return;
+    const cats = type === 'expense' ? data.expenseCats : data.incomeCats;
+    const rule = type === 'expense' && data.rules.find(r => r.keyword && desc.includes(r.keyword.toLowerCase()));
+    const hist = data.history.find(h => h.type === type && h.desc.toLowerCase() === desc);
+    const cat = (rule && rule.category) || (hist && hist.category);
+    if(cat && cats.includes(cat)) $('category').value = cat;
+  }
+  function fit(){
+    requestAnimationFrame(() => window.desktop.quick.resize(document.querySelector('.bar').offsetHeight + $('form').offsetHeight));
+  }
+
+  document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { setType(b.dataset.type); $('amount').focus(); }));
+  $('desc').addEventListener('input', suggestCategory);
+  $('closeBtn').addEventListener('click', () => window.desktop.quick.close());
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape') window.desktop.quick.close();
+    if(e.altKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); setType('expense'); }
+    if(e.altKey && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); setType('income'); }
+  });
+  window.desktop.quick.onType((t) => { setType(t); $('amount').focus(); });
+
+  $('form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const entry = {
+      type, desc: $('desc').value, amount: parseFloat($('amount').value),
+      category: $('category').value, date: $('date').value || today(), paid: $('paid').checked
+    };
+    $('addBtn').disabled = true;
+    try{
+      const r = await window.desktop.quick.add(entry);
+      if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; return; }
+      $('doneMsg').textContent = `${type === 'expense' ? 'Rashod' : 'Prihod'} dodat: ${r.amountText}`;
+      $('done').classList.add('show');
+      setTimeout(() => window.desktop.quick.close(), 900);
+    } catch(err){
+      $('err').textContent = 'Greška: ' + err.message; $('addBtn').disabled = false;
+    }
+  });
+
+  (async () => {
+    $('date').value = today();
+    try{ data = await window.desktop.quick.getData() || data; } catch(e){ $('err').textContent = 'Glavni prozor još nije spreman — pokušaj ponovo za trenutak.'; }
+    setType(type);
+    $('amount').focus();
+  })();
+</script>
+</body>
+</html>
