@@ -285,6 +285,24 @@
     return rule ? rule.category : null;
   }
 
+  // ---------- Raspodela na vise meseci ----------
+  // Stavka moze da "pokriva" vise meseci (npr. plata za jul–sep uplacena odjednom, ili godisnje
+  // osiguranje): spreadMonths = broj meseci, spreadStart = prvi mesec ("YYYY-MM", podrazumevano
+  // mesec datuma). U mesecnim zbirovima svaki od tih meseci dobija jednak deo; stanje na racunu
+  // i dalje prati stvarni datum uplate.
+  function spreadOf(e){
+    const n = Math.max(1, Math.min(120, parseInt(e.spreadMonths, 10) || 1));
+    const start = (n > 1 && /^\d{4}-\d{2}$/.test(e.spreadStart || '')) ? e.spreadStart : e.date.slice(0, 7);
+    return { n, start, end: addMonths(start, n - 1) };
+  }
+  function shareInMonth(e, mKey){
+    const { n, start, end } = spreadOf(e);
+    if(n === 1) return e.date.slice(0, 7) === mKey ? e.amount : 0;
+    return (mKey >= start && mKey <= end) ? e.amount / n : 0;
+  }
+  // Deo stavke u nizu meseci (npr. cela godina) — zbir delova po mesecima.
+  function shareInMonths(e, months){ return months.reduce((s, m) => s + shareInMonth(e, m), 0); }
+
   // ---------- Racuni (nalozi) ----------
   // Stanje racuna = pocetno stanje + prihodi − placeni rashodi ± prenosi.
   function accountBalances(accounts, entries, isExpensePaid, upToDate){
@@ -350,6 +368,7 @@
     detectDelimiter, parseCsv, findHeaderIndex, mapColumns, tableToImportRows,
     parseOFX, parseQIF, parseQifDate,
     dupKey, splitDuplicates, categoryFromRules,
+    spreadOf, shareInMonth, shareInMonths,
     accountBalances, convertToRsd,
     linearRegressionForecast, debtPayoffPlan
   };

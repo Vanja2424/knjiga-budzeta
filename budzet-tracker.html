@@ -222,6 +222,8 @@
   .amount-row{ display:flex; gap:0.5em; }
   .amount-row input{ flex:1; min-width:0; }
   .amount-row select{ width: 5.2em; flex-shrink:0; }
+  .spread-row{ display:grid; grid-template-columns: 1fr 1.4fr; gap: 0.6em; margin-top: 0.6em; }
+  .spread-row label{ margin-top: 0 !important; }
   .account-field{ display:none; }
   .has-accounts .account-field{ display:block; }
   .period-bar{ display:flex; align-items:center; gap:0.5em; margin: -1em 0 1em; }
@@ -1001,6 +1003,12 @@
           </select>
           <label for="incDate">Datum</label>
           <input type="date" id="incDate" required>
+          <label class="paid-checkbox-label"><input type="checkbox" id="incSpreadToggle"><span>Uplata pokriva više meseci (npr. plata za tri meseca odjednom)</span></label>
+          <div id="incSpreadRow" class="spread-row" style="display:none;">
+            <div><label for="incSpreadMonths">Broj meseci</label><input type="number" id="incSpreadMonths" min="2" max="60" value="3"></div>
+            <div><label for="incSpreadStart">Od meseca</label><input type="month" id="incSpreadStart"></div>
+          </div>
+          <div class="import-status" id="incSpreadHint" style="margin-top:0.4em;"></div>
           <label for="incTags">Oznake (odvojene zarezom, opciono)</label>
           <input type="text" id="incTags" placeholder="npr. posao, honorar">
           <button type="submit" class="submit-btn income">Dodaj prihod</button>
@@ -1047,6 +1055,12 @@
           </div>
           <label for="expDate">Datum</label>
           <input type="date" id="expDate" required>
+          <label class="paid-checkbox-label"><input type="checkbox" id="expSpreadToggle"><span>Trošak pokriva više meseci (npr. godišnje osiguranje)</span></label>
+          <div id="expSpreadRow" class="spread-row" style="display:none;">
+            <div><label for="expSpreadMonths">Broj meseci</label><input type="number" id="expSpreadMonths" min="2" max="60" value="3"></div>
+            <div><label for="expSpreadStart">Od meseca</label><input type="month" id="expSpreadStart"></div>
+          </div>
+          <div class="import-status" id="expSpreadHint" style="margin-top:0.4em;"></div>
           <label for="expTags">Oznake (odvojene zarezom, opciono)</label>
           <input type="text" id="expTags" placeholder="npr. putovanje, posao">
           <label class="paid-checkbox-label">
@@ -1199,6 +1213,7 @@
               <option value="7">Jul</option><option value="8">Avgust</option><option value="9">Septembar</option>
               <option value="10">Oktobar</option><option value="11">Novembar</option><option value="12">Decembar</option>
             </select>
+            <label class="paid-checkbox-label"><input type="checkbox" id="recSpreadPeriod"><span>Iznos pokriva ceo period (raspodeli na 3 odnosno 12 meseci)</span></label>
           </div>
           <label class="paid-checkbox-label" style="margin-top:1.15em;"><input type="checkbox" id="recIsSubscription"><span>Ovo je pretplata (Netflix, Spotify...)</span></label>
           <label class="paid-checkbox-label"><input type="checkbox" id="recAutoPay"><span>Automatski upiši kao plaćeno na dan dospeća</span></label>
@@ -2111,6 +2126,11 @@
     if(accounts.length < 2) return [];
     return [{key:'account', label:'Račun', type:'select', value: accountName(currentId), options: accounts.map(a=>a.name)}];
   }
+  function applySpreadEdit(e, vals){
+    const n = Math.max(1, Math.min(60, parseInt(vals.spreadMonths, 10) || 1));
+    if(n > 1){ e.spreadMonths = n; if(/^\d{4}-\d{2}$/.test(vals.spreadStart || '')) e.spreadStart = vals.spreadStart; else delete e.spreadStart; }
+    else { delete e.spreadMonths; delete e.spreadStart; }
+  }
   function applyAccountEdit(obj, vals){
     if(vals.account === undefined) return;
     const a = accounts.find(x=> x.name === vals.account);
@@ -2341,8 +2361,7 @@
 
   // ---- Envelope/zero-based budzetiranje ----
   function categorySpentInMonth(cat, mKey){
-    return entries.filter(e=>e.type==='expense' && isExpensePaid(e) && e.category===cat && monthKey(e.date)===mKey)
-      .reduce((s,e)=>s+e.amount, 0);
+    return sumMonth(mKey, e=> isPaidExpense(e) && e.category === cat);
   }
   // Predlog za envelope alokaciju — prosek poslednja 3 meseca (uklj. tekuci, koliko god je dosad potroseno u njemu).
   function avgMonthlySpend3(cat){
@@ -2622,6 +2641,19 @@
     return { pendingItems, pendingExpense, pendingIncome, pendingCount };
   }
   function isExpensePaid(e){ return e.paid !== false; }
+  // Mesecni zbirovi uzimaju u obzir stavke raspodeljene na vise meseci (C.shareInMonth).
+  const isIncome = e => e.type === 'income';
+  const isPaidExpense = e => e.type === 'expense' && isExpensePaid(e);
+  const sumMonth = (m, pred) => entries.reduce((s,e)=> pred(e) ? s + C.shareInMonth(e, m) : s, 0);
+  const isSpread = e => (parseInt(e.spreadMonths, 10) || 1) > 1;
+  // "80.000 od 240.000 (jul–sep)" — oznaka za stavku koja pokriva vise meseci
+  function spreadLabel(e){
+    if(!isSpread(e)) return '';
+    const { n, start, end } = C.spreadOf(e);
+    const short = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'short'}).replace('.','') + (start.slice(0,4) !== end.slice(0,4) ? ' ' + y.slice(2) : ''); };
+    return `${n} mes. (${short(start)} – ${short(end)})`;
+  }
+  const spreadTag = e => isSpread(e) ? ` <span class="tag-chip" title="Iznos se raspoređuje na više meseci">⇄ ${spreadLabel(e)}</span>` : '';
 
   function togglePaid(r, checked, customAmount){
     const mKey = currentMonthKey();
@@ -2713,9 +2745,11 @@
     let income = 0, expense = 0;
     const byCat = {};
     entries.forEach(e=>{
-      if(monthKey(e.date) !== mKey) return;
-      if(e.type === 'income') income += e.amount;
-      else if(e.type === 'expense' && isExpensePaid(e)){ expense += e.amount; byCat[e.category] = (byCat[e.category]||0) + e.amount; }
+      if(e.type !== 'income' && !isPaidExpense(e)) return;
+      const share = C.shareInMonth(e, mKey);
+      if(!share) return;
+      if(e.type === 'income') income += share;
+      else { expense += share; byCat[e.category] = (byCat[e.category]||0) + share; }
     });
     return { income, expense, net: income - expense, byCat, catEntries: Object.entries(byCat).sort((a,b)=>b[1]-a[1]) };
   }
@@ -2839,6 +2873,38 @@
       document.getElementById(p + 'Currency').addEventListener(ev, ()=> updateCurrencyHint(p));
     });
   });
+  // Polja "pokriva vise meseci" u formama prihoda/rashoda
+  function readSpreadField(prefix){
+    if(!document.getElementById(prefix + 'SpreadToggle').checked) return null;
+    const n = Math.max(2, Math.min(60, parseInt(document.getElementById(prefix + 'SpreadMonths').value, 10) || 2));
+    const start = document.getElementById(prefix + 'SpreadStart').value;
+    return { spreadMonths: n, spreadStart: /^\d{4}-\d{2}$/.test(start) ? start : null };
+  }
+  function updateSpreadHint(prefix){
+    const hint = document.getElementById(prefix + 'SpreadHint');
+    const s = readSpreadField(prefix);
+    document.getElementById(prefix + 'SpreadRow').style.display = s ? 'grid' : 'none';
+    if(!s){ hint.textContent = ''; return; }
+    const date = document.getElementById(prefix + 'Date').value || toISODateLocal(new Date());
+    const startInput = document.getElementById(prefix + 'SpreadStart');
+    if(!startInput.value) startInput.value = date.slice(0, 7);
+    const amount = readAmountField(prefix).amount;
+    const probe = { amount: isNaN(amount) ? 0 : amount, date, spreadMonths: s.spreadMonths, spreadStart: startInput.value };
+    const { start, end } = C.spreadOf(probe);
+    hint.textContent = `${monthYearLabelSr(start)} – ${monthYearLabelSr(end)}` + (probe.amount > 0 ? ` — po ${fmt(probe.amount / s.spreadMonths)} mesečno` : '') + '. Na račun se ceo iznos računa na dan uplate.';
+  }
+  ['inc', 'exp'].forEach(p=>{
+    [p + 'SpreadToggle', p + 'SpreadMonths', p + 'SpreadStart', p + 'Amount', p + 'Currency', p + 'Date'].forEach(id=>{
+      document.getElementById(id).addEventListener('input', ()=> updateSpreadHint(p));
+      document.getElementById(id).addEventListener('change', ()=> updateSpreadHint(p));
+    });
+  });
+  function resetSpreadField(prefix){
+    document.getElementById(prefix + 'SpreadToggle').checked = false;
+    document.getElementById(prefix + 'SpreadMonths').value = 3;
+    document.getElementById(prefix + 'SpreadStart').value = '';
+    updateSpreadHint(prefix);
+  }
   const origTag = e => (e.currency && e.currency !== 'RSD' && e.origAmount) ? `<span class="orig-amt">${fmtOrig(e.origAmount, e.currency)}</span>` : '';
   const accountTag = e => (accounts.length >= 2 && !isTransfer(e)) ? ` <span class="tag-chip" style="color:var(--ink-soft);">${escapeHtml(accountName(e.accountId))}</span>` : '';
   // Iznos ponavljajuce stavke u RSD po danasnjem kursu (za stavke u stranoj valuti, npr. kirija u EUR)
@@ -2848,6 +2914,7 @@
   }
   function recurringEntry(r, mKey, amount){
     const e = { id: recurringEntryId(r, mKey), type: r.type, desc: r.desc, amount: amount != null ? amount : recurringAmountNow(r), category: r.category, date: C.dueDateFor(r, mKey) };
+    if(r.spreadPeriod && (r.frequency === 'quarterly' || r.frequency === 'yearly')){ e.spreadMonths = r.frequency === 'yearly' ? 12 : 3; e.spreadStart = mKey; }
     if(r.accountId) e.accountId = r.accountId;
     if(r.currency && r.currency !== 'RSD' && r.origAmount && fx.rates[r.currency]){
       e.currency = r.currency; e.rate = fx.rates[r.currency];
@@ -3020,7 +3087,7 @@
       }).join('');
     growBars(breakdownEl);
 
-    const recent = entries.filter(e=> (e.type === 'income' || e.type === 'expense') && monthKey(e.date) === viewMonth)
+    const recent = entries.filter(e=> (e.type === 'income' || e.type === 'expense') && (monthKey(e.date) === viewMonth || C.shareInMonth(e, viewMonth) > 0))
       .sort((a,b)=> b.date.localeCompare(a.date)).slice(0,10);
     document.getElementById('recentTitle').textContent = 'Poslednje stavke — ' + monthYearLabelSr(viewMonth);
     const recentBody = document.getElementById('recentBody');
@@ -3032,8 +3099,12 @@
         const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
         const sign = e.type === 'income' ? '+' : '−';
         const pendingTag = (e.type==='expense' && !isExpensePaid(e)) ? ' <span class="cat-tag" style="color:var(--gold-text);border-color:var(--gold);">na čekanju</span>' : '';
-        return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${pendingTag}${tagsHtml(e.tags)}${accountTag(e)}</td>
-          <td class="amount ${e.type}">${sign} ${fmt(e.amount)}${origTag(e)}</td></tr>`;
+        const share = C.shareInMonth(e, viewMonth);
+        const amountHtml = isSpread(e)
+          ? `${sign} ${fmt(share)}<span class="orig-amt">deo od ${fmt(e.amount)}</span>`
+          : `${sign} ${fmt(e.amount)}${origTag(e)}`;
+        return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${pendingTag}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
+          <td class="amount ${e.type}">${amountHtml}</td></tr>`;
       }).join('');
     }
 
@@ -3052,8 +3123,9 @@
   function renderTagBreakdown(){
     const panel = document.getElementById('tagBreakdownPanel');
     const byTag = {};
-    entries.filter(e=>e.type==='expense' && isExpensePaid(e) && e.tags && e.tags.length && monthKey(e.date) === viewMonth).forEach(e=>{
-      e.tags.forEach(t=>{ byTag[t] = (byTag[t]||0) + e.amount; });
+    entries.filter(e=>isPaidExpense(e) && e.tags && e.tags.length).forEach(e=>{
+      const share = C.shareInMonth(e, viewMonth);
+      if(share) e.tags.forEach(t=>{ byTag[t] = (byTag[t]||0) + share; });
     });
     const tagEntries = Object.entries(byTag).sort((a,b)=>b[1]-a[1]);
     if(tagEntries.length === 0){ panel.style.display = 'none'; return; }
@@ -3124,7 +3196,7 @@
     const creep = detectSubscriptionCreep();
     const anomalies = detectSpendingAnomalies();
     const months = lastNMonths(6);
-    const monthlyExpense = months.map(m => entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
+    const monthlyExpense = months.map(m => sumMonth(m, isPaidExpense));
     const forecast = linearRegressionForecast(monthlyExpense);
     if(creep.length === 0 && anomalies.length === 0 && forecast == null){ panel.style.display = 'none'; return; }
     panel.style.display = 'block';
@@ -3368,8 +3440,8 @@
 
   function renderTrend(){
     const months = lastNMonths(trendRangeMonths);
-    const incomeVals = months.map(m => entries.filter(e=>e.type==='income' && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
-    const expenseVals = months.map(m => entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
+    const incomeVals = months.map(m => sumMonth(m, isIncome));
+    const expenseVals = months.map(m => sumMonth(m, isPaidExpense));
     const maxVal = Math.max(1, ...incomeVals, ...expenseVals);
     const W = 760, H = 220, padL = 10, padR = 10, padT = 15, padB = 30;
     const plotW = W - padL - padR, plotH = H - padT - padB;
@@ -3493,6 +3565,7 @@
       : recurring;
     let running = balanceThroughMonth(monthKeyPlus(-1));
     const vals = months.map(mKey=>{
+      // Projekcija prati novac (stvarni datum uplate), kao i stanje na racunima — ne raspodelu po mesecima
       const realNet = effEntries.filter(e=>monthKey(e.date)===mKey && !isTransfer(e) && (e.type!=='expense' || isExpensePaid(e)))
         .reduce((s,e)=> s + (e.type==='income' ? e.amount : -e.amount), 0);
       const recurringNet = effRecurring.reduce((s,r)=>{
@@ -3963,13 +4036,11 @@
     const todayStr = toISODateLocal(new Date());
     const todayDay = new Date().getDate();
 
-    const thisInc = entries.filter(e=>e.type==='income' && monthKey(e.date)===mKey).reduce((s,e)=>s+e.amount,0);
-    const thisExp = entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===mKey).reduce((s,e)=>s+e.amount,0);
+    const { income: thisInc, expense: thisExp, byCat: monthByCat } = monthTotals(mKey);
     const savingsPct = thisInc > 0 ? ((thisInc-thisExp)/thisInc*100) : 0;
     const savingsScore = Math.max(0, Math.min(100, 50 + savingsPct*2.5));
 
-    const catTotals = {};
-    entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===mKey).forEach(e=>{ catTotals[e.category] = (catTotals[e.category]||0) + e.amount; });
+    const catTotals = monthByCat;
     const withLimits = Object.keys(catTotals).filter(cat=>limits[cat]);
     const catScore = withLimits.length ? (withLimits.filter(cat=>catTotals[cat] <= limits[cat]).length / withLimits.length * 100) : null;
     const budgetCapScore = monthlyBudget > 0 ? (thisExp <= monthlyBudget ? 100 : Math.max(0, 100 - (thisExp-monthlyBudget)/monthlyBudget*100)) : null;
@@ -4085,7 +4156,7 @@
         const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedIncomeIds.has(e.id)?'checked':''} title="Izaberi"></td>
-          <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${tagsHtml(e.tags)}${accountTag(e)}</td>
+          <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount income">+ ${fmt(e.amount)}${origTag(e)}</td>
           <td class="row-actions"><button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
@@ -4119,12 +4190,15 @@
           {key:'category', label:'Kategorija', type:'select', value:entry.category, options:incomeCats},
           {key:'date', label:'Datum', type:'date', value:entry.date},
           {key:'tags', label:'Oznake (odvojene zarezom)', type:'text', value:(entry.tags||[]).join(', ')},
+          {key:'spreadMonths', label:'Pokriva meseci (1 = samo mesec uplate)', type:'number', value: parseInt(entry.spreadMonths, 10) || 1},
+          {key:'spreadStart', label:'Od meseca (za više meseci)', type:'month', value: entry.spreadStart || entry.date.slice(0,7)},
           ...accountEditField(entry.accountId),
         ],
         onSave: (entry, vals)=>{
           if(!vals.desc || !vals.desc.trim() || isNaN(vals.amount) || vals.amount <= 0 || !vals.date) return;
           entry.desc = vals.desc.trim(); applyAmountEdit(entry, vals.amount); entry.category = vals.category; entry.date = vals.date;
           applyAccountEdit(entry, vals);
+          applySpreadEdit(entry, vals);
           entry.tags = parseTagsInput(vals.tags);
           saveEntries(); renderAll();
         }
@@ -4166,12 +4240,15 @@
     const entry = { id, type:'income', desc, amount, category, date, tags };
     if(fa.foreign && fa.amount === amount) Object.assign(entry, fa.foreign);
     if(accounts.length) entry.accountId = document.getElementById('incAccount').value || defaultAccountId();
+    const spread = readSpreadField('inc');
+    if(spread){ entry.spreadMonths = spread.spreadMonths; if(spread.spreadStart) entry.spreadStart = spread.spreadStart; }
     entries.push(entry);
     newEntryId = id;
     saveEntries(); renderAll();
     const incAcc = document.getElementById('incAccount').value, incCur = document.getElementById('incCurrency').value;
     this.reset(); document.getElementById('incDate').value = toISODateLocal(new Date()); document.getElementById('incDesc').focus();
     document.getElementById('incAccount').value = incAcc; document.getElementById('incCurrency').value = incCur; updateCurrencyHint('inc');
+    resetSpreadField('inc');
   });
 
   // ---- Rashodi ----
@@ -4275,7 +4352,7 @@
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''} ${!paid?'expense-pending':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedExpenseIds.has(e.id)?'checked':''} title="Izaberi"></td>
           <td class="paid-check"><input type="checkbox" data-paid-id="${e.id}" ${paid?'checked':''} title="Plaćeno"></td>
-          <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}</td>
+          <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
           <td class="row-actions"><button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
@@ -4310,6 +4387,8 @@
           {key:'date', label:'Datum', type:'date', value:entry.date},
           {key:'tags', label:'Oznake (odvojene zarezom)', type:'text', value:(entry.tags||[]).join(', ')},
           {key:'paid', label:'Već plaćeno', type:'checkbox', value:isExpensePaid(entry)},
+          {key:'spreadMonths', label:'Pokriva meseci (1 = samo mesec uplate)', type:'number', value: parseInt(entry.spreadMonths, 10) || 1},
+          {key:'spreadStart', label:'Od meseca (za više meseci)', type:'month', value: entry.spreadStart || entry.date.slice(0,7)},
           ...accountEditField(entry.accountId),
           {key:'remember', label:'Ubuduće ovaj opis uvek stavljaj u izabranu kategoriju (pravilo za uvoz i brzi unos)', type:'checkbox', value:false},
         ],
@@ -4317,6 +4396,7 @@
           if(!vals.desc || !vals.desc.trim() || isNaN(vals.amount) || vals.amount <= 0 || !vals.date) return;
           entry.desc = vals.desc.trim(); applyAmountEdit(entry, vals.amount); entry.category = vals.category; entry.date = vals.date; entry.paid = vals.paid;
           applyAccountEdit(entry, vals);
+          applySpreadEdit(entry, vals);
           entry.tags = parseTagsInput(vals.tags);
           if(vals.remember) rememberCategoryRule(entry.desc, entry.category);
           saveEntries(); renderAll();
@@ -4416,6 +4496,8 @@
         const id = newId();
         const e = { id, type:'expense', desc, amount:r.amount, category:r.category, date, paid, tags };
         if(accountId) e.accountId = accountId;
+        const spread = readSpreadField('exp');
+        if(spread){ e.spreadMonths = spread.spreadMonths; if(spread.spreadStart) e.spreadStart = spread.spreadStart; }
         entries.push(e);
         newEntryId = id;
         applyRoundUpSaving(r.amount);
@@ -4428,6 +4510,7 @@
       this.reset(); document.getElementById('expDate').value = toISODateLocal(new Date());
       document.getElementById('expPaid').checked = true;
       document.getElementById('expAccount').value = expAcc; document.getElementById('expCurrency').value = expCur; updateCurrencyHint('exp');
+    resetSpreadField('exp');
       populateExpenseCategorySelect(); document.getElementById('expDesc').focus();
       return;
     }
@@ -4436,6 +4519,8 @@
     const entry = { id, type:'expense', desc, amount, category, date, paid, tags };
     if(fa.foreign && fa.amount === amount) Object.assign(entry, fa.foreign);
     if(accountId) entry.accountId = accountId;
+    const spread = readSpreadField('exp');
+    if(spread){ entry.spreadMonths = spread.spreadMonths; if(spread.spreadStart) entry.spreadStart = spread.spreadStart; }
     entries.push(entry);
     newEntryId = id;
     applyRoundUpSaving(amount);
@@ -4444,6 +4529,7 @@
     this.reset(); document.getElementById('expDate').value = toISODateLocal(new Date());
     document.getElementById('expPaid').checked = true;
     document.getElementById('expAccount').value = expAcc; document.getElementById('expCurrency').value = expCur; updateCurrencyHint('exp');
+    resetSpreadField('exp');
     populateExpenseCategorySelect(); document.getElementById('expDesc').focus();
   });
 
@@ -4454,7 +4540,7 @@
   // ---- Kategorije ----
   function categorySparklineSvg(cat){
     const months = lastNMonths(6);
-    const vals = months.map(m => entries.filter(e=>e.type==='expense' && isExpensePaid(e) && e.category===cat && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
+    const vals = months.map(m => categorySpentInMonth(cat, m));
     if(vals.every(v=>v===0)) return '<span class="cat-sparkline-empty" title="Nema podataka poslednjih meseci"></span>';
     const max = Math.max(1, ...vals);
     const W = 56, H = 20;
@@ -4658,8 +4744,10 @@
     const anchorMonth = parseInt(document.getElementById('recAnchorMonth').value) || 1;
     const isSubscription = document.getElementById('recIsSubscription').checked;
     const autoPay = document.getElementById('recAutoPay').checked;
+    const spreadPeriod = frequency !== 'monthly' && document.getElementById('recSpreadPeriod').checked;
     if(!desc || isNaN(amount) || amount <= 0) return;
     const rec = { id: newId(), type: currentRecType, desc, amount: Math.round(amount), category, day, frequency, anchorMonth, isSubscription, autoPay };
+    if(spreadPeriod) rec.spreadPeriod = true;
     if(fa.foreign && fa.amount === amount){ rec.currency = fa.foreign.currency; rec.origAmount = fa.foreign.origAmount; }
     if(accounts.length) rec.accountId = document.getElementById('recAccount').value || defaultAccountId();
     recurring.push(rec);
@@ -4712,7 +4800,7 @@
       const throughLabel = paidThroughLabel(r);
       const due = isDueThisMonth(r, mKey);
       const freqLabel = frequencyLabel(r);
-      const freqTag = freqLabel ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--paper-line);">${freqLabel}</span>` : '';
+      const freqTag = freqLabel ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--paper-line);">${freqLabel}${r.spreadPeriod ? ' · raspoređeno' : ''}</span>` : '';
       const subTag = r.isSubscription ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--gold);color:var(--gold-text);">🔔 pretplata</span>` : '';
       let statusHtml;
       if(paid) statusHtml = '<span class="paid-tag">plaćeno ✓</span>';
@@ -4801,10 +4889,12 @@
         {key:'anchorMonth', label:'Mesec (za kvartalno/godišnje)', type:'select', value: MONTH_NAMES_SR[(r.anchorMonth||1)-1], options: MONTH_NAMES_SR},
         {key:'isSubscription', label:'Ovo je pretplata (Netflix, Spotify...)', type:'checkbox', value: !!r.isSubscription},
         {key:'autoPay', label:'Automatski upiši kao plaćeno na dan dospeća', type:'checkbox', value: !!r.autoPay},
+        {key:'spreadPeriod', label:'Kvartalno/godišnje: iznos pokriva ceo period (raspodeli na 3/12 meseci)', type:'checkbox', value: !!r.spreadPeriod},
       ],
       onSave: (r, vals)=>{
         if(!vals.desc || !vals.desc.trim() || isNaN(vals.amount) || vals.amount <= 0) return;
         r.autoPay = vals.autoPay;
+        if(vals.spreadPeriod) r.spreadPeriod = true; else delete r.spreadPeriod;
         applyAccountEdit(r, vals);
         if(r.currency && r.currency !== 'RSD'){ r.origAmount = vals.amount; r.amount = recurringAmountNow(r); }
         else r.amount = vals.amount;
@@ -5106,7 +5196,7 @@
     emptyEl.style.display='none';
     const sumByCat = (m) => {
       const map = {};
-      entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===m).forEach(e=>{ map[e.category]=(map[e.category]||0)+e.amount; });
+      Object.assign(map, monthTotals(m).byCat);
       return map;
     };
     const a = sumByCat(mA), b = sumByCat(mB);
@@ -5151,8 +5241,8 @@
     const emptyEl = document.getElementById('compareYearEmpty');
     if(!y){ svg.innerHTML=''; emptyEl.style.display='block'; return; }
     const months = Array.from({length:12}, (_,i)=> y+'-'+String(i+1).padStart(2,'0'));
-    const incomeVals = months.map(m=> entries.filter(e=>e.type==='income' && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
-    const expenseVals = months.map(m=> entries.filter(e=>e.type==='expense' && isExpensePaid(e) && monthKey(e.date)===m).reduce((s,e)=>s+e.amount,0));
+    const incomeVals = months.map(m=> sumMonth(m, isIncome));
+    const expenseVals = months.map(m=> sumMonth(m, isPaidExpense));
     if(incomeVals.every(v=>v===0) && expenseVals.every(v=>v===0)){ svg.innerHTML=''; emptyEl.style.display='block'; return; }
     emptyEl.style.display='none';
     const maxVal = Math.max(1, ...incomeVals, ...expenseVals);
@@ -5243,6 +5333,14 @@
     if(years.includes(prevYear)) yearSel.value = prevYear;
   }
 
+  // Stavke perioda za izvestaj: iznos = deo koji pripada periodu (raspodeljene stavke se dele)
+  function periodEntries(months){
+    return entries.filter(e=> !isTransfer(e)).map(e=>{
+      const share = C.shareInMonths(e, months);
+      if(!share) return null;
+      return isSpread(e) ? Object.assign({}, e, { amount: share, fullAmount: e.amount }) : e;
+    }).filter(Boolean);
+  }
   function renderReport(){
     populateReportSelectors();
     const scope = document.getElementById('reportScope').value;
@@ -5253,13 +5351,13 @@
     if(scope === 'month'){
       const m = document.getElementById('reportMonth').value;
       if(!m){ preview.innerHTML = '<div class="empty">Nema podataka za prikaz.</div>'; return; }
-      rangeEntries = entries.filter(e=>monthKey(e.date)===m && !isTransfer(e));
+      rangeEntries = periodEntries([m]);
       const [y,mo] = m.split('-');
       label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long',year:'numeric'});
     } else {
       const y = document.getElementById('reportYear').value;
       if(!y){ preview.innerHTML = '<div class="empty">Nema podataka za prikaz.</div>'; return; }
-      rangeEntries = entries.filter(e=>e.date.slice(0,4)===y && !isTransfer(e));
+      rangeEntries = periodEntries(C.monthRange(y + '-01', y + '-12'));
       label = y + '. godina';
     }
     const income = rangeEntries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
@@ -5277,7 +5375,7 @@
     if(scope === 'year'){
       const y = document.getElementById('reportYear').value;
       const prevYear = String(parseInt(y,10)-1);
-      const prevEntries = entries.filter(e=>e.date.slice(0,4)===prevYear);
+      const prevEntries = periodEntries(C.monthRange(prevYear + '-01', prevYear + '-12'));
       const prevExpense = prevEntries.filter(e=>e.type==='expense' && isExpensePaid(e)).reduce((s,e)=>s+e.amount,0);
       const savingsRate = income > 0 ? ((income-expense)/income*100) : 0;
       const biggestExpense = rangeEntries.filter(e=>e.type==='expense' && isExpensePaid(e)).sort((a,b)=>b.amount-a.amount)[0];
@@ -5314,7 +5412,8 @@
           const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'});
           const sign = e.type==='income' ? '+' : '−';
           const pendingNote = (e.type==='expense' && !isExpensePaid(e)) ? ' (na čekanju)' : '';
-          return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${escapeHtml(e.category)}</td><td>${e.type==='income'?'Prihod':'Rashod'}${pendingNote}</td><td class="amount ${e.type}">${sign} ${fmt(e.amount)}</td></tr>`;
+          const spreadNote = e.fullAmount ? ` (deo od ${fmt(e.fullAmount)}, ${spreadLabel(e)})` : '';
+          return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}${spreadNote}</td><td>${escapeHtml(e.category)}</td><td>${e.type==='income'?'Prihod':'Rashod'}${pendingNote}</td><td class="amount ${e.type}">${sign} ${fmt(e.amount)}</td></tr>`;
         }).join('')}
       </tbody></table></div>` : '<div class="empty">Nema stavki u ovom periodu.</div>'}
     `;
@@ -5523,6 +5622,7 @@
       anchorMonth: Math.min(12, Math.max(1, Number(r.anchorMonth) || 1)),
       isSubscription: !!r.isSubscription,
       autoPay: !!r.autoPay,
+      spreadPeriod: !!r.spreadPeriod || undefined,
       accountId: typeof r.accountId === 'string' ? r.accountId : undefined,
       currency: CURRENCIES.includes(r.currency) ? r.currency : undefined,
       origAmount: Number(r.origAmount) || undefined,
@@ -5796,7 +5896,7 @@
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || ''})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : ''})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -5807,7 +5907,7 @@
     XLSX.utils.book_append_sheet(wb, wsKat, 'Kategorije');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeCats.map(c=>({Naziv:c}))), 'KategorijePrihoda');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
-    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne'})));
+    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne'})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
@@ -5853,6 +5953,7 @@
         paid: type === 'expense' ? paid : undefined,
         tags: String(r.Oznake || '').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean),
         ...(r.Racun ? { accountName: String(r.Racun) } : {}),
+        ...((parseInt(r.PokrivaMeseci, 10) || 1) > 1 ? { spreadMonths: parseInt(r.PokrivaMeseci, 10), ...(/^\d{4}-\d{2}$/.test(String(r.OdMeseca)) ? { spreadStart: String(r.OdMeseca) } : {}) } : {}),
         ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {})
       };
     });
@@ -5875,6 +5976,7 @@
       anchorMonth: Math.min(12, Math.max(1, Number(r.PocetniMesec) || 1)),
       isSubscription: /^(da|yes|true|1)$/i.test(String(r.Pretplata||'').trim()),
       autoPay: /^(da|yes|true|1)$/i.test(String(r.AutoUpis||'').trim()),
+      ...(/^(da|yes|true|1)$/i.test(String(r.RaspodelaNaPeriod||'').trim()) ? { spreadPeriod: true } : {}),
     }));
 
     const ciljRows = sheetRows('Ciljevi');

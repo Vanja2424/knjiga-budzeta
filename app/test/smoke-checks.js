@@ -144,6 +144,29 @@
       check('rashod u EUR preračunat po kursu', eur && eur.currency === 'EUR' && eur.origAmount === 10 && eur.amount > 1000 && Math.abs(eur.amount - 10 * eur.rate) < 0.01, JSON.stringify(eur));
     } else passed.push('(kursna lista nije dostupna — provera EUR preskočena)');
 
+    // Plata za vise meseci: 240.000 za 3 meseca od tekuceg -> po 80.000 u svakom
+    go('pregled'); await sleep(800);
+    const incBefore = Number($('totalIncome').textContent.replace(/\D/g, ''));
+    const nextM = BudzetCore.addMonths(monthKey(new Date()), 1);
+    const nextBefore = Math.round(entries().filter(e => e.type === 'income').reduce((s, e) => s + BudzetCore.shareInMonth(e, nextM), 0));
+    const totalBal = () => Object.values(BudzetCore.accountBalances(JSON.parse(localStorage.getItem('budzet-racuni-v1')), entries(), e => e.paid !== false)).reduce((s, v) => s + v, 0);
+    const balBeforeQ = totalBal();
+    go('prihodi');
+    setVal('incDesc', 'Smoke plata Q'); $('incCurrency').value = 'RSD'; setVal('incAmount', '240000');
+    $('incSpreadToggle').checked = true; $('incSpreadToggle').dispatchEvent(new Event('change', { bubbles: true }));
+    setVal('incSpreadMonths', '3');
+    check('hint raspodele', /80\.000/.test($('incSpreadHint').textContent), $('incSpreadHint').textContent);
+    $('incomeForm').requestSubmit(); await sleep(100);
+    const q = entries().find(e => e.desc === 'Smoke plata Q');
+    check('plata za više meseci sačuvana', q && q.spreadMonths === 3 && q.spreadStart === monthKey(new Date()), JSON.stringify(q));
+    go('pregled'); await sleep(800);
+    check('tekući mesec dobija trećinu (80.000)', Number($('totalIncome').textContent.replace(/\D/g, '')) === incBefore + 80000, `${incBefore} → ${$('totalIncome').textContent}`);
+    check('lista pokazuje deo od celog iznosa', /deo od 240\.000/.test($('recentBody').textContent));
+    $('periodNext').click(); await sleep(800);
+    check('sledeći mesec dobija trećinu', Number($('totalIncome').textContent.replace(/\D/g, '')) === nextBefore + 80000, $('totalIncome').textContent);
+    $('periodToday').click();
+    check('račun dobija ceo iznos odmah', totalBal() - balBeforeQ === 240000, `${balBeforeQ} → ${totalBal()}`);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

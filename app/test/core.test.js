@@ -137,6 +137,26 @@ test('stanja racuna sa prenosima', () => {
   assert.deepEqual(C.accountBalances(accounts, entries, paid, '2026-09-02'), { a: 1500, b: -200 });
 });
 
+test('raspodela na vise meseci', () => {
+  const plata = { amount: 240000, date: '2026-07-05', spreadMonths: 3 };
+  assert.equal(C.shareInMonth(plata, '2026-06'), 0);
+  assert.equal(C.shareInMonth(plata, '2026-07'), 80000);
+  assert.equal(C.shareInMonth(plata, '2026-09'), 80000);
+  assert.equal(C.shareInMonth(plata, '2026-10'), 0);
+  // unazad: uplaceno u oktobru za jul–sep
+  const zaProslo = { amount: 90000, date: '2026-10-02', spreadMonths: 3, spreadStart: '2026-07' };
+  assert.equal(C.shareInMonth(zaProslo, '2026-10'), 0);
+  assert.equal(C.shareInMonth(zaProslo, '2026-08'), 30000);
+  // preko granice godine
+  const god = { amount: 12000, date: '2026-11-10', spreadMonths: 12 };
+  assert.equal(C.shareInMonth(god, '2027-10'), 1000);
+  assert.equal(C.shareInMonth(god, '2027-11'), 0);
+  assert.equal(C.shareInMonths(god, C.monthRange('2027-01', '2027-12')), 10000);
+  // obicna stavka
+  assert.equal(C.shareInMonth({ amount: 500, date: '2026-07-31' }, '2026-07'), 500);
+  assert.equal(C.shareInMonth({ amount: 500, date: '2026-07-31', spreadMonths: 1, spreadStart: '2026-01' }, '2026-01'), 0);
+});
+
 test('valute i plan otplate', () => {
   assert.equal(C.convertToRsd(100, 'EUR', { EUR: 117.2 }), 11720);
   assert.equal(C.convertToRsd(100, 'RSD', {}), 100);
