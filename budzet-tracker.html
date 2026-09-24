@@ -1454,6 +1454,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .lang-seg button.active{ background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 [data-theme="dark"] .lang-seg button.active{ background: #636366; }
 
+/* Pregled: jednak razmak izmedju svih panela (inline margine su bile nedosledne pa su se neki lepili) */
+#screen-pregled > *{ margin: 0 0 18px !important; }
+#screen-pregled > *:last-child{ margin-bottom: 0 !important; }
+
 /* ---------- Siroki i maksimizovani prozori ---------- */
 /* Kolona sadrzaja raste sa prozorom; sve (zaglavlje, sazetak, podmeni, ekrani) deli istu levu ivicu */
 :root{ --content-max: 1180px; }
