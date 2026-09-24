@@ -206,6 +206,8 @@
     'npr. Plata za avgust (ili Plata 50000)': 'e.g. August salary (or Salary 50000)', 'npr. Stanarina (ili Stanarina 30000)': 'e.g. Rent (or Rent 30000)',
     'Jezik / Language': 'Language / Jezik',
     'Opozovi': 'Undo', 'npr. posao, honorar': 'e.g. work, freelance', 'Brzi unos': 'Quick entry',
+    'najnovija': 'latest', 'v{0} → {1} (preuzima se)': 'v{0} → {1} (downloading)', 'Nova verzija {0} se preuzima.': 'New version {0} is downloading.',
+    'Ažuriraj na {0}': 'Update to {0}', 'Instalirana je {0}, a dostupna je {1} — klikni da ažuriraš.': 'Installed: {0}, available: {1} — click to update.',
     'Srpski': 'Srpski', 'English': 'English', 'Aplikacija će se ponovo pokrenuti da bi se promenio jezik.': 'The app will restart to change the language.',
     'Skupi bočni meni': 'Collapse sidebar', 'Proširi bočni meni': 'Expand sidebar',
 
