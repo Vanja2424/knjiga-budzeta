@@ -7505,7 +7505,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const pill = byId('tbUpdate');
       byId('deskVersion').textContent = t('Instalirana verzija: {0}', s.current);
       const txt = {
-        idle: 'Nove verzije se proveravaju automatski (posle starta i na svaka 2 sata) i instaliraju same.',
+        idle: 'Nove verzije se proveravaju automatski (pri pokretanju, na svakih 15 minuta i kad otvoriš prozor) i instaliraju same.',
         checking: 'Proveravam da li postoji nova verzija…',
         current: 'Imaš najnoviju verziju. Nove verzije se instaliraju automatski.',
         downloading: t('Preuzimam verziju {0}… {1}', s.version || '', s.percent ? s.percent + '%' : ''),

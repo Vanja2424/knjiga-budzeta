@@ -179,7 +179,7 @@
     'Brzi unos je i dalje dostupan iz tray menija i sa desnim klikom na ikonicu na taskbaru.': 'Quick entry is still available from the tray menu and by right-clicking the taskbar icon.',
     'Pritisni prečicu bilo gde u Windows-u da otvoriš mali prozor za brzi unos rashoda.': 'Press the shortcut anywhere in Windows to open the small quick-entry window.',
     'Ovu prečicu već koristi neki drugi program — izaberi drugu.': 'Another program already uses this shortcut — choose a different one.',
-    'Nove verzije se proveravaju automatski (posle starta i na svaka 2 sata) i instaliraju same.': 'New versions are checked automatically (after start and every 2 hours) and install themselves.',
+    'Nove verzije se proveravaju automatski (pri pokretanju, na svakih 15 minuta i kad otvoriš prozor) i instaliraju same.': 'New versions are checked automatically (at start, every 15 minutes and when you open the window) and install themselves.',
     'Proveravam da li postoji nova verzija…': 'Checking for a new version…', 'Imaš najnoviju verziju. Nove verzije se instaliraju automatski.': 'You have the latest version. New versions install automatically.',
     'Provera nije uspela (možda nema interneta) — pokušaću ponovo kasnije.': 'The check failed (maybe no internet) — I’ll try again later.',
     'Dobrodošao/la': 'Welcome', 'Preskoči vodič': 'Skip guide', 'Dobrodošao/la u Knjigu budžeta': 'Welcome to Budget Book', 'Prvi prihod': 'First income', 'Kategorije rashoda': 'Expense categories',

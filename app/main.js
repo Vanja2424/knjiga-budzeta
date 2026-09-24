@@ -256,7 +256,9 @@ ipcMain.handle('backup:open', () => { fs.mkdirSync(backupDir(), { recursive: tru
 //  - "Kasnije": cim se prozor sledeci put sakrije/minimizuje, ili pri izlasku iz aplikacije.
 // Pre instalacije se podaci uvek upisuju u fajl (flushRenderer).
 const UPDATE_COUNTDOWN_MS = 60 * 1000;
-const UPDATE_CHECK_EVERY_MS = 2 * 60 * 60 * 1000;
+// Aplikacija obicno danima zivi u tray-u, pa provera samo pri pokretanju nije dovoljna.
+const UPDATE_CHECK_EVERY_MS = 15 * 60 * 1000;
+const UPDATE_STALE_MS = 10 * 60 * 1000;
 let updateState = { status: 'idle', version: null, percent: 0, error: null, current: app.getVersion(), installAt: null, postponed: false };
 let manualUpdateCheck = false;
 let updateTimer = null;
@@ -304,9 +306,11 @@ function setupUpdater() {
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   // Posle sna/zakljucanog ekrana racunar je mozda satima bio offline — proveri odmah.
-  const checkIfStale = () => { if (Date.now() - lastUpdateCheck > 30 * 60 * 1000) checkForUpdates(false); };
+  const checkIfStale = () => { if (Date.now() - lastUpdateCheck > UPDATE_STALE_MS) checkForUpdates(false); };
   powerMonitor.on('resume', () => setTimeout(checkIfStale, 20000));
   powerMonitor.on('unlock-screen', () => setTimeout(checkIfStale, 5000));
+  // Kad korisnik otvori prozor (iz tray-a ili prebacivanjem), proveri ako je prosla provera stara.
+  app.on('browser-window-focus', (_e, win) => { if (win === mainWindow) checkIfStale(); });
   autoUpdater.on('checking-for-update', () => setUpdate({ status: 'checking', error: null }));
   autoUpdater.on('update-not-available', () => {
     setUpdate({ status: 'current' });
