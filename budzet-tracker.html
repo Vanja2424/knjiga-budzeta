@@ -826,6 +826,584 @@
     html.desktop .app-scroll{ position: static; overflow: visible; background: none; border: none; }
   }
 </style>
+<style id="apple-theme">
+/* ============================================================================
+   Apple stil (v1.6) — sloj preko osnovnih stilova.
+   Principi: sistemske boje koje prate svetlu/tamnu temu, prozirni materijali za
+   "hrom" (bocni meni, naslovna traka, obavestenja), tipografija sa praćenjem po
+   velicini, jasna hijerarhija bez linija-razdelnika, povratna informacija na
+   pritisak, kritično prigušeni pokreti (bez odskakanja), poštovanje
+   prefers-reduced-motion / -transparency / -contrast.
+   ========================================================================== */
+:root{
+  --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "SF Pro Text", Roboto, Helvetica, Arial, sans-serif;
+  --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, "SF Pro Display", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Pozadine i povrsine */
+  --paper: #F5F5F7;           /* pozadina sadrzaja */
+  --card: #FFFFFF;            /* grupisane povrsine */
+  --sidebar-bg: #ECECEF;      /* bocni meni kad nema Mica materijala */
+  --elevated: #FFFFFF;
+  /* Tekst */
+  --ink: #1D1D1F;
+  --ink-soft: #6E6E73;
+  --ink-tertiary: #AEAEB2;
+  /* Linije i ispune (sistemske "fill" boje) */
+  --paper-line: rgba(0,0,0,0.08);
+  --separator: rgba(60,60,67,0.16);
+  --fill: rgba(118,118,128,0.12);
+  --fill-strong: rgba(118,118,128,0.2);
+  /* Akcenat i semanticke boje */
+  --accent: #0071E3;
+  --accent-hover: #0077ED;
+  --accent-soft: rgba(0,113,227,0.1);
+  --pos: #34C759;  --pos-text: #248A3D;
+  --neg: #FF3B30;  --neg-text: #D70015;
+  --warn: #FF9500; --warn-text: #C93400;
+  /* Postojeci tokeni mapirani na Apple paletu */
+  --ledger: var(--accent);
+  --ledger-dark: var(--accent);
+  --ledger-solid: var(--accent);
+  --ledger-solid-hover: var(--accent-hover);
+  --gold: var(--warn);
+  --gold-text: var(--warn-text);
+  --rust: var(--neg);
+  --rust-text: var(--neg-text);
+  --btn-secondary-bg: var(--fill);
+  --radius: 10px;
+  --radius-lg: 14px;
+  --shadow-card: 0 0 0 0.5px rgba(0,0,0,0.05), 0 1px 2px rgba(0,0,0,0.04), 0 2px 8px rgba(0,0,0,0.03);
+  --shadow-float: 0 0 0 0.5px rgba(0,0,0,0.08), 0 12px 32px rgba(0,0,0,0.14), 0 2px 6px rgba(0,0,0,0.06);
+  /* Pokret: kriticno prigusen (bez preskoka) i iOS "sheet" kriva */
+  --ease: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);
+  --dur-fast: 120ms;
+  --dur: 260ms;
+  --dur-slow: 420ms;
+}
+[data-theme="dark"]{
+  --paper: #161618;
+  --card: #232325;
+  --sidebar-bg: #1C1C1E;
+  --elevated: #2C2C2E;
+  --ink: #F5F5F7;
+  --ink-soft: #98989D;
+  --ink-tertiary: #636366;
+  --paper-line: rgba(255,255,255,0.08);
+  --separator: rgba(84,84,88,0.5);
+  --fill: rgba(118,118,128,0.24);
+  --fill-strong: rgba(118,118,128,0.34);
+  --accent: #0A84FF;
+  --accent-hover: #409CFF;
+  --accent-soft: rgba(10,132,255,0.18);
+  --pos: #30D158;  --pos-text: #30D158;
+  --neg: #FF453A;  --neg-text: #FF6961;
+  --warn: #FF9F0A; --warn-text: #FFB340;
+  --ledger: var(--accent); --ledger-dark: var(--accent); --ledger-solid: var(--accent); --ledger-solid-hover: var(--accent-hover);
+  --gold: var(--warn); --gold-text: var(--warn-text);
+  --rust: var(--neg); --rust-text: var(--neg-text);
+  --btn-secondary-bg: var(--fill);
+  --shadow-card: 0 0 0 0.5px rgba(255,255,255,0.06), 0 1px 3px rgba(0,0,0,0.3);
+  --shadow-float: 0 0 0 0.5px rgba(255,255,255,0.1), 0 16px 40px rgba(0,0,0,0.5);
+}
+
+/* ---------- Osnova ---------- */
+html{ scrollbar-color: var(--fill-strong) transparent; }
+body{
+  font-family: var(--font); font-size: 15px; line-height: 1.45; letter-spacing: -0.003em;
+  background: var(--sidebar-bg); color: var(--ink);
+  transition: background-color var(--dur) ease, color var(--dur) ease;
+  -webkit-tap-highlight-color: transparent;
+}
+::selection{ background: color-mix(in srgb, var(--accent) 28%, transparent); }
+::-webkit-scrollbar{ width: 11px; height: 11px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner{ background: transparent; }
+::-webkit-scrollbar-thumb{ background: var(--fill-strong); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
+::-webkit-scrollbar-thumb:hover{ background: var(--ink-tertiary); background-clip: padding-box; border: 3px solid transparent; }
+:focus-visible{ outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; border-radius: 6px; }
+button{ font-family: var(--font); }
+h1, h2, h3{ font-family: var(--font-display); }
+
+/* ---------- Raspored: bocni meni + sadrzaj ---------- */
+.shell{ display: flex; align-items: flex-start; min-height: 100vh; }
+html.desktop .shell{ min-height: calc(100vh - var(--titlebar-h)); }
+.sidebar{
+  position: sticky; top: 0; flex: 0 0 232px; width: 232px; height: 100vh;
+  display: flex; flex-direction: column; padding: 14px 12px 14px;
+  background: transparent; user-select: none;
+}
+html.desktop .sidebar{ height: calc(100vh - var(--titlebar-h)); padding-top: 4px; }
+.sb-brand{ display:flex; align-items:center; gap: 10px; padding: 8px 10px 18px; }
+.sb-appicon{
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0; display: grid; place-items: center;
+  font: 700 15px/1 var(--font-display); color: #fff; letter-spacing: -0.02em;
+  background: linear-gradient(160deg, #5AC8FA 0%, #007AFF 55%, #5856D6 100%);
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.35), 0 1px 2px rgba(0,0,0,0.18);
+}
+.sb-name{ font: 600 15px/1.2 var(--font-display); letter-spacing: -0.012em; color: var(--ink); white-space: nowrap; }
+.sb-spacer{ flex: 1 1 auto; }
+
+/* Stavke menija (klasa nav.tabs zadrzana zbog JS-a) */
+nav.tabs{
+  display:flex; flex-direction: column; gap: 2px; flex: 1 1 auto; margin: 0; padding: 0;
+  background: none; border: none; box-shadow: none; border-radius: 0;
+  position: static; overflow: visible; white-space: normal;
+}
+nav.tabs button{
+  display:flex; align-items:center; gap: 11px; width: 100%; padding: 7px 10px; min-height: 34px;
+  border-radius: 8px; border: none; background: transparent;
+  font: 500 14px/1.2 var(--font); letter-spacing: -0.006em; color: var(--ink); text-align: left;
+  cursor: default; flex-shrink: 0;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease;
+}
+nav.tabs button:hover:not(.active){ background: var(--fill); color: var(--ink); }
+nav.tabs button:active{ background: var(--fill-strong); }
+nav.tabs button.active{ background: color-mix(in srgb, var(--ink) 9%, transparent); color: var(--ink); font-weight: 600; }
+.tab-icon{
+  width: 20px; height: 20px; flex-shrink: 0; margin: 0; fill: none; stroke: var(--accent);
+  stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round;
+}
+nav.tabs button .tab-icon circle{ fill: var(--accent); stroke: none; }
+nav.tabs button[data-group="podesavanja"] .tab-icon circle{ fill: none; stroke: var(--accent); }
+.tab-label{ flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab-indicator{ display: none !important; }
+.tab-badge{
+  min-width: 18px; height: 18px; padding: 0 6px; margin-left: auto; border-radius: 999px;
+  display: inline-grid; place-items: center; background: var(--neg); color: #fff;
+  font: 600 11px/1 var(--font); font-variant-numeric: tabular-nums;
+}
+
+/* Povrsina sadrzaja: kartica preko materijala prozora (kao Windows 11 / Apple Music za Windows) */
+.wrap{
+  flex: 1 1 auto; min-width: 0; max-width: none; margin: 0; padding: 26px 36px 56px;
+  background: var(--paper); min-height: 100vh;
+}
+html.desktop .wrap{
+  min-height: calc(100vh - var(--titlebar-h));
+  border-top-left-radius: 12px; box-shadow: -0.5px -0.5px 0 0.5px var(--paper-line);
+  padding-top: 22px;
+}
+.wrap > *{ max-width: 1180px; margin-left: auto; margin-right: auto; }
+.wrap > .summary, .wrap > .page-header, .wrap > .subtabs, .wrap > .screen, .wrap > footer{ max-width: 1180px; }
+
+/* ---------- Zaglavlje: veliki naslov + kontrole ---------- */
+.page-header{
+  display:flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap;
+  margin-bottom: 20px; padding: 0; border: none;
+}
+.page-header h1, #screenTitle{
+  font: 700 30px/1.1 var(--font-display); letter-spacing: -0.028em; margin: 0; color: var(--ink);
+}
+.date-line{ font: 400 13px/1.4 var(--font); color: var(--ink-soft); margin-top: 4px; letter-spacing: 0; }
+.header-right{ display:flex; align-items:center; gap: 8px; }
+.period-bar{
+  display:flex; align-items:center; gap: 2px; margin: 0; padding: 3px;
+  background: var(--fill); border-radius: 9px;
+}
+.period-btn{
+  width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; color: var(--ink);
+  display:grid; place-items:center; cursor: default; box-shadow: none;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+.period-btn svg, .theme-toggle svg{ width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.period-btn:hover{ background: var(--card); border-color: transparent; }
+.period-btn:active{ transform: scale(0.94); }
+.period-label{
+  min-width: 9.5em; text-align: center; font: 600 13.5px/1 var(--font); letter-spacing: -0.005em;
+  font-variant-numeric: tabular-nums;
+}
+.period-today{
+  border: none; background: none; color: var(--accent); font: 500 13px var(--font);
+  text-decoration: none; padding: 6px 8px; border-radius: 7px; cursor: default;
+}
+.period-today:hover{ background: var(--accent-soft); }
+.theme-toggle{
+  width: 34px; height: 34px; padding: 0; display:grid; place-items:center; border: none; border-radius: 9px;
+  background: var(--fill); color: var(--ink); cursor: default;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+.theme-toggle:hover{ background: var(--fill-strong); color: var(--ink); border-color: transparent; transform: none; }
+.theme-toggle:active{ transform: scale(0.94); }
+.theme-toggle.spin{ animation: none; }
+
+/* ---------- Sazetak meseca ---------- */
+.summary{ gap: 12px; margin-bottom: 22px; }
+.summary .cell{
+  background: var(--card); border: none; border-radius: var(--radius-lg); padding: 16px 18px 15px;
+  box-shadow: var(--shadow-card);
+}
+.stat-icon{ display: none; }
+.summary .label{ font: 500 13px/1.3 var(--font); letter-spacing: 0; color: var(--ink-soft); text-transform: none; }
+.summary .value{ font: 650 clamp(21px, 2.1vw, 26px)/1.15 var(--font-display); letter-spacing: -0.025em; margin-top: 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.summary .value.pending.zero{ color: var(--ink-tertiary); }
+@media (max-width: 1100px){ .summary{ grid-template-columns: repeat(2, 1fr); } }
+.summary .value.income{ color: var(--pos-text); }
+.summary .value.expense{ color: var(--ink); }
+.summary .value.pending{ color: var(--warn-text); }
+.summary .value.balance.pos{ color: var(--ink); }
+.summary .value.balance.neg{ color: var(--neg-text); }
+.summary .sub{ font: 400 12px/1.35 var(--font); color: var(--ink-soft); margin-top: 5px; }
+
+/* ---------- Podmeni: segmentirana kontrola ---------- */
+.subtabs{
+  display:inline-flex !important; gap: 2px; margin: 0 0 20px; padding: 3px; flex-wrap: nowrap;
+  background: var(--fill); border-radius: 9px; max-width: 100%; overflow-x: auto;
+}
+.subtabs[style*="none"]{ display: none !important; }
+.subtabs button{
+  border: none; background: transparent; color: var(--ink); border-radius: 7px; padding: 6px 16px;
+  font: 500 13px/1.2 var(--font); white-space: nowrap; cursor: default; display:inline-flex; align-items:center; gap:6px;
+  transition: background-color var(--dur-fast) ease, box-shadow var(--dur-fast) ease;
+}
+.subtabs button:hover{ color: var(--ink); border-color: transparent; background: color-mix(in srgb, var(--card) 55%, transparent); }
+.subtabs button.active{
+  background: var(--card); color: var(--ink); border-color: transparent; font-weight: 600;
+  box-shadow: 0 0 0 0.5px rgba(0,0,0,0.04), 0 2px 6px rgba(0,0,0,0.1), 0 1px 1px rgba(0,0,0,0.06);
+}
+[data-theme="dark"] .subtabs button.active{ background: #636366; box-shadow: 0 1px 3px rgba(0,0,0,0.4); }
+.subtabs .tab-badge{ margin-left: 2px; }
+
+/* ---------- Ekrani ---------- */
+.screen.active{ animation: screenIn var(--dur) var(--ease); }
+@keyframes screenIn{ from{ opacity: 0; } to{ opacity: 1; } }
+.layout{ gap: 18px; grid-template-columns: 340px minmax(0,1fr); }
+.layout-even{ gap: 18px; }
+
+/* ---------- Paneli (grupisane povrsine) ---------- */
+.panel{
+  background: var(--card); border: none; border-radius: var(--radius-lg); padding: 20px 22px;
+  box-shadow: var(--shadow-card);
+}
+.panel h2{
+  font: 650 17px/1.25 var(--font-display); letter-spacing: -0.016em; margin: 0 0 14px;
+  border-bottom: none; padding-bottom: 0; color: var(--ink);
+}
+.settings-group h3, .report-section-title{
+  font: 600 13px/1.3 var(--font); color: var(--ink-soft); letter-spacing: 0; text-transform: none; border: none; margin: 0 0 10px;
+}
+.report-title{ font: 700 22px/1.2 var(--font-display); letter-spacing: -0.022em; color: var(--ink); }
+.hint, .import-status{ color: var(--ink-soft); font-size: 13px; line-height: 1.5; }
+.empty{ font-style: normal; color: var(--ink-soft); font-size: 14px; }
+
+/* ---------- Forme ---------- */
+form label, .modal-field label, .search-filters label{
+  font: 500 12.5px/1.3 var(--font); color: var(--ink-soft); letter-spacing: 0; text-transform: none;
+  margin-top: 14px; margin-bottom: 6px;
+}
+input, select, .modal-field input, .modal-field select{
+  border: none; background: var(--fill); color: var(--ink); border-radius: 8px;
+  padding: 8px 11px; font: 400 14.5px/1.35 var(--font); min-height: 36px;
+  transition: box-shadow var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+input::placeholder{ color: var(--ink-tertiary); }
+input:focus, select:focus, .modal-field input:focus, .modal-field select:focus{
+  outline: none; background: var(--card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 0 1px var(--accent);
+}
+select, .modal-field select{ appearance: none; padding-right: 30px; cursor: default;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' viewBox='0 0 10 14'%3E%3Cpath d='M1.5 5 5 1.5 8.5 5M1.5 9 5 12.5 8.5 9' fill='none' stroke='%238E8E93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center;
+}
+select option{ background: var(--elevated); color: var(--ink); }
+input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator{ opacity: 0.55; cursor: default; }
+[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator, [data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator{ filter: invert(1); }
+input[type="number"]::-webkit-inner-spin-button{ opacity: 0.4; }
+.cat-color-input{ width: 30px; height: 26px; padding: 2px; border-radius: 7px; background: var(--fill); }
+
+/* Prekidac (kao iOS/macOS) za podesavanja i opcije u formama */
+.paid-checkbox-label{ font: 400 14px/1.4 var(--font) !important; color: var(--ink) !important; gap: 10px; }
+.paid-checkbox-label input[type="checkbox"]{
+  appearance: none; -webkit-appearance: none; flex-shrink: 0; margin: 0;
+  width: 38px; height: 22px; min-height: 0; padding: 0; border-radius: 999px; position: relative;
+  background: var(--fill-strong); cursor: default; box-shadow: none;
+  transition: background-color var(--dur) var(--ease);
+}
+.paid-checkbox-label input[type="checkbox"]::after{
+  content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.22), 0 0 0 0.5px rgba(0,0,0,0.04);
+  transition: transform var(--dur) var(--ease);
+}
+.paid-checkbox-label input[type="checkbox"]:checked{ background: var(--pos); }
+.paid-checkbox-label input[type="checkbox"]:checked::after{ transform: translateX(16px); }
+.paid-checkbox-label input[type="checkbox"]:active::after{ width: 22px; }
+.paid-checkbox-label input[type="checkbox"]:checked:active::after{ transform: translateX(12px); }
+.paid-checkbox-label input[type="checkbox"]:focus{ box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent); }
+
+/* Krug za "placeno" (kao u Podsetnicima) */
+td.paid-check input[type="checkbox"], .recurring-row .check-label input[type="checkbox"]{
+  appearance: none; -webkit-appearance: none; width: 20px; height: 20px; min-height: 0; padding: 0; margin: 0;
+  border-radius: 50%; border: 1.5px solid var(--ink-tertiary); background: transparent; position: relative;
+  cursor: default; flex-shrink: 0; box-shadow: none; transition: background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+td.paid-check input[type="checkbox"]:checked, .recurring-row .check-label input[type="checkbox"]:checked{
+  background: var(--accent); border-color: var(--accent); animation: none;
+}
+td.paid-check input[type="checkbox"]:checked::after, .recurring-row .check-label input[type="checkbox"]:checked::after{
+  content: ''; position: absolute; left: 6px; top: 2.5px; width: 5px; height: 10px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+td.paid-check input[type="checkbox"]:active, .recurring-row .check-label input[type="checkbox"]:active{ transform: scale(0.9); }
+td.paid-check input.row-select{ border-radius: 5px; width: 17px; height: 17px; }
+td.paid-check input.row-select:checked::after{ left: 4.5px; top: 1.5px; width: 4px; height: 8px; }
+thead input[type="checkbox"], .ob-cat-check, .goal-add-input + input{ accent-color: var(--accent); }
+
+/* ---------- Dugmad ---------- */
+.submit-btn, .submit-btn.expense, .submit-btn.income, .submit-btn.neutral, .modal-actions .save-btn, .add-cat-row button, .goal-contribute .add, .ahead-row button{
+  background: var(--accent); color: #fff; border: none; border-radius: 9px;
+  font: 600 14.5px/1.2 var(--font); letter-spacing: -0.005em; box-shadow: none; cursor: default;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease, filter var(--dur-fast) ease;
+}
+.submit-btn{ padding: 10px 14px; margin-top: 20px; }
+.submit-btn:hover, .submit-btn.expense:hover, .submit-btn.income:hover, .submit-btn.neutral:hover, .modal-actions .save-btn:hover, .add-cat-row button:hover, .goal-contribute .add:hover, .ahead-row button:hover{
+  background: var(--accent-hover); transform: none; box-shadow: none; opacity: 1;
+}
+.submit-btn:active, .modal-actions .save-btn:active, .add-cat-row button:active, .goal-contribute .add:active, .ahead-row button:active, .btn-secondary:active, .modal-actions .cancel-btn:active{
+  transform: scale(0.97); filter: brightness(0.94);
+}
+.btn-secondary, .modal-actions .cancel-btn, .ahead-row .skip-month-btn, .dup-warning-remove{
+  background: var(--fill); color: var(--ink); border: none; border-radius: 8px;
+  padding: 7px 14px; font: 500 13.5px/1.25 var(--font); box-shadow: none; cursor: default;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+.btn-secondary:hover, .modal-actions .cancel-btn:hover, .ahead-row .skip-month-btn:hover, .dup-warning-remove:hover{
+  background: var(--fill-strong); border-color: transparent; transform: none; box-shadow: none; color: var(--ink);
+}
+.trend-range-toggle{ display:inline-flex; gap: 2px; padding: 2px; background: var(--fill); border-radius: 8px; }
+.trend-range-btn, .compare-mode-btn{
+  border: none; background: transparent; color: var(--ink); border-radius: 6px; padding: 4px 12px;
+  font: 500 12.5px/1.3 var(--font); cursor: default;
+}
+.trend-range-btn:hover, .compare-mode-btn:hover{ color: var(--ink); border-color: transparent; }
+.trend-range-btn.active, .compare-mode-btn.active{ background: var(--card); color: var(--ink); border-color: transparent; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+[data-theme="dark"] .trend-range-btn.active, [data-theme="dark"] .compare-mode-btn.active{ background: #636366; }
+/* Ikonice u redovima: tihe dok se ne pokazu; bez rotiranja i skakanja */
+.del-btn, .edit-btn, .dup-btn, .envelope-suggest-btn{
+  color: var(--ink-tertiary); border-radius: 6px; padding: 4px 7px; font-size: 14px;
+  transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
+}
+.del-btn:hover{ color: var(--neg); transform: none; background: color-mix(in srgb, var(--neg) 10%, transparent); }
+.edit-btn:hover, .dup-btn:hover{ color: var(--accent); transform: none; background: var(--accent-soft); }
+.envelope-suggest-btn:hover{ transform: none; background: var(--fill); }
+.del-btn:disabled{ opacity: 0.3; background: none; }
+.export-link{ color: var(--accent); text-decoration: none; }
+
+/* ---------- Tabele i liste ---------- */
+table{ font-size: 14px; }
+thead th{
+  font: 500 12px/1.3 var(--font); color: var(--ink-soft); letter-spacing: 0; text-transform: none;
+  padding: 8px 10px; border-bottom: 0.5px solid var(--separator);
+}
+tbody td{ padding: 11px 10px; border-bottom: 0.5px solid var(--separator); }
+tbody tr:last-child td{ border-bottom: none; }
+tbody tr:nth-child(even){ background: transparent; }
+tbody tr:hover{ background: color-mix(in srgb, var(--ink) 3%, transparent); }
+td.amount{ font-weight: 500; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+td.amount.income, .amount.income{ color: var(--pos-text); }
+td.amount.expense, .amount.expense{ color: var(--ink); }
+td.diff.pos{ color: var(--neg-text); }
+td.diff.neg{ color: var(--pos-text); }
+.cat-tag{
+  font: 500 12px/1.3 var(--font); color: var(--ink-soft); background: var(--fill); padding: 2px 8px; border-radius: 6px;
+}
+.tag-chip{ color: var(--accent); font-size: 12px; }
+.pending-inline-tag{ border: none; background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn-text); border-radius: 6px; font-weight: 500; }
+tr.expense-pending{ opacity: 1; }
+tr.expense-pending td:not(.paid-check){ color: var(--ink-soft); }
+.cat-list li{ padding: 11px 2px; border-bottom: 0.5px solid var(--separator); font-size: 14px; }
+.orig-amt{ color: var(--ink-soft); }
+.table-scroll.has-overflow::after{ background: linear-gradient(to right, transparent, var(--card)); }
+.bulk-bar{ background: var(--accent-soft); border: none; border-radius: 10px; color: var(--ink); }
+.filter-row select{ min-width: 150px; }
+
+/* ---------- Trake napretka, prstenovi, grafikoni ---------- */
+.bar-track{ height: 6px; background: var(--fill); border: none; border-radius: 999px; }
+.bar-fill{ border-radius: 999px; background: var(--accent); transition: width 700ms var(--ease), background-color var(--dur) ease; }
+.bar-fill.ok{ background: var(--accent); }
+.bar-fill.near{ background: var(--warn); }
+.bar-fill.over{ background: var(--neg); }
+.goal-card .bar-track{ height: 8px; }
+.breakdown-item{ margin-bottom: 14px; }
+.breakdown-item .row{ font-size: 13.5px; margin-bottom: 6px; }
+
+/* Prsten finansijskog zdravlja (kao Activity) — JS postavlja --pct i --ring */
+.health-score-ring{
+  --pct: 0; --ring: var(--accent);
+  width: 96px; height: 96px; border: none !important; position: relative;
+  background: conic-gradient(var(--ring) calc(var(--pct) * 1%), var(--fill) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9.5px));
+          mask: radial-gradient(farthest-side, transparent calc(100% - 10px), #000 calc(100% - 9.5px));
+}
+.health-score-wrap{ position: relative; width: 96px; height: 96px; flex-shrink: 0; }
+.health-score-center{ position:absolute; inset: 0; display:flex; flex-direction: column; align-items:center; justify-content:center; }
+.health-score-num{ font: 700 26px/1 var(--font-display); letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+.health-score-label{ font: 500 11.5px/1.2 var(--font); color: var(--ink-soft); margin-top: 3px; }
+.health-breakdown-row{ font-size: 13px; }
+.trend-legend{ font: 400 12.5px var(--font); color: var(--ink-soft); }
+.swatch{ border-radius: 50%; width: 9px; height: 9px; }
+.donut-legend .li{ border-bottom: 0.5px solid var(--separator); font-size: 13.5px; }
+.heatmap-cell{ border-radius: 6px; }
+.mcal-day{ border: none; background: var(--fill); border-radius: 10px; cursor: default; transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
+.mcal-day:hover{ background: var(--fill-strong); transform: none; border-color: transparent; }
+.mcal-day:active{ transform: scale(0.95); }
+.mcal-day.today{ box-shadow: inset 0 0 0 2px var(--accent); }
+.mcal-day.today .mcal-daynum{ color: var(--accent); font-weight: 700; }
+.mcal-dot.income{ background: var(--pos); }
+.mcal-dot.expense{ background: var(--neg); }
+.mcal-dot.due{ background: var(--warn); }
+
+/* ---------- Analiza i upozorenja: redovi sa obojenom tackom umesto emoji-ja ---------- */
+.insight-card{ border-bottom: 0.5px solid var(--separator); padding: 12px 0; }
+.insight-card .big{ font: 650 22px/1.2 var(--font-display); letter-spacing: -0.022em; }
+.insight-card .small{ font-size: 13px; }
+.insight-card .small b{ border-bottom: none; font-weight: 600; color: var(--ink); }
+.warning-item{
+  border: none; border-radius: 10px; padding: 10px 12px 10px 30px; position: relative;
+  background: color-mix(in srgb, var(--neg) 9%, transparent); font-size: 13.5px; margin-bottom: 8px;
+}
+.warning-item::before{ content: ''; position: absolute; left: 12px; top: 16px; width: 8px; height: 8px; border-radius: 50%; background: var(--neg); }
+.warning-item.caution{ background: color-mix(in srgb, var(--warn) 11%, transparent); }
+.warning-item.caution::before{ background: var(--warn); }
+.warning-item.ok{ background: color-mix(in srgb, var(--pos) 10%, transparent); }
+.warning-item.ok::before{ background: var(--pos); }
+.warning-item .icon{ display: none; }
+.warning-item .txt b{ font-weight: 600; }
+
+/* ---------- Ponavljajuce, ciljevi, racuni ---------- */
+.recurring-item{ border-bottom: 0.5px solid var(--separator); padding: 12px 2px; }
+.recurring-row .rtype{ border-radius: 6px; font: 500 11.5px/1.3 var(--font); }
+.recurring-row .rtype.income{ background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos-text); }
+.recurring-row .rtype.expense{ background: var(--fill); color: var(--ink-soft); }
+.recurring-row.paid{ opacity: 0.5; }
+.recurring-row .paid-tag{ color: var(--pos-text); font-weight: 500; }
+.recurring-item.just-paid{ animation: none; }
+.goal-card{ border-bottom: 0.5px solid var(--separator); padding: 16px 0; }
+.goal-card .goal-name{ font: 600 16px/1.3 var(--font-display); letter-spacing: -0.012em; }
+.goal-card.celebrate{ animation: none; }
+.goal-card.celebrate .bar-fill{ box-shadow: none; background: var(--pos); }
+.confetti-emoji{ display: none; }
+.goal-suggestion{ color: var(--ink-soft); }
+.goal-suggestion.overdue{ color: var(--neg-text); }
+.account-tile{ border: none; background: var(--fill); border-radius: 12px; padding: 12px 14px; }
+.account-tile .name{ font-size: 12.5px; }
+.account-tile .bal{ font: 650 19px/1.2 var(--font-display); letter-spacing: -0.02em; }
+.account-tile.total{ background: var(--accent-soft); }
+.paid-through{ color: var(--ink-soft); }
+
+/* ---------- Dijalozi: list (sheet) koji se "materijalizuje" ---------- */
+.modal-overlay{
+  background: rgba(0,0,0,0.28);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  transition: opacity var(--dur) var(--ease-sheet), visibility var(--dur) var(--ease-sheet);
+}
+.modal-card{
+  background: var(--elevated); border: none; border-radius: 16px; padding: 22px 24px 20px;
+  box-shadow: var(--shadow-float);
+  transform: scale(0.96); opacity: 0;
+  transition: transform var(--dur-slow) var(--ease-sheet), opacity var(--dur) var(--ease-sheet);
+}
+.modal-overlay.show .modal-card{ transform: scale(1); opacity: 1; }
+.modal-card h3{
+  font: 650 17px/1.3 var(--font-display); letter-spacing: -0.016em; color: var(--ink);
+  border: none; padding: 0; margin: 0 0 16px;
+}
+.modal-actions{ gap: 8px; margin-top: 20px; }
+.modal-actions button{ padding: 8px 18px; border-radius: 8px; font-size: 14px; }
+
+/* ---------- Obavestenja: materijal koji lebdi ---------- */
+.undo-toast, .desk-toast{
+  background: color-mix(in srgb, var(--elevated) 78%, transparent); color: var(--ink);
+  -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+  border: none; border-radius: 14px; box-shadow: var(--shadow-float); font-size: 14px;
+  transition: opacity var(--dur) var(--ease), transform var(--dur-slow) var(--ease-sheet);
+}
+.undo-toast button{ background: var(--accent-soft); color: var(--accent); border: none; border-radius: 7px; font-weight: 600; }
+.undo-toast button:hover{ background: color-mix(in srgb, var(--accent) 24%, transparent); }
+.undo-progress{ background: transparent; }
+.undo-progress-fill{ background: var(--accent); opacity: 0.6; }
+
+/* ---------- Naslovna traka (desktop) ---------- */
+.tb-logo, .tb-title, .tb-sep{ display: none !important; }
+html.desktop:not(.mica) .titlebar{ background: var(--sidebar-bg); }
+.tb-btn{ border-radius: 7px; }
+.tb-btn:hover{ background: var(--fill); }
+.tb-status{ border-radius: 7px; font-size: 12px; }
+.tb-dot.ok{ background: var(--pos); box-shadow: none; }
+.tb-dot.err{ background: var(--neg); box-shadow: none; }
+.tb-update{ background: var(--accent); box-shadow: none; }
+.tb-update-btn{ color: var(--accent); }
+html.desktop .app-scroll{ background: var(--sidebar-bg); border-top: none; }
+html.desktop.mica body{ background: transparent; }
+/* Blaga podloga preko Mica materijala: citljivo i kad sistem ne prikaze materijal */
+html.desktop.mica .app-scroll{ background: color-mix(in srgb, var(--sidebar-bg) 45%, transparent); }
+html.desktop.mica .titlebar{ background: transparent; }
+/* Mica: bocni meni i naslovna traka su materijal prozora; sadrzaj je kartica preko njega */
+html.desktop.mica .wrap{ background: color-mix(in srgb, var(--paper) 94%, transparent); }
+
+/* ---------- Ostalo ---------- */
+kbd{ background: var(--fill); border: none; border-radius: 5px; box-shadow: inset 0 -1px 0 var(--separator); font-weight: 500; }
+footer{ color: var(--ink-tertiary); font-size: 12px; }
+.mobile-fab{ background: var(--accent); box-shadow: 0 6px 20px color-mix(in srgb, var(--accent) 40%, transparent); }
+.mobile-fab:hover{ transform: none; background: var(--accent-hover); }
+.mobile-fab:active{ transform: scale(0.94); }
+.row-enter, tr.row-enter{ animation: rowIn var(--dur-slow) var(--ease); }
+@keyframes rowIn{ from{ background-color: var(--accent-soft); } to{ background-color: transparent; } }
+.row-removing{ transition: opacity 180ms ease; transform: none; }
+/* Ulazne animacije lista: bez stepenastog "iskakanja" — mirno, kao sistemske liste */
+.breakdown-item, .insight-card, .warning-item, .donut-legend .li, .heatmap-cell, .trend-svg .trend-dot, .donut-center-label{ animation: none !important; }
+.donut-svg circle{ animation: arcIn var(--dur-slow) var(--ease) backwards; transform-origin: 75px 75px; }
+@keyframes arcIn{ from{ opacity: 0; } to{ opacity: 1; } }
+
+/* ---------- Uski prozori ---------- */
+@media (max-width: 980px){
+  .sidebar{ flex-basis: 64px; width: 64px; padding-left: 8px; padding-right: 8px; }
+  .sb-name, .tab-label{ display: none; }
+  .sb-brand{ justify-content: center; padding-left: 0; padding-right: 0; }
+  nav.tabs button{ justify-content: center; padding: 9px 0; position: relative; }
+  nav.tabs .tab-badge{ position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; }
+  .wrap{ padding-left: 24px; padding-right: 24px; }
+}
+@media (max-width: 800px){ .layout{ grid-template-columns: minmax(0,1fr); } }
+@media (max-width: 640px){
+  .shell{ flex-direction: column; }
+  .sidebar{
+    position: sticky; top: 0; z-index: 50; width: 100%; height: auto; flex-basis: auto; flex-direction: row;
+    padding: 6px 8px; background: color-mix(in srgb, var(--sidebar-bg) 82%, transparent);
+    -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  }
+  html.desktop .sidebar{ height: auto; }
+  .sb-brand, .sb-spacer{ display: none; }
+  nav.tabs{ flex-direction: row; overflow-x: auto; gap: 4px; }
+  nav.tabs button{ width: auto; flex: 0 0 auto; padding: 8px 12px; }
+  .wrap{ border-radius: 0 !important; padding: 18px 16px 48px; }
+  .summary{ grid-template-columns: repeat(2, 1fr); }
+  .page-header h1, #screenTitle{ font-size: 26px; }
+}
+
+/* ---------- Pristupacnost ---------- */
+@media (prefers-reduced-motion: reduce){
+  .modal-card{ transform: none !important; transition: opacity 180ms ease; }
+  .paid-checkbox-label input[type="checkbox"]::after{ transition: none; }
+  .bar-fill{ transition: none; }
+}
+@media (prefers-reduced-transparency: reduce){
+  .undo-toast, .desk-toast{ background: var(--elevated); -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .modal-overlay{ -webkit-backdrop-filter: none; backdrop-filter: none; background: rgba(0,0,0,0.4); }
+  html.desktop.mica .wrap{ background: var(--paper); }
+  .sidebar{ -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+}
+@media (prefers-contrast: more){
+  :root{ --paper-line: rgba(0,0,0,0.3); --separator: rgba(0,0,0,0.4); --ink-soft: #3A3A3C; --fill: rgba(118,118,128,0.22); }
+  [data-theme="dark"]{ --paper-line: rgba(255,255,255,0.35); --separator: rgba(255,255,255,0.45); --ink-soft: #D1D1D6; }
+  .panel, .summary .cell, .modal-card{ box-shadow: 0 0 0 1px var(--separator); }
+}
+
+/* ---------- Stampa ---------- */
+@media print{
+  .sidebar, .page-header{ display: none !important; }
+  .shell{ display: block; }
+  .wrap{ padding: 0; background: #fff !important; box-shadow: none !important; border-radius: 0 !important; }
+  .panel, .summary .cell{ box-shadow: none; }
+}
+</style>
 </head>
 <body>
 <div class="titlebar no-print" id="titlebar">
@@ -835,7 +1413,7 @@
   <span class="tb-logo">K</span>
   <span class="tb-title">Knjiga budžeta</span>
   <span class="tb-sep"></span>
-  <button class="tb-status" id="tbStatus" title="Status Excel fajla — klikni za podešavanja">
+  <button class="tb-status" id="tbStatus" title="Status čuvanja — klikni za detalje">
     <span class="tb-dot" id="tbDot"></span><span class="tb-status-text" id="tbStatusText"></span>
   </button>
   <div class="tb-update" id="tbUpdate" style="display:none;" role="status" aria-live="polite">
@@ -846,38 +1424,43 @@
   </div>
 </div>
 <div class="app-scroll" id="appScroll">
+<div class="shell">
+<aside class="sidebar no-print">
+  <div class="sb-brand"><span class="sb-appicon" aria-hidden="true">K</span><span class="sb-name">Knjiga budžeta</span></div>
+  <nav class="tabs" aria-label="Glavni meni">
+    <button data-group="pregled" class="active" title="Pregled"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="tab-label">Pregled</span></button>
+    <button data-group="transakcije" title="Transakcije"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.75" cy="6" r="1.1"/><circle cx="4.75" cy="12" r="1.1"/><circle cx="4.75" cy="18" r="1.1"/></svg><span class="tab-label">Transakcije</span><span class="tab-badge" id="rashodiBadge" style="display:none;"></span></button>
+    <button data-group="budzet" title="Budžet"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.6a8.5 8.5 0 1 0 9.4 9.4H11z"/><path d="M14 3.3a8.5 8.5 0 0 1 6.7 6.7H14z"/></svg><span class="tab-label">Budžet</span></button>
+    <button data-group="ponavljajuce" title="Ponavljajuće"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 10.5A7.6 7.6 0 0 0 6 7.2L4.5 8.7"/><path d="M4.5 4.5v4.2h4.2"/><path d="M4.5 13.5A7.6 7.6 0 0 0 18 16.8l1.5-1.5"/><path d="M19.5 19.5v-4.2h-4.2"/></svg><span class="tab-label">Ponavljajuće</span></button>
+    <button data-group="ciljevi" title="Ciljevi i dugovi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 21V3.5"/><path d="M5.5 4h12l-2.6 4.5 2.6 4.5h-12"/></svg><span class="tab-label">Ciljevi i dugovi</span></button>
+    <button data-group="izvestaji" title="Izveštaji"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6.5M10 20V5M15 20v-9.5M20 20v-4"/></svg><span class="tab-label">Izveštaji</span></button>
+    <span class="sb-spacer"></span>
+    <button data-group="podesavanja" title="Podešavanja"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></svg><span class="tab-label">Podešavanja</span></button>
+  </nav>
+</aside>
 <div class="wrap">
 
-  <header class="no-print">
-    <h1>Knjiga <em>budžeta</em></h1>
-    <div class="header-right">
+  <header class="page-header no-print">
+    <div class="page-title-block">
+      <h1 id="screenTitle">Pregled</h1>
       <div class="date-line" id="todayLine"></div>
-      <button class="theme-toggle" id="themeToggle" title="Promeni temu">◐</button>
+    </div>
+    <div class="header-right">
+      <div class="period-bar" role="group" aria-label="Mesec">
+        <button class="period-btn" id="periodPrev" title="Prethodni mesec (Alt+←)" aria-label="Prethodni mesec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+        <div class="period-label" id="periodLabel" aria-live="polite"></div>
+        <button class="period-btn" id="periodNext" title="Sledeći mesec (Alt+→)" aria-label="Sledeći mesec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+      </div>
+      <button class="period-today" id="periodToday" style="visibility:hidden;">Tekući mesec</button>
+      <button class="theme-toggle" id="themeToggle" title="Svetla / tamna tema" aria-label="Promeni temu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg></button>
     </div>
   </header>
 
-  <nav class="tabs no-print" aria-label="Glavni meni">
-    <button data-group="pregled" class="active"><span class="tab-icon">📊</span>Pregled</button>
-    <button data-group="transakcije"><span class="tab-icon">🧾</span>Transakcije<span class="tab-badge" id="rashodiBadge" style="display:none;"></span></button>
-    <button data-group="budzet"><span class="tab-icon">🎯</span>Budžet</button>
-    <button data-group="ponavljajuce"><span class="tab-icon">🔁</span>Ponavljajuće</button>
-    <button data-group="ciljevi"><span class="tab-icon">🏁</span>Ciljevi i dugovi</button>
-    <button data-group="izvestaji"><span class="tab-icon">📈</span>Izveštaji</button>
-    <button data-group="podesavanja"><span class="tab-icon">⚙️</span>Podešavanja</button>
-    <span class="tab-indicator" id="tabIndicator"></span>
-  </nav>
-
-  <div class="period-bar no-print">
-    <button class="period-btn" id="periodPrev" title="Prethodni mesec (Alt+←)" aria-label="Prethodni mesec">‹</button>
-    <div class="period-label" id="periodLabel" aria-live="polite"></div>
-    <button class="period-btn" id="periodNext" title="Sledeći mesec (Alt+→)" aria-label="Sledeći mesec">›</button>
-    <button class="period-today" id="periodToday" style="visibility:hidden;">Tekući mesec</button>
-  </div>
   <div class="summary no-print">
-    <div class="cell"><div class="stat-icon income">↑</div><div class="label">PRIHODI</div><div class="value income" id="totalIncome">0,00 RSD</div><div class="sub" id="incomeSub"></div></div>
-    <div class="cell"><div class="stat-icon expense">↓</div><div class="label">RASHODI</div><div class="value expense" id="totalExpense">0,00 RSD</div><div class="sub" id="expenseSub"></div></div>
-    <div class="cell"><div class="stat-icon pending">⏳</div><div class="label">ZA PLAĆANJE</div><div class="value pending" id="pendingTotal">0 RSD</div><div class="sub" id="pendingSub"></div></div>
-    <div class="cell"><div class="stat-icon balance">⚖</div><div class="label">SALDO MESECA</div><div class="value balance" id="totalBalance">0,00 RSD</div><div class="sub" id="balanceSub"></div></div>
+    <div class="cell"><div class="label">Prihodi</div><div class="value income" id="totalIncome">0 RSD</div><div class="sub" id="incomeSub"></div></div>
+    <div class="cell"><div class="label">Rashodi</div><div class="value expense" id="totalExpense">0 RSD</div><div class="sub" id="expenseSub"></div></div>
+    <div class="cell"><div class="label">Za plaćanje</div><div class="value pending" id="pendingTotal">0 RSD</div><div class="sub" id="pendingSub"></div></div>
+    <div class="cell"><div class="label">Saldo meseca</div><div class="value balance" id="totalBalance">0 RSD</div><div class="sub" id="balanceSub"></div></div>
   </div>
   <nav class="subtabs no-print" id="subtabs" aria-label="Podmeni" style="display:none;"></nav>
 
@@ -892,9 +1475,12 @@
     <div class="panel" style="margin-bottom:1.8em;">
       <h2>Finansijsko zdravlje</h2>
       <div class="health-score-row">
-        <div class="health-score-ring" id="healthScoreRing">
-          <span class="health-score-num" id="healthScoreNum">—</span>
-          <span class="health-score-label" id="healthScoreLabel"></span>
+        <div class="health-score-wrap">
+          <div class="health-score-ring" id="healthScoreRing" role="img" aria-label="Finansijsko zdravlje"></div>
+          <div class="health-score-center">
+            <span class="health-score-num" id="healthScoreNum">—</span>
+            <span class="health-score-label" id="healthScoreLabel"></span>
+          </div>
         </div>
         <div class="health-breakdown" id="healthBreakdown"></div>
         <svg id="healthTrendSvg" class="health-trend-svg" width="150" height="50" viewBox="0 0 150 50"></svg>
@@ -924,7 +1510,7 @@
         </div>
         <svg id="trendChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet"></svg>
         <div class="trend-legend">
-          <span><i class="swatch" style="background:var(--ledger);"></i>Prihodi</span>
+          <span><i class="swatch" style="background:var(--pos);"></i>Prihodi</span>
           <span><i class="swatch" style="background:var(--rust);"></i>Rashodi</span>
         </div>
       </div>
@@ -1344,7 +1930,7 @@
         </div>
         <svg id="yearBarChart" class="trend-svg" viewBox="0 0 760 260" preserveAspectRatio="xMidYMid meet"></svg>
         <div class="trend-legend">
-          <span><i class="swatch" style="background:var(--ledger);"></i>Prihodi</span>
+          <span><i class="swatch" style="background:var(--pos);"></i>Prihodi</span>
           <span><i class="swatch" style="background:var(--rust);"></i>Rashodi</span>
         </div>
         <div id="compareYearEmpty" class="empty" style="display:none;">Nema podataka za izabranu godinu.</div>
@@ -1647,6 +2233,7 @@
     Podaci se čuvaju lokalno u ovom browseru (localStorage) — nikamo se ne šalju.
   </footer>
 
+</div>
 </div>
 </div>
 
@@ -2284,6 +2871,8 @@
     const group = groupOf(name);
     activeScreen = name;
     lastScreenInGroup[group] = name;
+    const groupBtn = document.querySelector(`nav.tabs button[data-group="${group}"] .tab-label`);
+    if(groupBtn) document.getElementById('screenTitle').textContent = groupBtn.textContent;
     document.querySelectorAll('nav.tabs button').forEach(b=> b.classList.toggle('active', b.dataset.group === group));
     document.querySelectorAll('.screen').forEach(s=> s.classList.toggle('active', s.id === 'screen-' + name));
     const sub = document.getElementById('subtabs');
@@ -2783,7 +3372,7 @@
     const balEl = document.getElementById('totalBalance');
     balEl.className = 'value balance ' + (t.net >= 0 ? 'pos' : 'neg');
     animateNumber(balEl, prevSummaryVals.balance, t.net);
-    const diffTxt = (now, before) => before > 0 ? `${now >= before ? '+' : '−'}${Math.abs(Math.round((now-before)/before*100))}% u odnosu na prethodni mesec` : '';
+    const diffTxt = (now, before) => before > 0 ? `${Math.abs(Math.round((now-before)/before*100))}% ${now >= before ? 'više' : 'manje'} nego mesec ranije` : '';
     document.getElementById('incomeSub').textContent = diffTxt(t.income, prev.income);
     document.getElementById('expenseSub').textContent = diffTxt(t.expense, prev.expense);
     let balanceNow;
@@ -2793,6 +3382,7 @@
 
     const p = pendingForMonth(viewMonth);
     animateNumber(document.getElementById('pendingTotal'), prevSummaryVals.pending, p.expense);
+    document.getElementById('pendingTotal').classList.toggle('zero', p.expense === 0);
     prevSummaryVals = { income: t.income, expense: t.expense, pending: p.expense, balance: t.net };
     const parts = [];
     parts.push(p.count ? `${p.count} ${p.count===1?'stavka':'stavki'}` : (viewMonth < cur ? 'ništa neplaćeno' : 'sve plaćeno'));
@@ -3459,13 +4049,13 @@
       const label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'short'}).replace('.','');
       return `<text x="${xFor(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">${label}</text>`;
     }).join('');
-    const dotsIncome = incomeVals.map((v,i)=>`<circle class="trend-dot" style="animation-delay:${(0.55+i*0.06).toFixed(2)}s" cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="var(--ledger)"><title>${fmt(v)}</title></circle>`).join('');
+    const dotsIncome = incomeVals.map((v,i)=>`<circle class="trend-dot" style="animation-delay:${(0.55+i*0.06).toFixed(2)}s" cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="var(--pos)"><title>${fmt(v)}</title></circle>`).join('');
     const dotsExpense = expenseVals.map((v,i)=>`<circle class="trend-dot" style="animation-delay:${(0.55+i*0.06).toFixed(2)}s" cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="var(--rust)"><title>${fmt(v)}</title></circle>`).join('');
     document.getElementById('trendChart').innerHTML = `
       <defs>
         <linearGradient id="gradIncome" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="var(--ledger)" stop-opacity="0.22"/>
-          <stop offset="100%" stop-color="var(--ledger)" stop-opacity="0"/>
+          <stop offset="0%" stop-color="var(--pos)" stop-opacity="0.2"/>
+          <stop offset="100%" stop-color="var(--pos)" stop-opacity="0"/>
         </linearGradient>
         <linearGradient id="gradExpense" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stop-color="var(--rust)" stop-opacity="0.18"/>
@@ -3475,7 +4065,7 @@
       ${gridLines}
       <path class="area-fade" d="${areaFor(incomeVals)}" fill="url(#gradIncome)"/>
       <path class="area-fade" d="${areaFor(expenseVals)}" fill="url(#gradExpense)"/>
-      <path class="line-draw" d="${pathFor(incomeVals)}" fill="none" stroke="var(--ledger)" stroke-width="2"/>
+      <path class="line-draw" d="${pathFor(incomeVals)}" fill="none" stroke="var(--pos)" stroke-width="2"/>
       <path class="line-draw" d="${pathFor(expenseVals)}" fill="none" stroke="var(--rust)" stroke-width="2"/>
       ${dotsIncome}${dotsExpense}
       ${labels}
@@ -4078,11 +4668,13 @@
   function renderHealthScore(){
     const { score, breakdown } = upsertHealthSnapshot();
     const ring = document.getElementById('healthScoreRing');
-    const tier = score >= 75 ? {label:'Odlično', token:'--ledger'}
-      : score >= 55 ? {label:'Dobro', token:'--ledger'}
-      : score >= 35 ? {label:'Prosečno', token:'--gold'}
-      : {label:'Slabo', token:'--rust'};
-    ring.style.borderColor = `var(${tier.token})`;
+    const tier = score >= 75 ? {label:'Odlično', token:'--pos'}
+      : score >= 55 ? {label:'Dobro', token:'--pos'}
+      : score >= 35 ? {label:'Prosečno', token:'--warn'}
+      : {label:'Slabo', token:'--neg'};
+    ring.style.setProperty('--ring', `var(${tier.token})`);
+    ring.style.setProperty('--pct', Math.max(0, Math.min(100, score)));
+    ring.setAttribute('aria-label', `Finansijsko zdravlje: ${score} od 100 (${tier.label})`);
     document.getElementById('healthScoreNum').textContent = score;
     document.getElementById('healthScoreLabel').textContent = tier.label;
 
@@ -4127,7 +4719,7 @@
       const yFor = v => H-pad - (v/100)*(H-pad*2);
       const vals = recent.map(h=>h.score);
       const path = buildLinePath(vals, xFor, yFor);
-      const lastColor = score >= 55 ? 'var(--ledger)' : (score >= 35 ? 'var(--gold)' : 'var(--rust)');
+      const lastColor = score >= 55 ? 'var(--pos)' : (score >= 35 ? 'var(--warn)' : 'var(--neg)');
       const dots = vals.map((v,i)=>`<circle cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="2.5" fill="${lastColor}"><title>${recent[i].month}: ${v}</title></circle>`).join('');
       svg.innerHTML = `<path d="${path}" fill="none" stroke="${lastColor}" stroke-width="2"/>${dots}`;
     }
@@ -4995,7 +5587,7 @@
     growBars(list);
     if(justCompletedId){
       const cardEl = list.querySelector(`.goal-card[data-goal-id="${justCompletedId}"]`);
-      if(cardEl) spawnConfetti(cardEl);
+      if(cardEl) cardEl.classList.add('celebrate');
       justCompletedId = null;
     }
     wireEditButton(list, {
@@ -5259,7 +5851,7 @@
       const gx = padL + i*groupW + (groupW - barW*2 - 3)/2;
       const hInc = (incomeVals[i]/maxVal)*plotH;
       const hExp = (expenseVals[i]/maxVal)*plotH;
-      bars += `<rect class="year-bar" x="${gx.toFixed(1)}" y="${(padT+plotH-hInc).toFixed(1)}" width="${barW.toFixed(1)}" height="${hInc.toFixed(1)}" fill="var(--ledger)" rx="2" style="animation-delay:${(i*0.03).toFixed(2)}s"><title>${fmt(incomeVals[i])}</title></rect>`;
+      bars += `<rect class="year-bar" x="${gx.toFixed(1)}" y="${(padT+plotH-hInc).toFixed(1)}" width="${barW.toFixed(1)}" height="${hInc.toFixed(1)}" fill="var(--pos)" rx="3" style="animation-delay:${(i*0.03).toFixed(2)}s"><title>${fmt(incomeVals[i])}</title></rect>`;
       bars += `<rect class="year-bar" x="${(gx+barW+3).toFixed(1)}" y="${(padT+plotH-hExp).toFixed(1)}" width="${barW.toFixed(1)}" height="${hExp.toFixed(1)}" fill="var(--rust)" rx="2" style="animation-delay:${(i*0.03+0.03).toFixed(2)}s"><title>${fmt(expenseVals[i])}</title></rect>`;
     });
     const labels = months.map((m,i)=>{
@@ -5396,7 +5988,7 @@
       <div class="report-title">Izveštaj — ${escapeHtml(label)}</div>
       <div class="report-sub">Generisano: ${new Date().toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
       <div class="report-grid">
-        <div class="cell"><div class="label">PRIHODI</div><div class="value" style="color:var(--ledger);">${fmt(income)}</div></div>
+        <div class="cell"><div class="label">PRIHODI</div><div class="value" style="color:var(--pos-text);">${fmt(income)}</div></div>
         <div class="cell"><div class="label">RASHODI</div><div class="value" style="color:var(--rust-text);">${fmt(expense)}</div></div>
         <div class="cell"><div class="label">NA ČEKANJU</div><div class="value" style="color:var(--gold-text);">${fmt(pending)}</div></div>
         <div class="cell"><div class="label">SALDO</div><div class="value">${fmt(balance)}</div></div>

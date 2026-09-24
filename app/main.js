@@ -777,6 +777,10 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
         if (level === 'error' || level === 3) errors.push(String(e.message || (e.params && e.params.message)));
       });
       mainWindow.webContents.on('render-process-gone', (_e, d) => { errors.push('renderer gone: ' + d.reason); });
+      if (process.env.KNJIGA_TEST_SIZE) {
+        const [w, h] = process.env.KNJIGA_TEST_SIZE.split(',').map(Number);
+        mainWindow.unmaximize(); mainWindow.setSize(w, h);
+      }
       mainWindow.webContents.once('did-finish-load', () => setTimeout(async () => {
         let result;
         try { result = await runInMain(fs.readFileSync(process.env.KNJIGA_TEST_SCRIPT, 'utf8')); }
