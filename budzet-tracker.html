@@ -1263,6 +1263,16 @@ tr.expense-pending td:not(.paid-check){ color: var(--ink-soft); }
 .mcal-dot.expense{ background: var(--neg); }
 .mcal-dot.due{ background: var(--warn); }
 
+/* Kompaktan kalendar na Pregledu */
+.mcal-grid.compact{ grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; max-width: 320px; }
+.mcal-grid.compact .mcal-weekday{ font: 500 11px/1 var(--font); color: var(--ink-tertiary); padding-bottom: 4px; }
+.mcal-grid.compact .mcal-day{ aspect-ratio: 1; min-height: 0; padding: 0; gap: 2px; border-radius: 8px; }
+.mcal-grid.compact .mcal-daynum{ font: 500 12.5px/1 var(--font); font-variant-numeric: tabular-nums; color: var(--ink); }
+.mcal-grid.compact .mcal-dots{ height: 4px; gap: 2px; }
+.mcal-grid.compact .mcal-dot{ width: 4px; height: 4px; }
+.mcal-legend{ gap: 12px; margin-top: 10px; font-size: 12px; }
+.mcal-legend .mcal-dot{ width: 7px; height: 7px; margin-right: 5px; }
+
 /* ---------- Analiza i upozorenja: redovi sa obojenom tackom umesto emoji-ja ---------- */
 .insight-card{ border-bottom: 0.5px solid var(--separator); padding: 12px 0; }
 .insight-card .big{ font: 650 22px/1.2 var(--font-display); letter-spacing: -0.022em; }
@@ -1362,7 +1372,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 .row-removing{ transition: opacity 180ms ease; transform: none; }
 /* Ulazne animacije lista: bez stepenastog "iskakanja" — mirno, kao sistemske liste */
 .breakdown-item, .insight-card, .warning-item, .donut-legend .li, .heatmap-cell, .trend-svg .trend-dot, .donut-center-label{ animation: none !important; }
-.donut-svg circle{ animation: arcIn var(--dur-slow) var(--ease) backwards; transform-origin: 75px 75px; }
+/* transform-origin mora biti 0 0: krug vec ima rotate(-90 75 75), a CSS tacka rotacije bi ga pomerila van kadra */
+.donut-svg circle{ animation: arcIn var(--dur-slow) var(--ease) backwards; transform-origin: 0 0; }
 @keyframes arcIn{ from{ opacity: 0; } to{ opacity: 1; } }
 
 /* ---------- Pokreti (v1.7) ---------- */
@@ -1553,8 +1564,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 
     <div class="layout" style="margin-bottom:1.8em;">
       <div class="panel">
-        <h2>Kalendar potrošnje</h2>
-        <div class="heatmap-grid" id="spendHeatmap"></div>
+        <h2 id="monthCalendarTitle">Kalendar</h2>
+        <div class="mcal-grid compact" id="monthCalendarGrid"></div>
+        <div class="mcal-legend">
+          <span><i class="mcal-dot income"></i>Prihod</span>
+          <span><i class="mcal-dot expense"></i>Rashod</span>
+          <span><i class="mcal-dot due"></i>Dospeva</span>
+        </div>
+        <div class="hint" style="margin-top:0.5em;">Jača boja = veća potrošnja. Klikni na dan za detalje i brzi unos.</div>
       </div>
 
       <div class="panel chart-panel">
@@ -1576,17 +1593,6 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     <div class="panel chart-panel" style="margin-top:1.5em;">
       <h2>Kretanje salda</h2>
       <svg id="balanceChart" class="trend-svg" viewBox="0 0 760 130" preserveAspectRatio="xMidYMid meet"></svg>
-    </div>
-
-    <div class="panel" style="margin-top:1.5em;">
-      <h2 id="monthCalendarTitle">Kalendar meseca</h2>
-      <p class="hint" style="margin:0 0 1em;">Klikni na dan da vidiš ili brzo dodaš stavku.</p>
-      <div class="mcal-grid" id="monthCalendarGrid"></div>
-      <div class="mcal-legend">
-        <span><i class="mcal-dot income"></i>Prihod</span>
-        <span><i class="mcal-dot expense"></i>Rashod</span>
-        <span><i class="mcal-dot due"></i>Dospeva</span>
-      </div>
     </div>
 
     <div class="layout">
@@ -3784,7 +3790,6 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     renderDonut(catEntries);
     renderTrend();
     renderBalanceChart();
-    renderHeatmap();
     renderInsights(catEntries);
     renderWarnings(catEntries);
     renderRecurringSuggestions();
@@ -3890,7 +3895,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     document.getElementById('patternsList').innerHTML = rows.map(w=>`<div class="warning-item caution"><span class="icon">${w.icon}</span><span class="txt">${w.txt}</span></div>`).join('');
   }
 
-  // ---- Kalendar meseca (veci, klikabilan) ----
+  // ---- Kalendar meseca (kompaktan): boja = potrosnja dana, tacke = prihod/rashod/dospeva ----
   function renderMonthCalendar(){
     const container = document.getElementById('monthCalendarGrid');
     const mKey = viewMonth;
@@ -3898,28 +3903,41 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const daysInMonth = C.daysInMonth(mKey);
     const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
     const todayNum = mKey === currentMonthKey() ? new Date().getDate() : -1;
-    document.getElementById('monthCalendarTitle').textContent = 'Kalendar meseca — ' + monthYearLabelSr(mKey);
-    const weekdayLabels = ['Pon','Uto','Sre','Čet','Pet','Sub','Ned'];
-    let html = weekdayLabels.map(w=>`<div class="mcal-weekday">${w}</div>`).join('');
-    for(let i=0;i<firstDow;i++) html += `<div></div>`;
+    document.getElementById('monthCalendarTitle').textContent = 'Kalendar — ' + monthYearLabelSr(mKey);
+    const days = [];
     for(let day=1; day<=daysInMonth; day++){
       const dateStr = mKey + '-' + String(day).padStart(2,'0');
       const dayEntries = entries.filter(e=>e.date===dateStr && !isTransfer(e));
-      const hasIncome = dayEntries.some(e=>e.type==='income');
-      const hasExpense = dayEntries.some(e=>e.type==='expense');
-      const dueRecurring = recurring.some(r=> C.effectiveDay(r.day, mKey)===day && isDueThisMonth(r, mKey) && !isPaid(r,mKey) && !isSkipped(r,mKey));
-      const dayTotal = dayEntries.reduce((s,e)=> s + (e.type==='income'?e.amount:-e.amount), 0);
-      const dots = (hasIncome?'<span class="mcal-dot income"></span>':'') + (hasExpense?'<span class="mcal-dot expense"></span>':'') + (dueRecurring?'<span class="mcal-dot due"></span>':'');
-      html += `<button type="button" class="mcal-day ${day===todayNum?'today':''}" data-date="${dateStr}" title="${dateStr}">
-        <span class="mcal-daynum">${day}</span>
-        <span class="mcal-dots">${dots}</span>
-        ${dayEntries.length ? `<span class="mcal-total">${fmt(Math.abs(dayTotal))}</span>` : ''}
-      </button>`;
+      const spent = dayEntries.filter(isPaidExpense).reduce((s,e)=>s+e.amount,0);
+      const earned = dayEntries.filter(isIncome).reduce((s,e)=>s+e.amount,0);
+      const due = recurring.filter(r=> C.effectiveDay(r.day, mKey)===day && isDueThisMonth(r, mKey) && !isPaid(r,mKey) && !isSkipped(r,mKey));
+      days.push({ day, dateStr, dayEntries, spent, earned, due });
     }
-    container.innerHTML = html;
-    container.querySelectorAll('.mcal-day').forEach(btn=>{
-      btn.addEventListener('click', ()=> openDayDetail(btn.dataset.date));
+    const maxSpent = Math.max(1, ...days.map(d=>d.spent));
+    const label = d => {
+      const parts = [parseLocalDate(d.dateStr).toLocaleDateString('sr-Latn-RS', {weekday:'long', day:'numeric', month:'long'})];
+      if(d.spent) parts.push('rashodi ' + fmt(d.spent));
+      if(d.earned) parts.push('prihodi ' + fmt(d.earned));
+      if(d.due.length) parts.push('dospeva: ' + d.due.map(r=>r.desc).join(', '));
+      if(!d.spent && !d.earned && !d.due.length) parts.push('nema stavki');
+      return parts.join(' · ');
+    };
+    let html = ['P','U','S','Č','P','S','N'].map(w=>`<div class="mcal-weekday">${w}</div>`).join('');
+    for(let i=0;i<firstDow;i++) html += '<div></div>';
+    days.forEach(d=>{
+      const pct = d.spent > 0 ? Math.round(14 + (d.spent / maxSpent) * 56) : 0;
+      const bg = pct ? ` style="background: color-mix(in srgb, var(--accent) ${pct}%, var(--fill));"` : '';
+      const dots = (d.earned?'<i class="mcal-dot income"></i>':'') + (d.dayEntries.some(e=>e.type==='expense')?'<i class="mcal-dot expense"></i>':'') + (d.due.length?'<i class="mcal-dot due"></i>':'');
+      html += `<button type="button" class="mcal-day ${d.day===todayNum?'today':''}" data-date="${d.dateStr}" title="${escapeHtml(label(d))}" aria-label="${escapeHtml(label(d))}"${bg}>
+        <span class="mcal-daynum">${d.day}</span><span class="mcal-dots">${dots}</span></button>`;
     });
+    container.innerHTML = html;
+    // Broj dana dobija bolji od dva kontrasta na stvarno iscrtanoj pozadini
+    container.querySelectorAll('.mcal-day[style]').forEach(el=>{
+      const c = bestTextColorOn(getComputedStyle(el).backgroundColor);
+      el.querySelector('.mcal-daynum').style.color = c;
+    });
+    container.querySelectorAll('.mcal-day').forEach(btn=> btn.addEventListener('click', ()=> openDayDetail(btn.dataset.date)));
   }
 
   let currentDayDetailDate = null;
@@ -3977,41 +3995,6 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(e.target.id === 'dayDetailOverlay') closeDayDetail();
   });
 
-  function renderHeatmap(){
-    const container = document.getElementById('spendHeatmap');
-    const now = new Date();
-    const [year, month] = [Number(viewMonth.slice(0,4)), Number(viewMonth.slice(5,7)) - 1];
-    const daysInMonth = C.daysInMonth(viewMonth);
-    const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
-    const dayTotals = {};
-    entries.filter(e=>e.type==='expense' && isExpensePaid(e)).forEach(e=>{
-      const d = parseLocalDate(e.date);
-      if(d.getFullYear()===year && d.getMonth()===month){
-        dayTotals[d.getDate()] = (dayTotals[d.getDate()]||0) + e.amount;
-      }
-    });
-    const maxVal = Math.max(1, ...Object.values(dayTotals));
-    const weekdayLabels = ['Pon','Uto','Sre','Čet','Pet','Sub','Ned'];
-    let html = weekdayLabels.map(w=>`<div class="heatmap-weekday">${w}</div>`).join('');
-    for(let i=0;i<firstDow;i++) html += `<div></div>`;
-    const todayNum = viewMonth === currentMonthKey() ? now.getDate() : -1;
-    for(let day=1; day<=daysInMonth; day++){
-      const val = dayTotals[day] || 0;
-      const intensity = val/maxVal;
-      const bg = val > 0
-        ? `color-mix(in srgb, var(--ledger) ${Math.max(18, intensity*100).toFixed(0)}%, var(--paper-line))`
-        : 'var(--paper-line)';
-      const border = day === todayNum ? 'box-shadow: inset 0 0 0 2px var(--gold);' : '';
-      html += `<div class="heatmap-cell" style="background:${bg}; ${border}" title="${day}. — ${fmt(val)}" data-delay="${(day*0.01).toFixed(2)}">${day}</div>`;
-    }
-    container.innerHTML = html;
-    // Boja teksta se racuna iz STVARNO renderovane pozadine (color-mix rezultat zavisi od teme),
-    // ne iz fiksnog intensity praga — tako broj dana uvek dobija bolji od dva kontrasta (belo/tamno).
-    container.querySelectorAll('.heatmap-cell').forEach(el=>{
-      el.style.animationDelay = el.dataset.delay + 's';
-      el.style.color = bestTextColorOn(getComputedStyle(el).backgroundColor);
-    });
-  }
 
 
   function detectRecurringCandidates(){
@@ -4073,8 +4056,10 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const frac = val / total;
       const dash = frac * circumference;
       const color = catColorFor(cat, i);
+      // Kategorija koja zauzima ceo krug: pun prsten bez isprekidanosti (crtica sa razmakom 0 se ne iscrtava)
+      const dashAttr = frac >= 0.9995 ? '' : `stroke-dasharray="${dash.toFixed(2)} ${(circumference-dash).toFixed(2)}"`;
       arcs += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${color}" stroke-width="16"
-        stroke-dasharray="${dash.toFixed(2)} ${(circumference-dash).toFixed(2)}"
+        ${dashAttr}
         stroke-dashoffset="${(-offset).toFixed(2)}" transform="rotate(-90 ${cx} ${cy})"
         stroke-linecap="butt"><title>${escapeHtml(cat)}: ${fmt(val)}</title></circle>`;
       offset += dash;
