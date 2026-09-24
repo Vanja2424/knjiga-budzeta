@@ -432,35 +432,64 @@ async function runInMain(expr) {
 }
 ipcMain.handle('quick:data', () => runInMain('window.__desktopBridge && window.__desktopBridge.getQuickAddData()'));
 ipcMain.handle('quick:add', (_e, entry) => runInMain(`window.__desktopBridge.addEntry(${JSON.stringify(entry)})`));
-ipcMain.on('quick:close', () => { if (quickAddWindow) quickAddWindow.close(); });
+// Prozor za unos se ne unistava pri zatvaranju nego sakriva — ponovno otvaranje je trenutno.
+let quickOpenedFromApp = false;
+function hideQuickAdd() {
+  if (!quickAddWindow || !quickAddWindow.isVisible()) return;
+  quickAddWindow.hide();
+  // Posle unosa iz aplikacije fokus se vraca glavnom prozoru
+  if (quickOpenedFromApp && mainWindow && mainWindow.isVisible()) mainWindow.focus();
+}
+ipcMain.on('quick:close', () => hideQuickAdd());
+ipcMain.on('quick:open-request', (_e, type) => openQuickAdd(type, { fromApp: true }));
 ipcMain.on('quick:resize', (_e, h) => {
   if (!quickAddWindow) return;
   const [w] = quickAddWindow.getContentSize();
-  quickAddWindow.setContentSize(w, Math.ceil(h));
+  const area = screen.getDisplayMatching(quickAddWindow.getBounds()).workArea;
+  const height = Math.min(Math.ceil(h), area.height - 40);
+  quickAddWindow.setContentSize(w, height);
+  // Ne dozvoli da se prozor produzi ispod ivice ekrana
+  const b = quickAddWindow.getBounds();
+  if (b.y + b.height > area.y + area.height) quickAddWindow.setPosition(b.x, Math.max(area.y + 10, area.y + area.height - b.height - 10));
 });
 
-function openQuickAdd(type) {
+// Polozaj: iz aplikacije — centrirano iznad glavnog prozora; iz globalne precice/tray-a — na ekranu sa kursorom.
+function placeQuickAdd(fromApp) {
+  const [w, h] = quickAddWindow.getSize();
+  let x, y;
+  if (fromApp && mainWindow && mainWindow.isVisible() && !mainWindow.isMinimized()) {
+    const m = mainWindow.getBounds();
+    x = m.x + (m.width - w) / 2; y = m.y + Math.max(60, (m.height - h) / 3);
+  } else {
+    const area = screen.getDisplayNearestPoint(screen.getCursorScreenPoint()).workArea;
+    x = area.x + (area.width - w) / 2; y = area.y + (area.height - h) / 3;
+  }
+  quickAddWindow.setPosition(Math.round(x), Math.round(y));
+}
+function openQuickAdd(type, opts) {
   type = type === 'income' ? 'income' : 'expense';
+  quickOpenedFromApp = !!(opts && opts.fromApp);
   if (quickAddWindow) {
-    quickAddWindow.webContents.send('quick:type', type);
+    quickAddWindow.webContents.send('quick:open', { type, theme: appTheme });
+    placeQuickAdd(quickOpenedFromApp);
     quickAddWindow.show(); quickAddWindow.focus();
     return;
   }
-  const cursor = screen.getCursorScreenPoint();
-  const area = screen.getDisplayNearestPoint(cursor).workArea;
-  const W = 420, H = 470;
+  const W = 440, H = 520;
   quickAddWindow = new BrowserWindow({
     width: W, height: H, useContentSize: true,
-    x: Math.round(area.x + (area.width - W) / 2), y: Math.round(area.y + (area.height - H) / 3),
     frame: false, resizable: false, maximizable: false, minimizable: false, fullscreenable: false,
     alwaysOnTop: true, skipTaskbar: true, show: false,
     backgroundColor: SUPPORTS_MICA ? '#00000000' : THEME_COLORS[appTheme].bg,
     backgroundMaterial: SUPPORTS_MICA ? 'acrylic' : undefined,
-    icon: ICON_PATH, title: 'Brzi unos',
+    roundedCorners: true,
+    icon: ICON_PATH, title: 'Novi unos',
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
+  placeQuickAdd(quickOpenedFromApp);
   quickAddWindow.loadURL(`${APP_ORIGIN}quick-add.html?type=${type}&theme=${appTheme}&mica=${SUPPORTS_MICA ? 1 : 0}`);
   quickAddWindow.once('ready-to-show', () => { quickAddWindow.show(); quickAddWindow.focus(); });
+  quickAddWindow.on('close', (e) => { if (!isQuitting) { e.preventDefault(); hideQuickAdd(); } });
   quickAddWindow.on('closed', () => { quickAddWindow = null; });
 }
 
@@ -488,9 +517,9 @@ const SCREENS = [
 function menuTemplate() {
   return [
     { label: 'Datoteka', submenu: [
-      { label: 'Novi rashod', accelerator: 'CmdOrCtrl+N', click: () => command('new-expense') },
-      { label: 'Novi prihod', accelerator: 'CmdOrCtrl+Shift+N', click: () => command('new-income') },
-      { label: 'Brzi unos…', accelerator: settings.quickAddShortcut || undefined, registerAccelerator: false, click: () => openQuickAdd('expense') },
+      { label: 'Novi rashod…', accelerator: 'CmdOrCtrl+N', click: () => openQuickAdd('expense', { fromApp: true }) },
+      { label: 'Novi prihod…', accelerator: 'CmdOrCtrl+Shift+N', click: () => openQuickAdd('income', { fromApp: true }) },
+      { label: 'Brzi unos (iz bilo kog programa)', accelerator: settings.quickAddShortcut || undefined, registerAccelerator: false, click: () => openQuickAdd('expense') },
       { type: 'separator' },
       { label: 'Odštampaj izveštaj…', accelerator: 'CmdOrCtrl+P', click: () => command('print-report') },
       { label: 'Sačuvaj izveštaj kao PDF…', accelerator: 'CmdOrCtrl+Shift+S', click: () => command('save-pdf') },
@@ -777,6 +806,13 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
         if (level === 'error' || level === 3) errors.push(String(e.message || (e.params && e.params.message)));
       });
       mainWindow.webContents.on('render-process-gone', (_e, d) => { errors.push('renderer gone: ' + d.reason); });
+      // Test pokreta: simuliraj da su animacije u sistemu ukljucene (ili iskljucene)
+      if (process.env.KNJIGA_TEST_MOTION) {
+        try {
+          mainWindow.webContents.debugger.attach('1.3');
+          mainWindow.webContents.debugger.sendCommand('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: process.env.KNJIGA_TEST_MOTION }] });
+        } catch (err) { errors.push('emulacija: ' + err.message); }
+      }
       if (process.env.KNJIGA_TEST_SIZE) {
         const [w, h] = process.env.KNJIGA_TEST_SIZE.split(',').map(Number);
         mainWindow.unmaximize(); mainWindow.setSize(w, h);
@@ -789,6 +825,16 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
         if (errors.length) result.ok = false;
         if (process.env.KNJIGA_TEST_SHOT) {
           try { fs.writeFileSync(process.env.KNJIGA_TEST_SHOT, (await mainWindow.webContents.capturePage()).toPNG()); } catch (err) { result.shotError = err.message; }
+        }
+        // Snimak prozora za unos (KNJIGA_TEST_QUICK=expense|income[,more])
+        if (process.env.KNJIGA_TEST_QUICK) {
+          const [qType, qMore] = process.env.KNJIGA_TEST_QUICK.split(',');
+          openQuickAdd(qType, { fromApp: true });
+          await new Promise(r => setTimeout(r, 1500));
+          if (qMore) { await quickAddWindow.webContents.executeJavaScript("document.getElementById('moreToggle').click(); document.getElementById('amount').value='240'; document.getElementById('desc').value='Namirnice'; document.getElementById('spreadOn').click();"); await new Promise(r => setTimeout(r, 700)); }
+          try { fs.writeFileSync(process.env.KNJIGA_TEST_QUICK_SHOT, (await quickAddWindow.webContents.capturePage()).toPNG()); } catch (err) { result.quickShotError = err.message; }
+          result.quickVisible = quickAddWindow.isVisible();
+          result.quickBounds = quickAddWindow.getBounds();
         }
         process.stdout.write('SMOKE_RESULT ' + JSON.stringify(result) + '\n');
         isQuitting = true;

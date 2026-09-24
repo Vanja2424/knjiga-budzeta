@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('desktop', {
     add: (entry) => ipcRenderer.invoke('quick:add', entry),
     close: () => ipcRenderer.send('quick:close'),
     resize: (h) => ipcRenderer.send('quick:resize', h),
-    onType: (cb) => ipcRenderer.on('quick:type', (_e, t) => cb(t))
+    onOpen: (cb) => ipcRenderer.on('quick:open', (_e, opts) => cb(opts)),
+    // iz glavnog prozora: otvori prozor za unos (rashod/prihod)
+    open: (type) => ipcRenderer.send('quick:open-request', type)
   }
 });

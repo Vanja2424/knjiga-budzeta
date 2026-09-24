@@ -167,6 +167,28 @@
     $('periodToday').click();
     check('račun dobija ceo iznos odmah', totalBal() - balBeforeQ === 240000, `${balBeforeQ} → ${totalBal()}`);
 
+    // Novi unos kroz prozor za unos: dugme u zaglavlju, forme sakrivene u desktop aplikaciji
+    go('rashodi'); await sleep(50);
+    check('dugme za novi unos u zaglavlju', $('newEntryBtn') && getComputedStyle($('newEntryBtn')).display !== 'none' && $('newEntryLabel').textContent === 'Novi rashod');
+    check('forma rashoda zamenjena prozorom za unos', getComputedStyle($('expenseForm').closest('.panel')).display === 'none');
+    go('prihodi'); await sleep(30);
+    check('dugme prati ekran (Novi prihod)', $('newEntryLabel').textContent === 'Novi prihod');
+    const qd = window.__desktopBridge.getQuickAddData();
+    check('prozor za unos dobija račune i kurs', qd.accounts.length === 2 && qd.defaultAccountId === qd.accounts[0].id && Array.isArray(qd.expenseCats));
+    const nQ = entries().length;
+    const cats = qd.expenseCats;
+    const rs = window.__desktopBridge.addEntry({ type: 'expense', desc: 'Smoke popout', amount: 3000, currency: 'RSD', category: cats[0], paid: false,
+      accountId: qd.accounts[1].id, tags: 'Test, Popout', spreadMonths: 2, split: [{ category: cats[0], amount: 1000 }, { category: cats[1], amount: 2000 }] });
+    const pop = entries().filter(e => e.desc === 'Smoke popout');
+    check('unos iz prozora: podela, račun, oznake, raspodela, plaćeno', rs.ok && entries().length === nQ + 2 && pop.every(e => e.accountId === qd.accounts[1].id && e.paid === false && e.spreadMonths === 2 && e.tags.join() === 'test,popout') && pop.map(e => e.amount).sort().join() === '1000,2000', JSON.stringify(pop));
+    const bad = window.__desktopBridge.addEntry({ type: 'income', desc: '', amount: 5 });
+    check('prozor za unos odbija prazan opis', !bad.ok && /opis/i.test(bad.error));
+    if (qd.rates.EUR) {
+      const re = window.__desktopBridge.addEntry({ type: 'income', desc: 'Smoke EUR prihod', amount: 100, currency: 'EUR', category: qd.incomeCats[0] });
+      const ee = entries().find(e => e.desc === 'Smoke EUR prihod');
+      check('unos iz prozora u EUR', re.ok && ee.currency === 'EUR' && ee.origAmount === 100 && Math.abs(ee.amount - 100 * qd.rates.EUR) < 0.01);
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

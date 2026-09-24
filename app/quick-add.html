@@ -2,95 +2,131 @@
 <html lang="sr">
 <head>
 <meta charset="UTF-8">
-<title>Brzi unos</title>
+<title>Novi unos</title>
 <style>
   :root{
-    --font: "Segoe UI Variable Text", "Segoe UI", -apple-system, Roboto, Helvetica, Arial, sans-serif;
-    --paper: #F5F6F8; --paper-line: #E3E6EB; --ink: #101828; --ink-soft: #667085;
-    --ledger: #6366F1; --ledger-solid: #6366F1; --ledger-solid-hover: #4338CA;
-    --rust: #EF4444; --rust-solid: #DC2626; --card: #FFFFFF; --radius: 10px;
-    --surface: color-mix(in srgb, var(--paper) 100%, transparent);
+    --font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --paper: #F5F5F7; --card: #FFFFFF; --ink: #1D1D1F; --ink-soft: #6E6E73; --ink-tertiary: #AEAEB2;
+    --fill: rgba(118,118,128,0.12); --fill-strong: rgba(118,118,128,0.2); --separator: rgba(60,60,67,0.16);
+    --accent: #0071E3; --accent-hover: #0077ED; --pos: #34C759; --pos-text: #248A3D; --neg: #FF3B30;
+    --seg-active: #FFFFFF;
+    --ease: cubic-bezier(0.25, 1, 0.5, 1);
+    --surface: var(--paper);
   }
   [data-theme="dark"]{
-    --paper: #0F1115; --paper-line: #2C313C; --ink: #F0F1F3; --ink-soft: #9099A8;
-    --ledger: #818CF8; --ledger-solid: #4F46E5; --ledger-solid-hover: #4338CA;
-    --rust: #F87171; --rust-solid: #DC2626; --card: #191B21;
+    --paper: #1C1C1E; --card: #2C2C2E; --ink: #F5F5F7; --ink-soft: #98989D; --ink-tertiary: #636366;
+    --fill: rgba(118,118,128,0.24); --fill-strong: rgba(118,118,128,0.34); --separator: rgba(84,84,88,0.5);
+    --accent: #0A84FF; --accent-hover: #409CFF; --pos: #30D158; --pos-text: #30D158; --neg: #FF453A;
+    --seg-active: #636366;
   }
-  html.mica{ --surface: color-mix(in srgb, var(--paper) 55%, transparent); }
+  html.mica{ --surface: color-mix(in srgb, var(--paper) 72%, transparent); }
   *{ box-sizing: border-box; }
-  html, body{ margin:0; height:100%; }
+  html, body{ margin:0; }
   body{
-    background: var(--surface); color: var(--ink); font-family: var(--font); font-size: 14px;
+    background: var(--surface); color: var(--ink); font: 14px/1.4 var(--font); letter-spacing: -0.003em;
     -webkit-font-smoothing: antialiased; user-select: none; overflow: hidden;
   }
-  .wrap{ padding: 0 20px 18px; }
-  .bar{
-    height: 44px; display:flex; align-items:center; justify-content:space-between;
-    -webkit-app-region: drag; padding: 0 6px 0 20px;
-  }
-  .bar .title{ font-size: 12px; font-weight: 600; letter-spacing: .3px; color: var(--ink-soft); display:flex; align-items:center; gap:8px; }
-  .bar .logo{ width:18px; height:18px; border-radius:5px; background: var(--ledger-solid); color:#fff; font-size:11px; font-weight:700; display:grid; place-items:center; }
-  .close{
-    -webkit-app-region: no-drag; width: 36px; height: 32px; border:none; background:none; border-radius: 6px;
-    color: var(--ink-soft); font-size: 15px; cursor: pointer;
-  }
-  .close:hover{ background: color-mix(in srgb, var(--rust) 85%, transparent); color:#fff; }
+  .bar{ height: 44px; display:flex; align-items:center; justify-content:space-between; -webkit-app-region: drag; padding: 0 8px 0 20px; }
+  .bar .title{ font: 600 13px var(--font); color: var(--ink-soft); display:flex; align-items:center; gap:8px; }
+  .logo{ width:18px; height:18px; border-radius:5px; color:#fff; font: 700 10.5px/1 var(--font-display); display:grid; place-items:center;
+    background: linear-gradient(160deg, #5AC8FA 0%, #007AFF 55%, #5856D6 100%); }
+  .close{ -webkit-app-region: no-drag; width: 30px; height: 30px; border:none; background: var(--fill); border-radius: 50%;
+    color: var(--ink-soft); cursor: default; display:grid; place-items:center; transition: background-color 120ms ease; }
+  .close svg{ width: 12px; height: 12px; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+  .close:hover{ background: var(--fill-strong); color: var(--ink); }
+  .wrap{ padding: 2px 20px 18px; }
 
-  .seg{ display:grid; grid-template-columns: 1fr 1fr; padding: 3px; gap: 3px; border-radius: 999px;
-        background: color-mix(in srgb, var(--card) 70%, transparent); border: 1px solid var(--paper-line); }
-  .seg button{
-    border:none; background:none; padding: 7px 0; border-radius: 999px; font: inherit; font-weight: 600;
-    color: var(--ink-soft); cursor:pointer; transition: background-color .18s, color .18s;
-  }
-  .seg button.on.expense{ background: var(--rust-solid); color:#fff; }
-  .seg button.on.income{ background: var(--ledger-solid); color:#fff; }
+  /* Segmentirana kontrola */
+  .seg{ display:grid; grid-template-columns: 1fr 1fr; padding: 2px; gap: 2px; border-radius: 9px; background: var(--fill); position: relative; }
+  .seg button{ border:none; background:none; padding: 6px 0; border-radius: 7px; font: 500 13px var(--font); color: var(--ink); cursor: default; position: relative; z-index: 1; }
+  .seg button.on{ font-weight: 600; }
+  .seg .thumb{ position:absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 3px); border-radius: 7px; background: var(--seg-active);
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.04), 0 3px 8px rgba(0,0,0,0.12), 0 1px 1px rgba(0,0,0,0.06); transition: transform 280ms var(--ease); }
+  .seg.income .thumb{ transform: translateX(calc(100% + 2px)); }
 
-  .amount{
-    display:flex; align-items:baseline; justify-content:center; gap: 8px; margin: 18px 0 14px;
-  }
+  /* Iznos */
+  .amount{ display:flex; align-items:baseline; justify-content:center; gap: 8px; margin: 20px 0 2px; }
   .amount input{
-    field-sizing: content; min-width: 1.2ch; max-width: 280px; text-align: right; border:none; background: none; outline: none; padding: 0;
-    font: 700 40px/1.1 var(--font); letter-spacing: -1px; color: var(--ink); font-variant-numeric: tabular-nums;
+    field-sizing: content; min-width: 1.2ch; max-width: 260px; text-align: right; border:none; background: none; outline: none; padding: 0;
+    font: 700 42px/1.1 var(--font-display); letter-spacing: -0.03em; color: var(--ink); font-variant-numeric: tabular-nums; user-select: text;
   }
-  .amount input::placeholder{ color: color-mix(in srgb, var(--ink-soft) 55%, transparent); }
-  .amount .cur{ font-size: 15px; font-weight: 600; color: var(--ink-soft); }
+  .amount input::placeholder{ color: var(--ink-tertiary); }
   .amount input::-webkit-inner-spin-button{ display:none; }
+  .amount.income input{ color: var(--pos-text); }
+  .cur{ border: none; background: var(--fill); color: var(--ink-soft); font: 600 13px var(--font); border-radius: 7px; padding: 4px 22px 4px 8px; appearance: none; cursor: default;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 10 14'%3E%3Cpath d='M1.5 5 5 1.5 8.5 5M1.5 9 5 12.5 8.5 9' fill='none' stroke='%238E8E93' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 7px center; }
+  .cur.single{ background-image: none; padding-right: 8px; pointer-events: none; }
+  .conv{ text-align: center; font-size: 12px; color: var(--ink-soft); min-height: 17px; }
 
-  label{ display:block; font-size: 11.5px; color: var(--ink-soft); margin: 12px 0 5px; letter-spacing: .3px; }
+  label.l{ display:block; font: 500 12px var(--font); color: var(--ink-soft); margin: 12px 0 5px; }
   input.f, select.f{
-    width:100%; padding: 9px 11px; border-radius: var(--radius); border: 1px solid var(--paper-line);
-    background: color-mix(in srgb, var(--card) 85%, transparent); color: var(--ink); font: inherit; user-select: text;
+    width:100%; padding: 8px 11px; border-radius: 8px; border: none; min-height: 34px;
+    background: var(--fill); color: var(--ink); font: 400 14px var(--font); user-select: text;
+    transition: box-shadow 120ms ease, background-color 120ms ease;
   }
-  input.f:focus, select.f:focus{ outline: 2px solid var(--ledger); outline-offset: 0; border-color: transparent; }
-  input[type="date"]::-webkit-calendar-picker-indicator{ filter: var(--date-filter, none); cursor:pointer; }
-  [data-theme="dark"] input[type="date"]{ --date-filter: invert(0.85); }
-  .row{ display:grid; grid-template-columns: 1fr 150px; gap: 10px; }
-  .paid{ display:flex; align-items:center; gap: 8px; margin-top: 14px; font-size: 13px; cursor:pointer; }
-  .paid input{ width:16px; height:16px; accent-color: var(--ledger); margin:0; }
+  select.f{ appearance: none; padding-right: 28px; cursor: default;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='14' viewBox='0 0 10 14'%3E%3Cpath d='M1.5 5 5 1.5 8.5 5M1.5 9 5 12.5 8.5 9' fill='none' stroke='%238E8E93' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center; }
+  select.f option{ background: var(--card); color: var(--ink); }
+  input.f::placeholder{ color: var(--ink-tertiary); }
+  input.f:focus, select.f:focus{ outline: none; background: var(--card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 40%, transparent), 0 0 0 1px var(--accent); }
+  input[type="date"]::-webkit-calendar-picker-indicator, input[type="month"]::-webkit-calendar-picker-indicator{ opacity: .55; cursor: default; }
+  [data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator, [data-theme="dark"] input[type="month"]::-webkit-calendar-picker-indicator{ filter: invert(1); }
+  .row{ display:grid; grid-template-columns: 1fr 148px; gap: 10px; }
+  .row2{ display:grid; grid-template-columns: 1fr 1.3fr; gap: 10px; }
 
-  .foot{ display:flex; align-items:center; justify-content:space-between; margin-top: 18px; gap: 10px; }
+  /* Prekidac */
+  .sw{ display:flex; align-items:center; justify-content: space-between; gap: 10px; margin-top: 12px; font-size: 13.5px; cursor: default; }
+  .sw input{ appearance:none; width: 38px; height: 22px; border-radius: 999px; background: var(--fill-strong); position: relative; margin: 0; flex-shrink: 0; cursor: default; transition: background-color 260ms var(--ease); }
+  .sw input::after{ content:''; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow: 0 1px 3px rgba(0,0,0,.22); transition: transform 260ms var(--ease); }
+  .sw input:checked{ background: var(--pos); }
+  .sw input:checked::after{ transform: translateX(16px); }
+  .sw input:focus-visible{ outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; }
+
+  /* Vise opcija */
+  .more-toggle{ margin-top: 14px; border: none; background: none; padding: 4px 0; color: var(--accent); font: 500 13px var(--font); display:flex; align-items:center; gap: 6px; cursor: default; }
+  .more-toggle svg{ width: 10px; height: 10px; stroke: currentColor; stroke-width: 2.2; fill: none; stroke-linecap: round; stroke-linejoin: round; transition: transform 260ms var(--ease); }
+  .more-toggle[aria-expanded="true"] svg{ transform: rotate(90deg); }
+  .more{ display: none; padding-top: 2px; }
+  .more.open{ display: block; animation: moreIn 260ms var(--ease); }
+  @keyframes moreIn{ from{ opacity: 0; transform: translateY(-4px); } to{ opacity: 1; transform: none; } }
+  .sub{ display:none; }
+  .sub.open{ display:block; animation: moreIn 200ms var(--ease); }
+  /* Pojavljivanje sadrzaja pri svakom otvaranju prozora — kratko, jer se otvara precicom */
+  body.appear .bar, body.appear .wrap{ animation: popIn 170ms var(--ease) backwards; }
+  body.appear .wrap{ animation-delay: 20ms; }
+  @keyframes popIn{ from{ opacity: 0; transform: translateY(-3px) scale(0.985); } to{ opacity: 1; transform: none; } }
+  .hint{ font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .split-row{ display:grid; grid-template-columns: 1fr 110px 26px; gap: 6px; margin-top: 6px; align-items: center; }
+  .icon-btn{ border:none; background: none; color: var(--ink-tertiary); width: 26px; height: 26px; border-radius: 6px; cursor: default; font-size: 14px; }
+  .icon-btn:hover{ color: var(--neg); background: color-mix(in srgb, var(--neg) 10%, transparent); }
+  .link-btn{ border:none; background:none; color: var(--accent); font: 500 12.5px var(--font); padding: 6px 0 0; cursor: default; }
+
+  .err{ color: var(--neg); font-size: 12px; min-height: 16px; margin-top: 8px; }
+  .foot{ display:flex; align-items:center; justify-content:space-between; margin-top: 12px; gap: 10px; }
   .keys{ font-size: 11.5px; color: var(--ink-soft); }
-  kbd{ font: 600 10.5px var(--font); padding: 2px 5px; border-radius: 4px; border: 1px solid var(--paper-line); background: color-mix(in srgb, var(--card) 80%, transparent); }
+  kbd{ font: 500 10.5px var(--font); padding: 1px 5px; border-radius: 4px; background: var(--fill); box-shadow: inset 0 -1px 0 var(--separator); }
   .add{
-    border:none; border-radius: var(--radius); padding: 10px 22px; font: 600 14px var(--font); color:#fff; cursor:pointer;
-    background: var(--rust-solid); transition: transform .12s, filter .12s;
+    border:none; border-radius: 9px; padding: 9px 20px; font: 600 14px var(--font); color:#fff; cursor: default;
+    background: var(--accent); transition: background-color 120ms ease, transform 120ms ease;
   }
-  .add.income{ background: var(--ledger-solid); }
-  .add:hover{ filter: brightness(1.08); transform: translateY(-1px); }
-  .add:disabled{ opacity: .6; cursor: default; transform:none; }
-  .err{ color: var(--rust); font-size: 12px; min-height: 16px; margin-top: 8px; }
+  .add:hover{ background: var(--accent-hover); }
+  .add:active{ transform: scale(0.97); }
+  .add:disabled{ opacity: .6; transform:none; }
 
-  .done{
-    position: fixed; inset: 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 10px;
-    background: var(--surface); opacity: 0; pointer-events:none; transition: opacity .18s;
-  }
+  .done{ position: fixed; inset: 0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap: 10px;
+    background: var(--surface); opacity: 0; pointer-events:none; transition: opacity 180ms ease; }
   .done.show{ opacity: 1; }
-  .done svg{ width: 64px; height: 64px; }
-  .done circle{ fill: color-mix(in srgb, var(--ledger) 16%, transparent); }
-  .done path{ fill:none; stroke: var(--ledger); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; }
-  .done.show path{ animation: draw .35s .08s ease forwards; }
-  .done .msg{ font-weight: 600; }
+  .done svg{ width: 60px; height: 60px; }
+  .done circle{ fill: var(--pos); }
+  .done path{ fill:none; stroke: #fff; stroke-width: 4.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; }
+  .done.show path{ animation: draw .32s .06s var(--ease) forwards; }
+  .done .msg{ font: 600 14px var(--font); }
   @keyframes draw{ to{ stroke-dashoffset: 0; } }
+  @media (prefers-reduced-motion: reduce){ *, *::before, *::after{ animation: none !important; transition: none !important; } .done.show path{ stroke-dashoffset: 0; } }
+  @media (prefers-reduced-transparency: reduce){ html.mica{ --surface: var(--paper); } }
 </style>
 <script>
   const qs = new URLSearchParams(location.search);
@@ -100,116 +136,257 @@
 </head>
 <body>
   <div class="bar">
-    <div class="title"><span class="logo">K</span>BRZI UNOS</div>
-    <button class="close" id="closeBtn" title="Zatvori (Esc)">✕</button>
+    <div class="title"><span class="logo">K</span><span id="barTitle">Novi rashod</span></div>
+    <button class="close" id="closeBtn" title="Zatvori (Esc)" aria-label="Zatvori"><svg viewBox="0 0 12 12"><path d="M2 2l8 8M10 2l-8 8"/></svg></button>
   </div>
   <form class="wrap" id="form" autocomplete="off">
-    <div class="seg" role="tablist">
-      <button type="button" data-type="expense" class="expense">Rashod</button>
-      <button type="button" data-type="income" class="income">Prihod</button>
+    <div class="seg expense" id="seg" role="tablist" aria-label="Vrsta">
+      <span class="thumb" aria-hidden="true"></span>
+      <button type="button" data-type="expense" role="tab">Rashod</button>
+      <button type="button" data-type="income" role="tab">Prihod</button>
     </div>
 
-    <div class="amount">
-      <input id="amount" type="number" min="0" step="1" placeholder="0" inputmode="numeric" aria-label="Iznos">
-      <span class="cur">RSD</span>
+    <div class="amount" id="amountRow">
+      <input id="amount" type="number" min="0" step="any" placeholder="0" inputmode="decimal" aria-label="Iznos">
+      <select class="cur" id="currency" aria-label="Valuta"><option>RSD</option></select>
     </div>
+    <div class="conv" id="conv"></div>
 
-    <label for="desc">Opis</label>
+    <label class="l" for="desc">Opis</label>
     <input class="f" id="desc" list="descList" placeholder="npr. Namirnice (ili Namirnice 1500)">
     <datalist id="descList"></datalist>
 
     <div class="row">
       <div>
-        <label for="category">Kategorija</label>
+        <label class="l" for="category">Kategorija</label>
         <select class="f" id="category"></select>
       </div>
       <div>
-        <label for="date">Datum</label>
+        <label class="l" for="date">Datum</label>
         <input class="f" id="date" type="date">
       </div>
     </div>
 
-    <label class="paid" id="paidRow"><input type="checkbox" id="paid" checked> Plaćeno</label>
+    <label class="sw" id="paidRow">Već plaćeno <input type="checkbox" id="paid" checked></label>
 
-    <div class="err" id="err"></div>
+    <button type="button" class="more-toggle" id="moreToggle" aria-expanded="false" aria-controls="more">
+      <svg viewBox="0 0 10 10"><path d="M3.5 1.5 7 5l-3.5 3.5"/></svg><span>Više opcija</span>
+    </button>
+    <div class="more" id="more">
+      <div id="accountRow" style="display:none;">
+        <label class="l" for="account">Račun</label>
+        <select class="f" id="account"></select>
+      </div>
+      <label class="l" for="tags">Oznake (odvojene zarezom)</label>
+      <input class="f" id="tags" placeholder="npr. putovanje, posao">
+
+      <label class="sw">Pokriva više meseci <input type="checkbox" id="spreadOn"></label>
+      <div class="sub" id="spreadSub">
+        <div class="row2">
+          <div><label class="l" for="spreadMonths">Broj meseci</label><input class="f" id="spreadMonths" type="number" min="2" max="60" value="3"></div>
+          <div><label class="l" for="spreadStart">Od meseca</label><input class="f" id="spreadStart" type="month"></div>
+        </div>
+        <div class="hint" id="spreadHint"></div>
+      </div>
+
+      <div id="splitWrap">
+        <label class="sw">Podeli na više kategorija <input type="checkbox" id="splitOn"></label>
+        <div class="sub" id="splitSub">
+          <div id="splitRows"></div>
+          <button type="button" class="link-btn" id="splitAdd">+ Dodaj kategoriju</button>
+          <div class="hint" id="splitTotal"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="err" id="err" role="alert"></div>
     <div class="foot">
-      <span class="keys"><kbd>Enter</kbd> dodaj · <kbd>Esc</kbd> zatvori</span>
-      <button class="add" id="addBtn" type="submit">Dodaj rashod</button>
+      <span class="keys"><kbd>Enter</kbd> dodaj · <kbd>Ctrl</kbd>+<kbd>Enter</kbd> dodaj i nastavi · <kbd>Esc</kbd></span>
+      <button class="add" id="addBtn" type="submit">Dodaj</button>
     </div>
   </form>
 
-  <div class="done" id="done">
+  <div class="done" id="done" aria-live="polite">
     <svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="30"/><path d="M20 33 l8 8 l16 -18"/></svg>
     <div class="msg" id="doneMsg">Dodato</div>
   </div>
 
 <script>
   const $ = (id) => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   let type = qs.get('type') === 'income' ? 'income' : 'expense';
-  let data = { expenseCats: [], incomeCats: [], history: [], rules: [] };
+  let data = { expenseCats: [], incomeCats: [], history: [], rules: [], accounts: [], rates: {}, rateDate: null };
+  let keepOpen = false;
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
+  const fmt = n => Math.round(n).toLocaleString('sr-Latn-RS') + ' RSD';
+  const monthLabel = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'long', year:'numeric'}); };
+  const addMonths = (m, n) => { const [y,mo] = m.split('-').map(Number); const d = new Date(y, mo-1+n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
 
+  function catsFor(t){ return t === 'expense' ? data.expenseCats : data.incomeCats; }
+  function catOptions(t, selected){ return catsFor(t).map(c => `<option${c === selected ? ' selected' : ''}>${esc(c)}</option>`).join(''); }
   function setType(t){
     type = t;
-    document.querySelectorAll('.seg button').forEach(b => b.classList.toggle('on', b.dataset.type === t));
-    const cats = t === 'expense' ? data.expenseCats : data.incomeCats;
+    $('seg').className = 'seg ' + t;
+    document.querySelectorAll('.seg button').forEach(b => { b.classList.toggle('on', b.dataset.type === t); b.setAttribute('aria-selected', b.dataset.type === t); });
     const sel = $('category'); const prev = sel.value;
-    sel.innerHTML = cats.map(c => `<option>${c.replace(/[&<>"]/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]))}</option>`).join('');
-    if(cats.includes(prev)) sel.value = prev;
-    $('descList').innerHTML = [...new Set(data.history.filter(h => h.type === t).map(h => h.desc))]
-      .slice(0, 200).map(d => `<option value="${d.replace(/"/g, '&quot;')}"></option>`).join('');
+    sel.innerHTML = catOptions(t);
+    if(catsFor(t).includes(prev)) sel.value = prev;
+    $('descList').innerHTML = [...new Set(data.history.filter(h => h.type === t).map(h => h.desc))].slice(0, 200).map(d => `<option value="${esc(d)}"></option>`).join('');
     $('paidRow').style.display = t === 'expense' ? 'flex' : 'none';
+    $('splitWrap').style.display = t === 'expense' ? '' : 'none';
+    $('amountRow').classList.toggle('income', t === 'income');
     $('addBtn').textContent = t === 'expense' ? 'Dodaj rashod' : 'Dodaj prihod';
-    $('addBtn').classList.toggle('income', t === 'income');
+    $('barTitle').textContent = t === 'expense' ? 'Novi rashod' : 'Novi prihod';
+    document.querySelectorAll('.split-cat').forEach(s => { const v = s.value; s.innerHTML = catOptions('expense', v); });
     $('err').textContent = '';
     fit();
   }
-  // Predlog kategorije: prvo pravila (opis sadrzi rec), pa poslednja upotrebljena kategorija za isti opis.
+  // Predlog kategorije: pravila (duza kljucna rec ima prednost), pa poslednja upotrebljena za isti opis
   function suggestCategory(){
     const desc = $('desc').value.trim().toLowerCase().replace(/\s+[\d.,]*\d$/, '');
     if(!desc) return;
-    const cats = type === 'expense' ? data.expenseCats : data.incomeCats;
-    const rule = type === 'expense' && data.rules.find(r => r.keyword && desc.includes(r.keyword.toLowerCase()));
+    const rules = data.rules.slice().sort((a,b) => b.keyword.length - a.keyword.length);
+    const rule = type === 'expense' && rules.find(r => r.keyword && desc.includes(r.keyword.toLowerCase()));
     const hist = data.history.find(h => h.type === type && h.desc.toLowerCase() === desc);
     const cat = (rule && rule.category) || (hist && hist.category);
-    if(cat && cats.includes(cat)) $('category').value = cat;
+    if(cat && catsFor(type).includes(cat)) $('category').value = cat;
   }
+  function updateConv(){
+    const cur = $('currency').value, v = parseFloat($('amount').value);
+    const rate = data.rates[cur];
+    $('conv').textContent = (cur !== 'RSD' && rate) ? (isNaN(v) ? '' : `≈ ${fmt(v * rate)} · `) + `kurs NBS ${rate.toLocaleString('sr-Latn-RS', {maximumFractionDigits: 4})}` : '';
+    updateSpreadHint();
+    updateSplitTotal();
+  }
+  function amountRsd(){
+    const cur = $('currency').value, v = parseFloat($('amount').value);
+    return cur === 'RSD' ? v : v * (data.rates[cur] || NaN);
+  }
+  function updateSpreadHint(){
+    $('spreadSub').classList.toggle('open', $('spreadOn').checked);
+    if(!$('spreadOn').checked){ fit(); return; }
+    if(!$('spreadStart').value) $('spreadStart').value = ($('date').value || today()).slice(0, 7);
+    const n = Math.max(2, Math.min(60, parseInt($('spreadMonths').value, 10) || 2));
+    const start = $('spreadStart').value, end = addMonths(start, n - 1), a = amountRsd();
+    $('spreadHint').textContent = `${monthLabel(start)} – ${monthLabel(end)}` + (a > 0 ? ` — po ${fmt(a / n)} mesečno` : '');
+    fit();
+  }
+  function addSplitRow(cat, amount){
+    const row = document.createElement('div');
+    row.className = 'split-row';
+    row.innerHTML = `<select class="f split-cat" aria-label="Kategorija">${catOptions('expense', cat)}</select>
+      <input class="f split-amt" type="number" min="0" step="any" placeholder="Iznos" aria-label="Iznos" value="${amount || ''}">
+      <button type="button" class="icon-btn" title="Ukloni" aria-label="Ukloni">✕</button>`;
+    row.querySelector('.icon-btn').addEventListener('click', () => { row.remove(); updateSplitTotal(); });
+    row.querySelector('.split-amt').addEventListener('input', updateSplitTotal);
+    $('splitRows').appendChild(row);
+    updateSplitTotal();
+  }
+  function updateSplitTotal(){
+    $('splitSub').classList.toggle('open', $('splitOn').checked);
+    if($('splitOn').checked && !$('splitRows').children.length){ addSplitRow($('category').value); addSplitRow(); return; }
+    const total = [...document.querySelectorAll('.split-amt')].reduce((s,i) => s + (parseFloat(i.value) || 0), 0);
+    const a = parseFloat($('amount').value);
+    $('splitTotal').textContent = $('splitOn').checked ? `Ukupno: ${total.toLocaleString('sr-Latn-RS')} ${$('currency').value}` + (!isNaN(a) && a > 0 && Math.abs(a - total) > 0.001 ? ` (iznos gore: ${a.toLocaleString('sr-Latn-RS')})` : '') : '';
+    fit();
+  }
+  let fitRaf = 0;
   function fit(){
-    requestAnimationFrame(() => window.desktop.quick.resize(document.querySelector('.bar').offsetHeight + $('form').offsetHeight));
+    cancelAnimationFrame(fitRaf);
+    fitRaf = requestAnimationFrame(() => window.desktop.quick.resize(document.querySelector('.bar').offsetHeight + $('form').offsetHeight));
+  }
+  function resetForm(){
+    $('form').reset();
+    $('date').value = today();
+    $('paid').checked = true;
+    $('splitRows').innerHTML = '';
+    $('spreadStart').value = '';
+    $('more').classList.remove('open'); $('moreToggle').setAttribute('aria-expanded', 'false');
+    $('done').classList.remove('show');
+    $('addBtn').disabled = false;
+    $('err').textContent = '';
+  }
+  function fillData(){
+    const cur = ['RSD', ...['EUR','USD','CHF','GBP'].filter(c => data.rates[c])];
+    $('currency').innerHTML = cur.map(c => `<option>${c}</option>`).join('');
+    $('currency').classList.toggle('single', cur.length === 1);
+    $('accountRow').style.display = data.accounts.length >= 2 ? '' : 'none';
+    $('account').innerHTML = data.accounts.map(a => `<option value="${esc(a.id)}">${esc(a.name)}</option>`).join('');
+    if(data.defaultAccountId) $('account').value = data.defaultAccountId;
+    setType(type);
+    updateConv();
+  }
+  async function loadData(){
+    try{ data = Object.assign(data, await window.desktop.quick.getData() || {}); $('err').textContent = ''; }
+    catch(e){ $('err').textContent = 'Glavni prozor još nije spreman — pokušaj ponovo za trenutak.'; }
+    fillData();
   }
 
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { setType(b.dataset.type); $('amount').focus(); }));
   $('desc').addEventListener('input', suggestCategory);
   $('closeBtn').addEventListener('click', () => window.desktop.quick.close());
+  $('moreToggle').addEventListener('click', () => {
+    const open = !$('more').classList.contains('open');
+    $('more').classList.toggle('open', open);
+    $('moreToggle').setAttribute('aria-expanded', open);
+    fit();
+  });
+  ['amount', 'currency'].forEach(id => { $(id).addEventListener('input', updateConv); $(id).addEventListener('change', updateConv); });
+  ['spreadOn', 'spreadMonths', 'spreadStart', 'date'].forEach(id => { $(id).addEventListener('input', updateSpreadHint); $(id).addEventListener('change', updateSpreadHint); });
+  $('splitOn').addEventListener('change', updateSplitTotal);
+  $('splitAdd').addEventListener('click', () => addSplitRow());
   document.addEventListener('keydown', (e) => {
     if(e.key === 'Escape') window.desktop.quick.close();
     if(e.altKey && (e.key === 'r' || e.key === 'R')) { e.preventDefault(); setType('expense'); }
     if(e.altKey && (e.key === 'p' || e.key === 'P')) { e.preventDefault(); setType('income'); }
+    if(e.key === 'Enter' && e.ctrlKey){ e.preventDefault(); keepOpen = true; $('form').requestSubmit(); }
   });
-  window.desktop.quick.onType((t) => { setType(t); $('amount').focus(); });
+  function playAppear(){
+    document.body.classList.remove('appear');
+    void document.body.offsetWidth; // ponovo pokreni animaciju
+    document.body.classList.add('appear');
+  }
+  window.desktop.quick.onOpen((opts) => {
+    playAppear();
+    if(opts && opts.theme) document.documentElement.setAttribute('data-theme', opts.theme === 'dark' ? 'dark' : 'light');
+    type = opts && opts.type === 'income' ? 'income' : 'expense';
+    resetForm();
+    loadData().then(() => $('amount').focus());
+  });
 
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    const stay = keepOpen; keepOpen = false;
     const entry = {
-      type, desc: $('desc').value, amount: parseFloat($('amount').value),
-      category: $('category').value, date: $('date').value || today(), paid: $('paid').checked
+      type, desc: $('desc').value, amount: parseFloat($('amount').value), currency: $('currency').value,
+      category: $('category').value, date: $('date').value || today(), paid: $('paid').checked,
+      accountId: data.accounts.length >= 2 ? $('account').value : undefined,
+      tags: $('tags').value
     };
+    if($('spreadOn').checked){ entry.spreadMonths = parseInt($('spreadMonths').value, 10) || 2; entry.spreadStart = $('spreadStart').value || undefined; }
+    if(type === 'expense' && $('splitOn').checked){
+      entry.split = [...document.querySelectorAll('.split-row')].map(r => ({ category: r.querySelector('.split-cat').value, amount: parseFloat(r.querySelector('.split-amt').value) }));
+    }
     $('addBtn').disabled = true;
     try{
       const r = await window.desktop.quick.add(entry);
-      if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; return; }
+      if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; fit(); return; }
       $('doneMsg').textContent = `${type === 'expense' ? 'Rashod' : 'Prihod'} dodat: ${r.amountText}`;
       $('done').classList.add('show');
-      setTimeout(() => window.desktop.quick.close(), 900);
+      if(stay){
+        setTimeout(() => { const t = type; resetForm(); type = t; loadData().then(() => $('amount').focus()); }, 650);
+      } else {
+        setTimeout(() => window.desktop.quick.close(), 800);
+      }
     } catch(err){
-      $('err').textContent = 'Greška: ' + err.message; $('addBtn').disabled = false;
+      $('err').textContent = 'Greška: ' + err.message; $('addBtn').disabled = false; fit();
     }
   });
 
   (async () => {
+    playAppear();
     $('date').value = today();
-    try{ data = await window.desktop.quick.getData() || data; } catch(e){ $('err').textContent = 'Glavni prozor još nije spreman — pokušaj ponovo za trenutak.'; }
-    setType(type);
+    await loadData();
     $('amount').focus();
   })();
 </script>

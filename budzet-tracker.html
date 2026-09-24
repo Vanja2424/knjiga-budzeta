@@ -1026,6 +1026,19 @@ html.desktop .wrap{
 .theme-toggle:active{ transform: scale(0.94); }
 .theme-toggle.spin{ animation: none; }
 
+.toolbar-add{
+  display:inline-flex; align-items:center; gap: 6px; height: 34px; padding: 0 14px 0 11px; border: none; border-radius: 9px;
+  background: var(--accent); color: #fff; font: 600 13.5px/1 var(--font); cursor: default; white-space: nowrap;
+  transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+.toolbar-add svg{ width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+.toolbar-add:hover{ background: var(--accent-hover); }
+.toolbar-add:active{ transform: scale(0.96); }
+/* Desktop: novi unos ide kroz prozor za unos — liste zauzimaju celu sirinu */
+html.desktop #screen-rashodi .layout, html.desktop #screen-prihodi .layout{ grid-template-columns: minmax(0,1fr); }
+html.desktop #screen-rashodi .layout > .panel:first-child, html.desktop #screen-prihodi .layout > .panel:first-child{ display: none; }
+@media (max-width: 640px){ .toolbar-add span{ display: none; } .toolbar-add{ padding: 0 10px; } }
+
 /* ---------- Sazetak meseca ---------- */
 .summary{ gap: 12px; margin-bottom: 22px; }
 .summary .cell{
@@ -1352,6 +1365,46 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 .donut-svg circle{ animation: arcIn var(--dur-slow) var(--ease) backwards; transform-origin: 75px 75px; }
 @keyframes arcIn{ from{ opacity: 0; } to{ opacity: 1; } }
 
+/* ---------- Pokreti (v1.7) ---------- */
+/* Prsten finansijskog zdravlja se puni do nove vrednosti (registrovana svojstva mogu da se animiraju) */
+@property --pct{ syntax: '<number>'; inherits: false; initial-value: 0; }
+@property --ring{ syntax: '<color>'; inherits: false; initial-value: transparent; }
+.health-score-ring{ transition: --pct 800ms var(--ease), --ring 400ms ease; }
+
+/* Paneli Pregleda ulaze jedan za drugim pri otvaranju ekrana (ne blokira klikove) */
+#screen-pregled.stagger-in > .panel, #screen-pregled.stagger-in > .layout{ animation: panelIn 280ms var(--ease) backwards; }
+#screen-pregled.stagger-in > :nth-child(1){ animation-delay: 0ms; }
+#screen-pregled.stagger-in > :nth-child(2){ animation-delay: 40ms; }
+#screen-pregled.stagger-in > :nth-child(3){ animation-delay: 80ms; }
+#screen-pregled.stagger-in > :nth-child(4){ animation-delay: 120ms; }
+#screen-pregled.stagger-in > :nth-child(5){ animation-delay: 160ms; }
+#screen-pregled.stagger-in > :nth-child(n+6){ animation-delay: 200ms; }
+@keyframes panelIn{ from{ opacity: 0; transform: translateY(6px); } to{ opacity: 1; transform: none; } }
+
+/* Traka za izabrane stavke se pojavljuje umesto da iskoci */
+.bulk-bar{ transition: opacity 180ms var(--ease), transform 180ms var(--ease); }
+@starting-style{ .bulk-bar{ opacity: 0; transform: translateY(-4px); } }
+
+/* Ponavljajuca stavka upravo placena: postepeno se povlaci umesto da naglo posivi */
+.recurring-item.just-paid .recurring-row.paid{ animation: paidDim 240ms var(--ease) backwards; }
+@keyframes paidDim{ from{ opacity: 1; } to{ opacity: 0.5; } }
+
+/* Obavestenje o novoj verziji izlazi iz svog ugla */
+.tb-update{ transform-origin: right center; transition: opacity 200ms var(--ease), transform 200ms var(--ease); }
+@starting-style{ .tb-update{ opacity: 0; transform: scale(0.96); } }
+
+/* Cilj ostvaren: jedini trenutak sa malo odskakanja — retko je i zasluzeno */
+.goal-card.celebrate{ animation: goalPop 450ms cubic-bezier(0.34, 1.35, 0.64, 1); }
+@keyframes goalPop{ 0%{ transform: scale(1); } 40%{ transform: scale(1.015); } 100%{ transform: scale(1); } }
+.goal-check{ width: 15px; height: 15px; vertical-align: -3px; margin-right: 3px; fill: none; stroke: var(--pos); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.goal-card.celebrate .goal-check path{ stroke-dasharray: 16; stroke-dashoffset: 16; animation: checkDraw 320ms 120ms var(--ease) forwards; }
+@keyframes checkDraw{ to{ stroke-dashoffset: 0; } }
+.goal-card .goal-meta .done-label{ color: var(--pos-text); font-weight: 600; }
+
+/* Dugmad-ikonice u redovima: blag odziv na pritisak */
+.del-btn:active, .edit-btn:active, .dup-btn:active, .envelope-suggest-btn:active{ transform: scale(0.9); }
+.del-btn, .edit-btn, .dup-btn, .envelope-suggest-btn{ transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
+
 /* ---------- Uski prozori ---------- */
 @media (max-width: 980px){
   .sidebar{ flex-basis: 64px; width: 64px; padding-left: 8px; padding-right: 8px; }
@@ -1380,6 +1433,9 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 
 /* ---------- Pristupacnost ---------- */
 @media (prefers-reduced-motion: reduce){
+  /* bez stepenastog kasnjenja — paneli se pojavljuju odmah */
+  #screen-pregled.stagger-in > *, .goal-card.celebrate, .recurring-item.just-paid .recurring-row.paid{ animation: none !important; }
+  .goal-card.celebrate .goal-check path{ animation: none !important; stroke-dashoffset: 0; }
   .modal-card{ transform: none !important; transition: opacity 180ms ease; }
   .paid-checkbox-label input[type="checkbox"]::after{ transition: none; }
   .bar-fill{ transition: none; }
@@ -1446,6 +1502,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       <div class="date-line" id="todayLine"></div>
     </div>
     <div class="header-right">
+      <button class="toolbar-add" id="newEntryBtn" title="Novi unos (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg><span id="newEntryLabel">Novi rashod</span></button>
       <div class="period-bar" role="group" aria-label="Mesec">
         <button class="period-btn" id="periodPrev" title="Prethodni mesec (Alt+←)" aria-label="Prethodni mesec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
         <div class="period-label" id="periodLabel" aria-live="polite"></div>
@@ -2102,7 +2159,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         <div class="settings-group" id="desktopShortcuts">
           <h3>Prečice na tastaturi</h3>
           <div class="shortcut-grid">
-            <span><kbd>Ctrl</kbd> + <kbd>N</kbd></span><span>Novi rashod</span>
+            <span><kbd>Ctrl</kbd> + <kbd>N</kbd></span><span>Novi rashod (prozor za unos)</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span><span>Novi prihod</span>
             <span id="deskShortcutKeys"></span><span>Brzi unos iz bilo kog programa</span>
             <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>6</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
@@ -2866,8 +2923,18 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     dirtyScreens.delete(name);
     SCREEN_RENDER[name]();
   }
+  // Stepenasti ulaz panela Pregleda — samo kad se ekran otvori, ne pri svakom osvezavanju
+  function playPregledStagger(){
+    const el = document.getElementById('screen-pregled');
+    el.classList.remove('stagger-in');
+    void el.offsetWidth;
+    el.classList.add('stagger-in');
+    clearTimeout(playPregledStagger.t);
+    playPregledStagger.t = setTimeout(()=> el.classList.remove('stagger-in'), 700);
+  }
   function showScreen(name){
     if(!SCREEN_RENDER[name]) name = 'pregled';
+    if(name === 'pregled' && activeScreen !== 'pregled') playPregledStagger();
     const group = groupOf(name);
     activeScreen = name;
     lastScreenInGroup[group] = name;
@@ -2885,8 +2952,22 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     updateTabBadges();
     requestAnimationFrame(updateTableScrollFades);
     updateMobileFab(name);
+    const isIncome = name === 'prihodi';
+    document.getElementById('newEntryLabel').textContent = isIncome ? 'Novi prihod' : 'Novi rashod';
+    document.getElementById('newEntryBtn').title = isIncome ? 'Novi prihod (Ctrl+Shift+N)' : 'Novi rashod (Ctrl+N)';
   }
   window.__showScreen = showScreen;
+  // Novi unos: u desktop aplikaciji uvek kroz prozor za unos; u browseru forma na ekranu
+  const usePopoutEntry = () => !!(window.desktop && window.desktop.quick && window.desktop.quick.open);
+  function openNewEntry(type){
+    type = type || (activeScreen === 'prihodi' ? 'income' : 'expense');
+    if(usePopoutEntry()){ window.desktop.quick.open(type); return; }
+    showScreen(type === 'income' ? 'prihodi' : 'rashodi');
+    const el = document.getElementById(type === 'income' ? 'incDesc' : 'expDesc');
+    setTimeout(()=>{ el.scrollIntoView({behavior:'smooth', block:'center'}); el.focus({preventScroll:true}); }, 60);
+  }
+  window.__openNewEntry = openNewEntry;
+  document.getElementById('newEntryBtn').addEventListener('click', ()=> openNewEntry());
   document.querySelectorAll('nav.tabs button').forEach(btn=>{
     btn.addEventListener('click', ()=> showScreen(lastScreenInGroup[btn.dataset.group] || SCREEN_GROUPS[btn.dataset.group][0][0]));
   });
@@ -2908,6 +2989,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const targetId = QUICK_FOCUS_BY_SCREEN[screenName];
     if(!targetId) return;
     e.preventDefault();
+    if((screenName === 'rashodi' || screenName === 'prihodi') && usePopoutEntry()){ openNewEntry(screenName === 'prihodi' ? 'income' : 'expense'); return; }
     const el = document.getElementById(targetId);
     if(el) el.focus();
   });
@@ -2923,6 +3005,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const screenName = activeScreen.id.replace('screen-', '');
     const targetId = QUICK_FOCUS_BY_SCREEN[screenName];
     if(!targetId) return;
+    if((screenName === 'rashodi' || screenName === 'prihodi') && usePopoutEntry()){ openNewEntry(screenName === 'prihodi' ? 'income' : 'expense'); return; }
     const el = document.getElementById(targetId);
     if(!el) return;
     el.scrollIntoView({behavior:'smooth', block:'center'});
@@ -5576,7 +5659,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         </div>
         <div class="goal-amounts">${fmt(g.current)} / ${fmt(g.target)} — ${pct.toFixed(0)}%</div>
         <div class="bar-track"><div class="bar-fill ${barClass}" data-target="${pct.toFixed(1)}%"></div></div>
-        <div class="goal-meta"><span>Rok: ${deadlineTxt}${g.accountId && accountById(g.accountId) ? ' · račun: ' + escapeHtml(accountName(g.accountId)) : ''}</span><span>${pct>=100?'Cilj ostvaren! 🎉':fmt(g.target-g.current)+' preostalo'}</span></div>
+        <div class="goal-meta"><span>Rok: ${deadlineTxt}${g.accountId && accountById(g.accountId) ? ' · račun: ' + escapeHtml(accountName(g.accountId)) : ''}</span><span>${pct>=100?'<span class="done-label"><svg class="goal-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Cilj ostvaren</span>':fmt(g.target-g.current)+' preostalo'}</span></div>
         ${goalSuggestionHtml(g)}
         <div class="goal-contribute">
           <input type="number" placeholder="Iznos uplate (RSD)" min="1" data-goal="${g.id}" class="goal-add-input">
@@ -7046,6 +7129,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   setupExcelUI();
   renderBackupReminder();
   renderAll();
+  playPregledStagger();
   if(!localStorage.getItem(ONBOARDING_KEY) && entries.length === 0 && recurring.length === 0 && goals.length === 0){
     startOnboarding();
   }
@@ -7194,8 +7278,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
             setTimeout(()=> byId(target).scrollIntoView({behavior:'smooth', block:'start'}), 80);
           } else showScreen(arg);
           break;
-        case 'new-expense': showScreen('rashodi'); focusField('expDesc'); break;
-        case 'new-income': showScreen('prihodi'); focusField('incDesc'); break;
+        case 'new-expense': openNewEntry('expense'); break;
+        case 'new-income': openNewEntry('income'); break;
         case 'search': showScreen('pretraga'); focusField('searchInput'); break;
         case 'toggle-theme': toggleTheme(); break;
         case 'print-report': renderReport(); window.print(); break;
@@ -7341,6 +7425,10 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     window.__desktopBridge = {
       getQuickAddData(){
         return {
+          accounts: accounts.map(a=>({ id: a.id, name: a.name })),
+          defaultAccountId: defaultAccountId(),
+          rates: Object.assign({}, fx.rates),
+          rateDate: fx.date,
           expenseCats: expenseCats.slice(),
           incomeCats: incomeCats.slice(),
           rules: catRules.map(r=>({ keyword: r.keyword, category: r.category })),
@@ -7348,22 +7436,46 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
             .map(e=>({ type: e.type, desc: e.desc, category: e.category }))
         };
       },
+      // Unos iz prozora za unos: valuta, racun, oznake, raspodela na mesece i podela na kategorije
       addEntry(input){
         const type = input.type === 'income' ? 'income' : 'expense';
+        const currency = CURRENCIES.includes(input.currency) ? input.currency : 'RSD';
+        const rate = currency === 'RSD' ? 1 : fx.rates[currency];
+        if(!rate) return { ok:false, error:'Kurs za ' + currency + ' nije dostupan.' };
+        const toRsd = v => Math.round(v * rate * 100) / 100;
         const parsed = parseQuickAmount(String(input.desc || ''), parseFloat(input.amount));
         if(!parsed.desc) return { ok:false, error:'Unesi opis.' };
-        if(isNaN(parsed.amount) || parsed.amount <= 0) return { ok:false, error:'Unesi iznos veći od nule.' };
         const cats = type === 'expense' ? expenseCats : incomeCats;
-        const category = cats.includes(input.category) ? input.category : (cats[0] || 'Ostalo');
+        const pickCat = c => cats.includes(c) ? c : (cats[0] || 'Ostalo');
         const date = /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : toISODateLocal(new Date());
-        const id = newId();
-        const entry = { id, type, desc: parsed.desc, amount: parsed.amount, category, date, tags: [] };
-        if(type === 'expense') entry.paid = input.paid !== false;
-        entries.push(entry);
-        newEntryId = id;
-        if(type === 'expense') applyRoundUpSaving(parsed.amount);
+        const tags = parseTagsInput(String(input.tags || ''));
+        const accountId = accounts.length ? (accountById(input.accountId) ? input.accountId : defaultAccountId()) : undefined;
+        const spreadMonths = Math.max(1, Math.min(60, parseInt(input.spreadMonths, 10) || 1));
+        const spreadStart = /^\d{4}-\d{2}$/.test(input.spreadStart || '') ? input.spreadStart : null;
+        // Delovi: jedna stavka, ili vise kategorija (samo rashod)
+        let parts;
+        if(type === 'expense' && Array.isArray(input.split) && input.split.length){
+          parts = input.split.map(s=> ({ category: pickCat(s.category), orig: parseFloat(s.amount) }));
+          if(parts.some(p=> isNaN(p.orig) || p.orig <= 0)) return { ok:false, error:'Svaka kategorija u podeli treba iznos veći od nule.' };
+        } else {
+          if(isNaN(parsed.amount) || parsed.amount <= 0) return { ok:false, error:'Unesi iznos veći od nule.' };
+          parts = [{ category: pickCat(input.category), orig: parsed.amount }];
+        }
+        let total = 0, lastId = null;
+        parts.forEach(p=>{
+          const id = newId();
+          const entry = { id, type, desc: parsed.desc, amount: toRsd(p.orig), category: p.category, date, tags };
+          if(currency !== 'RSD') Object.assign(entry, { origAmount: p.orig, currency, rate });
+          if(type === 'expense') entry.paid = input.paid !== false;
+          if(accountId) entry.accountId = accountId;
+          if(spreadMonths > 1){ entry.spreadMonths = spreadMonths; if(spreadStart) entry.spreadStart = spreadStart; }
+          entries.push(entry);
+          if(type === 'expense') applyRoundUpSaving(entry.amount);
+          total += entry.amount; lastId = id;
+        });
+        newEntryId = lastId;
         saveEntries(); renderAll();
-        return { ok:true, amountText: fmt(parsed.amount) };
+        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? ` (${parts.length} kategorije)` : '') };
       },
       async flush(){
         dataStore.flushSync();
