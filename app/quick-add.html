@@ -310,7 +310,7 @@
     $('err').textContent = '';
   }
   function fillData(){
-    const cur = ['RSD', ...['EUR','USD','CHF','GBP'].filter(c => data.rates[c])];
+    const cur = ['RSD', ...(data.currencies || ['EUR','USD','CHF','GBP']).filter(c => data.rates[c])];
     $('currency').innerHTML = cur.map(c => `<option>${c}</option>`).join('');
     $('currency').classList.toggle('single', cur.length === 1);
     $('accountRow').style.display = data.accounts.length >= 2 ? '' : 'none';

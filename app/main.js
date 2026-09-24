@@ -40,7 +40,7 @@ const EN = {
   'Knjiga budžeta radi u pozadini': 'Budget Book is running in the background',
   'Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).': 'Payment reminders still arrive. The app is in the system tray (next to the clock).',
   'Novi rashod': 'New expense', 'Novi prihod': 'New income',
-  'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Podešavanja': 'Settings',
+  'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Kursevi': 'Exchange rates', 'Podešavanja': 'Settings',
 };
 const T = (sr, ...args) => (LANG === 'en' && EN[sr] !== undefined ? EN[sr] : sr).replace(/\{(\d+)\}/g, (m, i) => args[i] !== undefined ? args[i] : m);
 
@@ -352,31 +352,62 @@ ipcMain.on('update:install', () => installUpdateNow({ hidden: false }));
 ipcMain.on('update:postpone', () => postponeUpdate());
 ipcMain.handle('update:notes', () => settings.releaseNotes);
 
-// ---------- Kursna lista (NBS srednji kurs, preko kurs.resenje.org) ----------
+// ---------- Kursna lista ----------
+// Glavni izvor: srednji kurs NBS (kurs.resenje.org, sve valute sa kursne liste).
+// Rezerva kad NBS izvor ne radi: open.er-api.com (besplatan, bez kljuca; trzisni kurs, blizu NBS).
 // Salje se samo zahtev za kursnu listu — nikakvi podaci iz aplikacije. Poslednji uspesno preuzet
 // kurs se cuva, pa konverzija radi i bez interneta.
-const RATE_CODES = ['EUR', 'USD', 'CHF', 'GBP'];
+const RATE_CODES = ['EUR', 'USD', 'CHF', 'GBP', 'AUD', 'CAD', 'JPY', 'CNY', 'DKK', 'NOK', 'SEK', 'CZK', 'HUF', 'PLN', 'RON', 'BGN',
+  'BAM', 'MKD', 'HRK', 'TRY', 'RUB', 'BYN', 'AED', 'KWD', 'INR'];
 const RATES_FILE = () => path.join(app.getPath('userData'), 'kursna-lista.json');
 let ratesCache = null;
+async function fetchJson(url) {
+  const res = await net.fetch(url, { headers: { Accept: 'application/json' } });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+async function ratesFromNbs() {
+  const json = await fetchJson('https://kurs.resenje.org/api/v1/rates/today');
+  const rates = {}, buy = {}, sell = {};
+  (json.rates || []).forEach(r => {
+    if (!RATE_CODES.includes(r.code) || !r.exchange_middle) return;
+    const p = r.parity || 1;
+    rates[r.code] = r.exchange_middle / p;
+    if (r.exchange_buy) buy[r.code] = r.exchange_buy / p;
+    if (r.exchange_sell) sell[r.code] = r.exchange_sell / p;
+  });
+  if (!rates.EUR) throw new Error('Kursna lista nema EUR.');
+  const date = (json.rates.find(r => r.code === 'EUR') || {}).date || todayStr();
+  return { date, rates, buy, sell, source: 'nbs' };
+}
+async function ratesFromFallback() {
+  const json = await fetchJson('https://open.er-api.com/v6/latest/RSD');
+  if (json.result !== 'success' || !json.rates) throw new Error('Rezervni izvor nije vratio kurs.');
+  const rates = {};
+  RATE_CODES.forEach(c => { const v = json.rates[c]; if (v > 0) rates[c] = Math.round(1 / v * 10000) / 10000; });
+  if (!rates.EUR) throw new Error('Rezervni izvor nema EUR.');
+  const d = json.time_last_update_unix ? new Date(json.time_last_update_unix * 1000) : new Date();
+  const date = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return { date, rates, buy: {}, sell: {}, source: 'fallback' };
+}
 async function getRates(force) {
   if (!ratesCache) { try { ratesCache = JSON.parse(fs.readFileSync(RATES_FILE(), 'utf8')); } catch { ratesCache = null; } }
-  const fresh = ratesCache && ratesCache.date === todayStr() && Date.now() - ratesCache.fetchedAt < 6 * 3600 * 1000;
+  // Kurs sa rezervnog izvora vazi kraci period — cim NBS izvor proradi, prelazi se nazad na njega.
+  const maxAge = ratesCache && ratesCache.source === 'fallback' ? 3600 * 1000 : 6 * 3600 * 1000;
+  const fresh = ratesCache && ratesCache.date === todayStr() && Date.now() - ratesCache.fetchedAt < maxAge;
   if (fresh && !force) return { ...ratesCache, stale: false };
-  try {
-    const res = await net.fetch('https://kurs.resenje.org/api/v1/rates/today', { headers: { Accept: 'application/json' } });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const json = await res.json();
-    const rates = {};
-    (json.rates || []).forEach(r => { if (RATE_CODES.includes(r.code) && r.exchange_middle) rates[r.code] = r.exchange_middle / (r.parity || 1); });
-    if (!rates.EUR) throw new Error('Kursna lista nema EUR.');
-    const date = (json.rates.find(r => r.code === 'EUR') || {}).date || todayStr();
-    ratesCache = { date, rates, fetchedAt: Date.now(), source: 'NBS srednji kurs' };
-    try { fs.writeFileSync(RATES_FILE(), JSON.stringify(ratesCache)); } catch { /* ignorisano */ }
-    return { ...ratesCache, stale: false };
-  } catch (err) {
-    if (ratesCache) return { ...ratesCache, stale: true, error: err.message };
-    return { date: null, rates: {}, stale: true, error: err.message };
+  const errors = [];
+  for (const load of [ratesFromNbs, ratesFromFallback]) {
+    try {
+      ratesCache = { ...(await load()), fetchedAt: Date.now() };
+      if (errors.length) ratesCache.nbsError = errors[0];
+      try { fs.writeFileSync(RATES_FILE(), JSON.stringify(ratesCache)); } catch { /* ignorisano */ }
+      return { ...ratesCache, stale: false };
+    } catch (err) { errors.push(err.message); }
   }
+  const error = errors.join(' / ');
+  if (ratesCache) return { ...ratesCache, stale: true, error };
+  return { date: null, rates: {}, stale: true, error };
 }
 ipcMain.handle('rates:get', (_e, force) => getRates(!!force));
 
@@ -548,7 +579,7 @@ function setAutostart(on) {
 // ---------- Meni i precice ----------
 const SCREENS = [
   ['pregled', 'Pregled'], ['rashodi', 'Transakcije'], ['kategorije', 'Budžet'], ['ponavljajuce', 'Ponavljajuće'],
-  ['ciljevi', 'Ciljevi i dugovi'], ['izvestaj', 'Izveštaji'], ['podesavanja', 'Podešavanja']
+  ['ciljevi', 'Ciljevi i dugovi'], ['izvestaj', 'Izveštaji'], ['kursevi', 'Kursevi'], ['podesavanja', 'Podešavanja']
 ];
 function menuTemplate() {
   return [

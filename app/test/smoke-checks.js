@@ -14,11 +14,20 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'izvestaj', 'uporedi', 'scenario', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
-    check('glavni meni ima 7 stavki', document.querySelectorAll('nav.tabs button[data-group]').length === 7);
+    check('glavni meni ima 8 stavki', document.querySelectorAll('nav.tabs button[data-group]').length === 8);
+    // Kursevi: omiljena valuta se pojavljuje u izboru valute pri unosu
+    go('kursevi'); await sleep(60);
+    const favBtn = document.querySelector('.fx-star[data-cur="BAM"]');
+    if (favBtn) {
+      favBtn.click();
+      check('omiljena valuta u unosu', [...$('expCurrency').options].some(o => o.value === 'BAM'));
+      document.querySelector('.fx-star[data-cur="BAM"]').click();
+      check('uklonjena valuta nije u unosu', ![...$('expCurrency').options].some(o => o.value === 'BAM'));
+    }
     document.querySelector('nav.tabs button[data-group="ciljevi"]').click(); await sleep(50);
     check('podmeni za Ciljevi i dugovi', [...document.querySelectorAll('#subtabs button')].map(b => b.dataset.screen).join(',') === 'ciljevi,dugovi');
     go('pregled');

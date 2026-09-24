@@ -1454,6 +1454,34 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .lang-seg button.active{ background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 [data-theme="dark"] .lang-seg button.active{ background: #636366; }
 
+/* ---------- Kursevi ---------- */
+.rates-top{ display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 18px; margin-bottom: 18px; }
+.rates-top > .panel{ margin: 0 !important; }
+@media (max-width: 900px){ .rates-top{ grid-template-columns: minmax(0, 1fr); } }
+.fx-conv{ display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 12px; align-items: center; }
+.fx-conv-side{ display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.fx-conv-side input, .fx-conv-side output{ font-size: 24px; font-weight: 600; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.fx-conv-side output{ display: block; padding: 7px 12px; border-radius: 10px; background: var(--fill, rgba(120,120,128,0.12)); min-height: 1.5em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fx-swap{ width: 40px; height: 40px; padding: 0 !important; border-radius: 50% !important; font-size: 18px; }
+@media (max-width: 560px){ .fx-conv{ grid-template-columns: minmax(0, 1fr); } .fx-swap{ justify-self: center; transform: rotate(90deg); } }
+.rates-head{ display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 0.9em; }
+.rates-head h2{ margin: 0 !important; border: 0 !important; padding: 0 !important; }
+.rates-head input{ max-width: 240px; }
+.rates-table{ width: 100%; border-collapse: collapse; }
+.rates-table th{ text-align: left; font-size: 12px; font-weight: 500; color: var(--ink-soft); padding: 6px 10px; border-bottom: 1px solid var(--paper-line); }
+.rates-table td{ padding: 9px 10px; border-bottom: 1px solid var(--paper-line); font-variant-numeric: tabular-nums; }
+.rates-table tr:last-child td{ border-bottom: 0; }
+.rates-table .num{ text-align: right; white-space: nowrap; }
+.rates-table .c-star{ width: 36px; padding-left: 0; padding-right: 0; text-align: center; }
+.rates-table .fx-code{ font-weight: 600; margin-right: 6px; }
+.rates-table .fx-name{ color: var(--ink-soft); }
+.rates-table .muted{ color: var(--ink-soft); }
+.fx-star{ background: none !important; border: 0 !important; box-shadow: none !important; padding: 2px 6px !important; font-size: 17px; line-height: 1; color: var(--ink-soft); cursor: pointer; border-radius: 6px; }
+.fx-star[aria-pressed="true"]{ color: var(--warn, #ff9f0a); }
+.fx-star:active{ transform: scale(0.9); }
+.sr-only{ position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.wrap > #screen-kursevi{ max-width: min(var(--content-max), 1180px) !important; }
+
 /* Pregled: jednak razmak izmedju svih panela (inline margine su bile nedosledne pa su se neki lepili) */
 #screen-pregled > *{ margin: 0 0 18px !important; }
 #screen-pregled > *:last-child{ margin-bottom: 0 !important; }
@@ -1582,6 +1610,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     <button data-group="ponavljajuce" title="Ponavljajuće"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M19.5 10.5A7.6 7.6 0 0 0 6 7.2L4.5 8.7"/><path d="M4.5 4.5v4.2h4.2"/><path d="M4.5 13.5A7.6 7.6 0 0 0 18 16.8l1.5-1.5"/><path d="M19.5 19.5v-4.2h-4.2"/></svg><span class="tab-label">Ponavljajuće</span></button>
     <button data-group="ciljevi" title="Ciljevi i dugovi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 21V3.5"/><path d="M5.5 4h12l-2.6 4.5 2.6 4.5h-12"/></svg><span class="tab-label">Ciljevi i dugovi</span></button>
     <button data-group="izvestaji" title="Izveštaji"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6.5M10 20V5M15 20v-9.5M20 20v-4"/></svg><span class="tab-label">Izveštaji</span></button>
+    <button data-group="kursevi" title="Kursevi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13.5M14 4.5 17.5 8 14 11.5"/><path d="M20 16H6.5M10 12.5 6.5 16l3.5 3.5"/></svg><span class="tab-label">Kursevi</span></button>
     <span class="sb-spacer"></span>
     <button data-group="podesavanja" title="Podešavanja"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></svg><span class="tab-label">Podešavanja</span></button>
   </nav>
@@ -2181,6 +2210,47 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   </div>
 
   <!-- PODESAVANJA -->
+  <div class="screen" id="screen-kursevi">
+    <div class="rates-top">
+      <div class="panel">
+        <h2>Preračunavanje</h2>
+        <div class="fx-conv">
+          <div class="fx-conv-side">
+            <input type="number" id="fxConvAmount" step="any" min="0" value="100" aria-label="Iznos">
+            <select id="fxConvFrom" aria-label="Iz valute"></select>
+          </div>
+          <button class="btn-secondary fx-swap" id="fxConvSwap" title="Zameni smer" aria-label="Zameni smer">⇄</button>
+          <div class="fx-conv-side">
+            <output id="fxConvResult">—</output>
+            <select id="fxConvTo" aria-label="U valutu"></select>
+          </div>
+        </div>
+        <div class="hint" id="fxConvHint" style="margin-top:0.8em;"></div>
+      </div>
+      <div class="panel">
+        <h2>Izvor kursa</h2>
+        <div class="import-status" id="ratesInfo" style="margin-top:0;">Kursna lista još nije preuzeta.</div>
+        <div class="import-status" id="ratesSourceNote"></div>
+        <div class="file-row" style="margin-top:0.8em;" id="ratesRefreshRow">
+          <button class="btn-secondary" id="ratesRefreshBtn">Osveži kurs</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="rates-head">
+        <h2>Kursna lista</h2>
+        <input type="search" id="ratesFilter" placeholder="Traži valutu…" aria-label="Traži valutu">
+      </div>
+      <div class="hint" style="margin:-0.4em 0 0.9em;">Zvezdicom biraš koje valute se nude pored iznosa pri unosu (prihodi, rashodi, ponavljajuće, prozor za unos).</div>
+      <div class="table-scroll">
+        <table class="rates-table">
+          <thead><tr><th class="c-star"><span class="sr-only">U unosu</span></th><th>Valuta</th><th class="num">Srednji kurs</th><th class="num">Kupovni</th><th class="num">Prodajni</th></tr></thead>
+          <tbody id="ratesTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
   <div class="screen" id="screen-podesavanja">
     <div class="panel" style="max-width: 560px;">
       <div class="settings-group">
@@ -2257,7 +2327,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <span><kbd>Ctrl</kbd> + <kbd>N</kbd></span><span>Novi rashod (prozor za unos)</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span><span>Novi prihod</span>
             <span id="deskShortcutKeys"></span><span>Brzi unos iz bilo kog programa</span>
-            <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>6</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
+            <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>7</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
             <span><kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd></span><span>Prethodni / sledeći mesec u sažetku</span>
             <span><kbd>Ctrl</kbd> + <kbd>,</kbd></span><span>Podešavanja</span>
             <span><kbd>Ctrl</kbd> + <kbd>F</kbd></span><span>Pretraga stavki</span>
@@ -2272,15 +2342,6 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <span><kbd>Ctrl</kbd> + <kbd>Q</kbd></span><span>Izađi iz aplikacije</span>
           </div>
         </div>
-      </div>
-
-      <div class="settings-group">
-        <h3>Kursna lista</h3>
-        <div class="import-status" id="ratesInfo" style="margin-top:0;">Kursna lista još nije preuzeta.</div>
-        <div class="file-row" style="margin-top:0.6em;" id="ratesRefreshRow">
-          <button class="btn-secondary" id="ratesRefreshBtn">Osveži kurs</button>
-        </div>
-        <div class="import-status">Za iznose u EUR, USD, CHF ili GBP (npr. kirija u evrima) izaberi valutu pored iznosa — preračunava se u dinare po srednjem kursu NBS i pamti se originalni iznos.</div>
       </div>
 
       <div class="settings-group">
@@ -2532,8 +2593,19 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Kursna lista (NBS srednji kurs) — poslednja preuzeta se pamti za rad bez interneta.
   const FX_KEY = 'budzet-kurs-v1';
   let fx = JSON.parse(localStorage.getItem(FX_KEY) || 'null') || { date: null, rates: {} };
-  const CURRENCIES = ['RSD', 'EUR', 'USD', 'CHF', 'GBP'];
+  // Sve valute sa kursne liste NBS (koje imaju kurs); u unosu se nude samo omiljene (ekran Kursevi).
+  const CURRENCIES = ['RSD', 'EUR', 'USD', 'CHF', 'GBP', 'AUD', 'CAD', 'JPY', 'CNY', 'DKK', 'NOK', 'SEK', 'CZK', 'HUF', 'PLN', 'RON', 'BGN',
+    'BAM', 'MKD', 'HRK', 'TRY', 'RUB', 'BYN', 'AED', 'KWD', 'INR'];
   const CURRENCY_SYMBOL = { RSD: 'RSD', EUR: '€', USD: '$', CHF: 'CHF', GBP: '£' };
+  const FX_FAV_KEY = 'budzet-valute-v1';
+  const FX_FAV_DEFAULT = ['EUR', 'USD', 'CHF', 'GBP'];
+  let fxFavorites = (()=>{ try{ const v = JSON.parse(localStorage.getItem(FX_FAV_KEY) || 'null'); return Array.isArray(v) ? v.filter(c=> CURRENCIES.includes(c) && c !== 'RSD') : FX_FAV_DEFAULT.slice(); } catch(e){ return FX_FAV_DEFAULT.slice(); } })();
+  const saveFxFavorites = ()=> localStorage.setItem(FX_FAV_KEY, JSON.stringify(fxFavorites));
+  const currencyName = (()=>{
+    let dn = null;
+    try{ dn = new Intl.DisplayNames([LOCALE], { type: 'currency' }); } catch(e){}
+    return c => { try{ const n = dn && dn.of(c); return n && n !== c ? n.charAt(0).toUpperCase() + n.slice(1) : c; } catch(e){ return c; } };
+  })();
   // ---- UI-only state (ne ide u localStorage) ----
   // Mesec koji prikazuju sazetak i Pregled. Prati tekuci mesec dok korisnik ne izabere drugi.
   let viewMonth = C.monthKeyOf(new Date());
@@ -3027,6 +3099,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     ponavljajuce: [['ponavljajuce', 'Ponavljajuće']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
     izvestaji: [['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    kursevi: [['kursevi', 'Kursevi']],
     podesavanja: [['podesavanja', 'Podešavanja']]
   };
   const groupOf = screen => Object.keys(SCREEN_GROUPS).find(g => SCREEN_GROUPS[g].some(([s]) => s === screen));
@@ -3046,6 +3119,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     izvestaj: ()=> renderReport(),
     uporedi: ()=> setCompareMode(compareMode),
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
+    kursevi: ()=> renderRatesScreen(),
     podesavanja: ()=>{}
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
@@ -3648,9 +3722,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(trTo && trTo.value === document.getElementById('trFrom').value && accounts[1]) trTo.value = accounts.find(a=> a.id !== trTo.value).id;
   }
   function populateCurrencySelects(){
-    const available = CURRENCIES.filter(c=> c === 'RSD' || fx.rates[c]);
     document.querySelectorAll('.currency-select').forEach(sel=>{
       const prev = sel.value || 'RSD';
+      // omiljene valute + trenutno izabrana (npr. pri izmeni stavke u valuti koja vise nije omiljena)
+      const available = CURRENCIES.filter(c=> c === 'RSD' || (fx.rates[c] && (fxFavorites.includes(c) || c === prev)));
       sel.innerHTML = available.map(c=> `<option value="${c}">${CURRENCY_SYMBOL[c] === c ? c : c + ' ' + CURRENCY_SYMBOL[c]}</option>`).join('');
       sel.value = available.includes(prev) ? prev : 'RSD';
       sel.style.display = available.length > 1 ? '' : 'none';
@@ -3674,7 +3749,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const raw = parseFloat(document.getElementById(prefix + 'Amount').value);
     if(cur === 'RSD' || !fx.rates[cur]){ hint.textContent = ''; return; }
     const dateTxt = fx.date ? parseLocalDate(fx.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit'}) : '';
-    hint.textContent = (isNaN(raw) ? '' : `≈ ${fmt(raw * fx.rates[cur])} · `) + t('kurs NBS {0}', fmtRate(fx.rates[cur])) + (dateTxt ? ' (' + dateTxt + ')' : '');
+    hint.textContent = (isNaN(raw) ? '' : `≈ ${fmt(raw * fx.rates[cur])} · `) + t(fx.source === 'fallback' ? 'kurs {0}' : 'kurs NBS {0}', fmtRate(fx.rates[cur])) + (dateTxt ? ' (' + dateTxt + ')' : '');
   }
   ['inc', 'exp', 'rec'].forEach(p=>{
     ['input', 'change'].forEach(ev=>{
@@ -3736,26 +3811,88 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     try{
       const r = await window.desktop.getRates(!!force);
       if(r && r.rates && r.rates.EUR){
-        fx = { date: r.date, rates: r.rates, stale: !!r.stale };
-        localStorage.setItem(FX_KEY, JSON.stringify({ date: fx.date, rates: fx.rates }));
+        fx = { date: r.date, rates: r.rates, buy: r.buy || {}, sell: r.sell || {}, source: r.source || 'nbs', stale: !!r.stale };
+        localStorage.setItem(FX_KEY, JSON.stringify({ date: fx.date, rates: fx.rates, buy: fx.buy, sell: fx.sell, source: fx.source }));
         // Ponavljajuce stavke u stranoj valuti: osvezi procenu u RSD po novom kursu
         let changed = false;
         recurring.forEach(rec=>{ const now = recurringAmountNow(rec); if(now !== rec.amount){ rec.amount = now; changed = true; } });
         if(changed) saveRecurring();
       }
+      lastRatesResult = r;
       renderRatesInfo(r);
       populateCurrencySelects();
       if(force) renderAll(); else invalidate();
     } catch(e){ renderRatesInfo({ error: e.message }); }
   }
+  let lastRatesResult = null;
   function renderRatesInfo(r){
     const el = document.getElementById('ratesInfo');
     if(!el) return;
-    const list = CURRENCIES.filter(c=> c !== 'RSD' && fx.rates[c]).map(c=> `${c} ${fmtRate(fx.rates[c])}`).join(' · ');
-    el.textContent = list
-      ? t('Srednji kurs NBS{0}: {1}{2}', fx.date ? t(' za {0}', parseLocalDate(fx.date).toLocaleDateString(LOCALE)) : '', list, r && r.stale ? t(' (nema interneta — prikazan poslednji preuzet kurs)') : '')
+    const has = Object.keys(fx.rates || {}).length > 0;
+    const dateTxt = fx.date ? parseLocalDate(fx.date).toLocaleDateString(LOCALE) : '';
+    const fallback = fx.source === 'fallback';
+    el.textContent = has
+      ? (fallback ? t('Tržišni kurs (rezervni izvor){0}', dateTxt ? t(' za {0}', dateTxt) : '') : t('Srednji kurs NBS{0}', dateTxt ? t(' za {0}', dateTxt) : ''))
+        + (r && r.stale ? t(' — nema interneta, prikazan je poslednji preuzet kurs.') : (dateTxt.endsWith('.') ? '' : '.'))
       : t('Kursna lista još nije preuzeta') + (r && r.error ? ` (${r.error})` : '') + '.';
+    const note = document.getElementById('ratesSourceNote');
+    if(note) note.textContent = fallback
+      ? t('Izvor NBS kursa (kurs.resenje.org) trenutno ne odgovara, pa se koristi open.er-api.com. Kurs je blizu NBS, ali nije zvaničan; čim NBS izvor proradi, aplikacija se sama vraća na njega.')
+      : t('Izvor: kurs.resenje.org (zvanična kursna lista NBS). Ako ne radi, koristi se rezervni izvor open.er-api.com.');
   }
+  // ---- Ekran Kursevi ----
+  function fxToRsd(c){ return c === 'RSD' ? 1 : fx.rates[c]; }
+  function renderRatesScreen(){
+    renderRatesInfo(lastRatesResult);
+    const avail = CURRENCIES.filter(c=> c === 'RSD' || fx.rates[c]);
+    const opt = c => `<option value="${c}">${c} — ${escapeHtml(currencyName(c))}</option>`;
+    ['fxConvFrom', 'fxConvTo'].forEach((id, i)=>{
+      const sel = document.getElementById(id);
+      const prev = sel.value || (i === 0 ? 'EUR' : 'RSD');
+      sel.innerHTML = avail.map(opt).join('');
+      sel.value = avail.includes(prev) ? prev : avail[i === 0 ? Math.min(1, avail.length - 1) : 0];
+    });
+    updateFxConverter();
+    const q = (document.getElementById('ratesFilter').value || '').trim().toLowerCase();
+    const rows = CURRENCIES.filter(c=> c !== 'RSD' && fx.rates[c])
+      .filter(c=> !q || c.toLowerCase().includes(q) || currencyName(c).toLowerCase().includes(q))
+      .sort((a, b)=> (fxFavorites.includes(b) - fxFavorites.includes(a)) || CURRENCIES.indexOf(a) - CURRENCIES.indexOf(b));
+    const cell = v => v ? fmtRate(v) : '<span class="muted">—</span>';
+    document.getElementById('ratesTableBody').innerHTML = rows.length ? rows.map(c=>{
+      const fav = fxFavorites.includes(c);
+      return `<tr class="${fav ? 'is-fav' : ''}">
+        <td class="c-star"><button class="fx-star" data-cur="${c}" aria-pressed="${fav}" title="${fav ? t('Ukloni iz unosa') : t('Nudi pri unosu')}">${fav ? '★' : '☆'}</button></td>
+        <td><span class="fx-code" translate="no">${c}</span> <span class="fx-name">${escapeHtml(currencyName(c))}</span></td>
+        <td class="num">${fmtRate(fx.rates[c])}</td><td class="num">${cell((fx.buy || {})[c])}</td><td class="num">${cell((fx.sell || {})[c])}</td>
+      </tr>`;
+    }).join('') : `<tr><td colspan="5" class="muted" style="padding:1.2em 0;">${Object.keys(fx.rates || {}).length ? t('Nema valute za tu pretragu.') : t('Kursna lista još nije preuzeta.')}</td></tr>`;
+  }
+  function updateFxConverter(){
+    const from = document.getElementById('fxConvFrom').value, to = document.getElementById('fxConvTo').value;
+    const amount = parseFloat(document.getElementById('fxConvAmount').value);
+    const out = document.getElementById('fxConvResult'), hint = document.getElementById('fxConvHint');
+    const a = fxToRsd(from), b = fxToRsd(to);
+    if(!a || !b){ out.textContent = '—'; hint.textContent = ''; return; }
+    const val = isNaN(amount) ? NaN : amount * a / b;
+    out.textContent = isNaN(val) ? '—' : val.toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    hint.textContent = `1 ${from} = ${fmtRate(a / b)} ${to}` + (from !== to ? ` · 1 ${to} = ${fmtRate(b / a)} ${from}` : '');
+  }
+  ['input', 'change'].forEach(ev=> ['fxConvAmount', 'fxConvFrom', 'fxConvTo'].forEach(id=> document.getElementById(id).addEventListener(ev, updateFxConverter)));
+  document.getElementById('fxConvSwap').addEventListener('click', ()=>{
+    const f = document.getElementById('fxConvFrom'), to = document.getElementById('fxConvTo');
+    const tmp = f.value; f.value = to.value; to.value = tmp;
+    updateFxConverter();
+  });
+  document.getElementById('ratesFilter').addEventListener('input', renderRatesScreen);
+  document.getElementById('ratesTableBody').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.fx-star');
+    if(!btn) return;
+    const c = btn.dataset.cur;
+    fxFavorites = fxFavorites.includes(c) ? fxFavorites.filter(x=> x !== c) : [...fxFavorites, c];
+    saveFxFavorites();
+    populateCurrencySelects();
+    renderRatesScreen();
+  });
 
   function renderAccountsOverview(){
     const panel = document.getElementById('accountsOverviewPanel');
@@ -7567,6 +7704,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
           accounts: accounts.map(a=>({ id: a.id, name: a.name })),
           defaultAccountId: defaultAccountId(),
           rates: Object.assign({}, fx.rates),
+          currencies: fxFavorites.filter(c=> fx.rates[c]),
           rateDate: fx.date,
           expenseCats: expenseCats.slice(),
           incomeCats: incomeCats.slice(),
