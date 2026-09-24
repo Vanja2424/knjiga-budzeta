@@ -15,8 +15,34 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true } }
 ]);
 
-// Srpski jezik za Chromium: datumi kao 23.09.2026, meni za desni klik i provera pravopisa na srpskom.
-app.commandLine.appendSwitch('lang', 'sr-Latn-RS');
+// Jezik aplikacije (srpski ili engleski) — cita se iz podesavanja pre pokretanja Chromium-a, jer od njega
+// zavise format datuma u poljima, meni za desni klik i provera pravopisa.
+function readLangEarly() {
+  try { return JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8')).lang === 'en' ? 'en' : 'sr'; }
+  catch { return 'sr'; }
+}
+let LANG = readLangEarly();
+app.commandLine.appendSwitch('lang', LANG === 'en' ? 'en-GB' : 'sr-Latn-RS');
+app.commandLine.appendSwitch('accept-lang', LANG === 'en' ? 'en-GB,en' : 'sr-Latn-RS,sr');
+const EN = {
+  'Ažuriranja': 'Updates', 'Ažuriranja rade samo u instaliranoj verziji aplikacije.': 'Updates only work in the installed version of the app.',
+  'Imaš najnoviju verziju ({0}).': 'You have the latest version ({0}).', 'Provera ažuriranja nije uspela.': 'The update check failed.',
+  'Sačuvaj izveštaj kao PDF': 'Save report as PDF', '{0} kasnih plaćanja': '{0} late payments', 'Knjiga budžeta': 'Budget Book',
+  'Knjiga budžeta — {0} kasno plaćanje': 'Budget Book — {0} late payment', 'Knjiga budžeta — {0} kasnih plaćanja': 'Budget Book — {0} late payments',
+  'Novi unos': 'New entry', 'Datoteka': 'File', 'Novi rashod…': 'New expense…', 'Novi prihod…': 'New income…', 'Brzi unos (iz bilo kog programa)': 'Quick entry (from any program)',
+  'Odštampaj izveštaj…': 'Print report…', 'Sačuvaj izveštaj kao PDF…': 'Save report as PDF…', 'Napravi rezervnu kopiju sada': 'Back up now',
+  'Otvori folder sa rezervnim kopijama': 'Open backups folder', 'Prikaži fajl sa podacima': 'Show data file', 'Zatvori prozor': 'Close window', 'Izađi': 'Quit',
+  'Prikaz': 'View', 'Pretraži stavke': 'Search items', 'Promeni temu (svetla/tamna)': 'Toggle theme (light/dark)', 'Skupi / proširi bočni meni': 'Collapse / expand sidebar',
+  'Uvećaj': 'Zoom in', 'Umanji': 'Zoom out', 'Stvarna veličina': 'Actual size', 'Ceo ekran': 'Full screen', 'Alatke za programere': 'Developer tools',
+  'Pomoć': 'Help', 'Prečice na tastaturi': 'Keyboard shortcuts', 'Proveri ažuriranja…': 'Check for updates…', 'O aplikaciji': 'About',
+  'Verzija {0}\nElectron {1}\n\nPodaci: {2}\nRezervne kopije: {3}': 'Version {0}\nElectron {1}\n\nData: {2}\nBackups: {3}',
+  'Otvori Knjigu budžeta': 'Open Budget Book', 'Brzi unos rashoda': 'Quick expense', 'Brzi unos prihoda': 'Quick income', 'Pokreni sa Windows-om': 'Start with Windows',
+  'Knjiga budžeta radi u pozadini': 'Budget Book is running in the background',
+  'Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).': 'Payment reminders still arrive. The app is in the system tray (next to the clock).',
+  'Novi rashod': 'New expense', 'Novi prihod': 'New income',
+  'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Podešavanja': 'Settings',
+};
+const T = (sr, ...args) => (LANG === 'en' && EN[sr] !== undefined ? EN[sr] : sr).replace(/\{(\d+)\}/g, (m, i) => args[i] !== undefined ? args[i] : m);
 
 const APP_ORIGIN = 'app://budzet/';
 const APP_URL = APP_ORIGIN + 'budzet-tracker.html';
@@ -43,7 +69,7 @@ let appTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 const DEFAULT_SETTINGS = {
   closeToTray: true, trayHintShown: false, quickAddShortcut: 'CommandOrControl+Alt+Shift+B', windowState: null,
-  lastVersion: null, restartHidden: false, releaseNotes: null
+  lastVersion: null, restartHidden: false, releaseNotes: null, lang: 'sr'
 };
 let settings = { ...DEFAULT_SETTINGS };
 function loadSettings() {
@@ -254,7 +280,7 @@ function postponeUpdate() {
 }
 function checkForUpdates(manual) {
   if (!autoUpdater) {
-    if (manual) dialog.showMessageBox(mainWindow, { type: 'info', title: 'Ažuriranja', message: 'Ažuriranja rade samo u instaliranoj verziji aplikacije.' });
+    if (manual) dialog.showMessageBox(mainWindow, { type: 'info', title: T('Ažuriranja'), message: T('Ažuriranja rade samo u instaliranoj verziji aplikacije.') });
     return;
   }
   if (updateState.status === 'ready' || updateState.status === 'downloading') {
@@ -284,7 +310,7 @@ function setupUpdater() {
   autoUpdater.on('checking-for-update', () => setUpdate({ status: 'checking', error: null }));
   autoUpdater.on('update-not-available', () => {
     setUpdate({ status: 'current' });
-    if (manualUpdateCheck) dialog.showMessageBox(mainWindow, { type: 'info', title: 'Ažuriranja', message: `Imaš najnoviju verziju (${app.getVersion()}).` });
+    if (manualUpdateCheck) dialog.showMessageBox(mainWindow, { type: 'info', title: T('Ažuriranja'), message: T('Imaš najnoviju verziju ({0}).', app.getVersion()) });
     manualUpdateCheck = false;
   });
   autoUpdater.on('update-available', (i) => { setUpdate({ status: 'downloading', version: i.version, percent: 0 }); manualUpdateCheck = false; });
@@ -297,7 +323,7 @@ function setupUpdater() {
   });
   autoUpdater.on('error', (err) => {
     setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0] });
-    if (manualUpdateCheck) dialog.showMessageBox(mainWindow, { type: 'warning', title: 'Ažuriranja', message: 'Provera ažuriranja nije uspela.', detail: updateState.error });
+    if (manualUpdateCheck) dialog.showMessageBox(mainWindow, { type: 'warning', title: T('Ažuriranja'), message: T('Provera ažuriranja nije uspela.'), detail: updateState.error });
     manualUpdateCheck = false;
   });
   setTimeout(() => checkForUpdates(false), 10000);
@@ -353,7 +379,7 @@ ipcMain.handle('rates:get', (_e, force) => getRates(!!force));
 // ---------- PDF ----------
 ipcMain.handle('pdf:choose', async (_e, suggestedName) => {
   const r = await dialog.showSaveDialog(mainWindow, {
-    title: 'Sačuvaj izveštaj kao PDF',
+    title: T('Sačuvaj izveštaj kao PDF'),
     defaultPath: path.join(app.getPath('documents'), suggestedName || 'Izvestaj.pdf'),
     filters: [{ name: 'PDF', extensions: ['pdf'] }]
   });
@@ -371,7 +397,7 @@ ipcMain.handle('pdf:write', async (_e, filePath) => {
 // ---------- Prozor, tema, bedz ----------
 let updatedFrom = null; // verzija pre upravo instaliranog azuriranja (za poruku "Azurirano na …")
 ipcMain.on('desktop:info', (e) => {
-  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom };
+  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom, lang: LANG };
 });
 ipcMain.on('desktop:theme', (_e, theme, explicit) => {
   appTheme = theme === 'dark' ? 'dark' : 'light';
@@ -382,11 +408,11 @@ ipcMain.on('desktop:theme', (_e, theme, explicit) => {
 ipcMain.on('desktop:badge', (_e, count, dataUrl) => {
   if (!mainWindow) return;
   if (count > 0 && dataUrl) {
-    mainWindow.setOverlayIcon(nativeImage.createFromDataURL(dataUrl), `${count} kasnih plaćanja`);
+    mainWindow.setOverlayIcon(nativeImage.createFromDataURL(dataUrl), T('{0} kasnih plaćanja', count));
   } else {
     mainWindow.setOverlayIcon(null, '');
   }
-  if (tray) tray.setToolTip(count > 0 ? `Knjiga budžeta — ${count} kasn${count === 1 ? 'o plaćanje' : 'ih plaćanja'}` : 'Knjiga budžeta');
+  if (tray) tray.setToolTip(count > 0 ? T(count === 1 ? 'Knjiga budžeta — {0} kasno plaćanje' : 'Knjiga budžeta — {0} kasnih plaćanja', count) : T('Knjiga budžeta'));
 });
 ipcMain.on('desktop:show', () => showMain());
 ipcMain.on('desktop:menu', (_e, x, y) => {
@@ -404,6 +430,12 @@ ipcMain.handle('settings:set', (_e, key, value) => {
   if (key === 'startWithWindows') setAutostart(!!value);
   if (key === 'closeToTray') { settings.closeToTray = !!value; saveSettings(); }
   if (key === 'quickAddShortcut') { settings.quickAddShortcut = String(value || ''); saveSettings(); registerQuickAddShortcut(); }
+  if (key === 'lang') {
+    settings.lang = value === 'en' ? 'en' : 'sr';
+    saveSettingsNow();
+    // Jezik menja i Chromium (datumi u poljima), pa se aplikacija ponovo pokrece
+    if (settings.lang !== LANG) { app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden') }); quitApp(); }
+  }
   rebuildTrayMenu();
   return { ok: true, quickAddShortcutOk: shortcutRegistered };
 });
@@ -483,7 +515,7 @@ function openQuickAdd(type, opts) {
     backgroundColor: SUPPORTS_MICA ? '#00000000' : THEME_COLORS[appTheme].bg,
     backgroundMaterial: SUPPORTS_MICA ? 'acrylic' : undefined,
     roundedCorners: true,
-    icon: ICON_PATH, title: 'Novi unos',
+    icon: ICON_PATH, title: T('Novi unos'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true }
   });
   placeQuickAdd(quickOpenedFromApp);
@@ -516,41 +548,42 @@ const SCREENS = [
 ];
 function menuTemplate() {
   return [
-    { label: 'Datoteka', submenu: [
-      { label: 'Novi rashod…', accelerator: 'CmdOrCtrl+N', click: () => openQuickAdd('expense', { fromApp: true }) },
-      { label: 'Novi prihod…', accelerator: 'CmdOrCtrl+Shift+N', click: () => openQuickAdd('income', { fromApp: true }) },
-      { label: 'Brzi unos (iz bilo kog programa)', accelerator: settings.quickAddShortcut || undefined, registerAccelerator: false, click: () => openQuickAdd('expense') },
+    { label: T('Datoteka'), submenu: [
+      { label: T('Novi rashod…'), accelerator: 'CmdOrCtrl+N', click: () => openQuickAdd('expense', { fromApp: true }) },
+      { label: T('Novi prihod…'), accelerator: 'CmdOrCtrl+Shift+N', click: () => openQuickAdd('income', { fromApp: true }) },
+      { label: T('Brzi unos (iz bilo kog programa)'), accelerator: settings.quickAddShortcut || undefined, registerAccelerator: false, click: () => openQuickAdd('expense') },
       { type: 'separator' },
-      { label: 'Odštampaj izveštaj…', accelerator: 'CmdOrCtrl+P', click: () => command('print-report') },
-      { label: 'Sačuvaj izveštaj kao PDF…', accelerator: 'CmdOrCtrl+Shift+S', click: () => command('save-pdf') },
+      { label: T('Odštampaj izveštaj…'), accelerator: 'CmdOrCtrl+P', click: () => command('print-report') },
+      { label: T('Sačuvaj izveštaj kao PDF…'), accelerator: 'CmdOrCtrl+Shift+S', click: () => command('save-pdf') },
       { type: 'separator' },
-      { label: 'Napravi rezervnu kopiju sada', click: () => command('backup-now') },
-      { label: 'Otvori folder sa rezervnim kopijama', click: () => { fs.mkdirSync(backupDir(), { recursive: true }); shell.openPath(backupDir()); } },
-      { label: 'Prikaži fajl sa podacima', click: () => { if (fs.existsSync(dataFile())) shell.showItemInFolder(dataFile()); } },
+      { label: T('Napravi rezervnu kopiju sada'), click: () => command('backup-now') },
+      { label: T('Otvori folder sa rezervnim kopijama'), click: () => { fs.mkdirSync(backupDir(), { recursive: true }); shell.openPath(backupDir()); } },
+      { label: T('Prikaži fajl sa podacima'), click: () => { if (fs.existsSync(dataFile())) shell.showItemInFolder(dataFile()); } },
       { type: 'separator' },
-      { label: 'Zatvori prozor', accelerator: 'CmdOrCtrl+W', click: () => mainWindow && mainWindow.close() },
-      { label: 'Izađi', accelerator: 'CmdOrCtrl+Q', click: () => quitApp() }
+      { label: T('Zatvori prozor'), accelerator: 'CmdOrCtrl+W', click: () => mainWindow && mainWindow.close() },
+      { label: T('Izađi'), accelerator: 'CmdOrCtrl+Q', click: () => quitApp() }
     ]},
-    { label: 'Prikaz', submenu: [
+    { label: T('Prikaz'), submenu: [
       ...SCREENS.map(([id, label], i) => ({
-        label, accelerator: id === 'podesavanja' ? 'CmdOrCtrl+,' : `CmdOrCtrl+${i + 1}`,
+        label: T(label), accelerator: id === 'podesavanja' ? 'CmdOrCtrl+,' : `CmdOrCtrl+${i + 1}`,
         click: () => command('navigate', id)
       })),
-      { label: 'Pretraži stavke', accelerator: 'CmdOrCtrl+F', click: () => command('search') },
+      { label: T('Pretraži stavke'), accelerator: 'CmdOrCtrl+F', click: () => command('search') },
       { type: 'separator' },
-      { label: 'Promeni temu (svetla/tamna)', accelerator: 'CmdOrCtrl+Shift+L', click: () => command('toggle-theme') },
+      { label: T('Promeni temu (svetla/tamna)'), accelerator: 'CmdOrCtrl+Shift+L', click: () => command('toggle-theme') },
+      { label: T('Skupi / proširi bočni meni'), accelerator: 'CmdOrCtrl+Alt+S', click: () => command('toggle-sidebar') },
       { type: 'separator' },
-      { label: 'Uvećaj', accelerator: 'CmdOrCtrl+=', click: () => zoom(+0.5) },
-      { label: 'Umanji', accelerator: 'CmdOrCtrl+-', click: () => zoom(-0.5) },
-      { label: 'Stvarna veličina', accelerator: 'CmdOrCtrl+0', click: () => zoom(0) },
-      { label: 'Ceo ekran', accelerator: 'F11', click: () => mainWindow && mainWindow.setFullScreen(!mainWindow.isFullScreen()) },
+      { label: T('Uvećaj'), accelerator: 'CmdOrCtrl+=', click: () => zoom(+0.5) },
+      { label: T('Umanji'), accelerator: 'CmdOrCtrl+-', click: () => zoom(-0.5) },
+      { label: T('Stvarna veličina'), accelerator: 'CmdOrCtrl+0', click: () => zoom(0) },
+      { label: T('Ceo ekran'), accelerator: 'F11', click: () => mainWindow && mainWindow.setFullScreen(!mainWindow.isFullScreen()) },
       { type: 'separator' },
-      { label: 'Alatke za programere', accelerator: 'CmdOrCtrl+Shift+I', click: () => mainWindow && mainWindow.webContents.toggleDevTools() }
+      { label: T('Alatke za programere'), accelerator: 'CmdOrCtrl+Shift+I', click: () => mainWindow && mainWindow.webContents.toggleDevTools() }
     ]},
-    { label: 'Pomoć', submenu: [
-      { label: 'Prečice na tastaturi', click: () => command('navigate', 'podesavanja-desktop') },
-      { label: 'Proveri ažuriranja…', click: () => checkForUpdates(true) },
-      { label: 'O aplikaciji', click: showAbout }
+    { label: T('Pomoć'), submenu: [
+      { label: T('Prečice na tastaturi'), click: () => command('navigate', 'podesavanja-desktop') },
+      { label: T('Proveri ažuriranja…'), click: () => checkForUpdates(true) },
+      { label: T('O aplikaciji'), click: showAbout }
     ]}
   ];
 }
@@ -596,9 +629,9 @@ function handleShortcut(event, input) {
 }
 function showAbout() {
   dialog.showMessageBox(mainWindow, {
-    type: 'info', title: 'O aplikaciji', icon: nativeImage.createFromPath(ICON_PATH),
-    message: 'Knjiga budžeta',
-    detail: `Verzija ${app.getVersion()}\nElectron ${process.versions.electron}\n\nPodaci: ${dataFile()}\nRezervne kopije: ${backupDir()}`
+    type: 'info', title: T('O aplikaciji'), icon: nativeImage.createFromPath(ICON_PATH),
+    message: T('Knjiga budžeta'),
+    detail: T('Verzija {0}\nElectron {1}\n\nPodaci: {2}\nRezervne kopije: {3}', app.getVersion(), process.versions.electron, dataFile(), backupDir())
   });
 }
 
@@ -606,19 +639,19 @@ function showAbout() {
 function rebuildTrayMenu() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate([
-    { label: 'Otvori Knjigu budžeta', click: showMain },
+    { label: T('Otvori Knjigu budžeta'), click: showMain },
     { type: 'separator' },
-    { label: 'Brzi unos rashoda', click: () => openQuickAdd('expense') },
-    { label: 'Brzi unos prihoda', click: () => openQuickAdd('income') },
+    { label: T('Brzi unos rashoda'), click: () => openQuickAdd('expense') },
+    { label: T('Brzi unos prihoda'), click: () => openQuickAdd('income') },
     { type: 'separator' },
-    { label: 'Pokreni sa Windows-om', type: 'checkbox', checked: getAutostart(), click: (i) => { setAutostart(i.checked); sendToMain('desktop:settings-changed'); } },
+    { label: T('Pokreni sa Windows-om'), type: 'checkbox', checked: getAutostart(), click: (i) => { setAutostart(i.checked); sendToMain('desktop:settings-changed'); } },
     { type: 'separator' },
-    { label: 'Izađi', click: quitApp }
+    { label: T('Izađi'), click: quitApp }
   ]));
 }
 function createTray() {
   tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize({ width: 32, height: 32 }));
-  tray.setToolTip('Knjiga budžeta');
+  tray.setToolTip(T('Knjiga budžeta'));
   tray.on('click', showMain);
   rebuildTrayMenu();
 }
@@ -651,7 +684,7 @@ function createWindow(startHidden) {
     minWidth: 420,
     minHeight: 520,
     show: false,
-    title: 'Knjiga budžeta',
+    title: T('Knjiga budžeta'),
     icon: ICON_PATH,
     backgroundColor: SUPPORTS_MICA ? '#00000000' : c.bg,
     backgroundMaterial: SUPPORTS_MICA ? 'mica' : undefined,
@@ -693,8 +726,8 @@ function createWindow(startHidden) {
     mainWindow.hide();
     if (!settings.trayHintShown && Notification.isSupported()) {
       new Notification({
-        title: 'Knjiga budžeta radi u pozadini',
-        body: 'Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).',
+        title: T('Knjiga budžeta radi u pozadini'),
+        body: T('Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).'),
         icon: ICON_PATH
       }).show();
       settings.trayHintShown = true;
@@ -771,8 +804,8 @@ function init() {
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 
   app.setUserTasks([
-    { program: EXE_PATH, arguments: '--quick-add=expense', iconPath: EXE_PATH, iconIndex: 0, title: 'Novi rashod', description: 'Brzi unos rashoda' },
-    { program: EXE_PATH, arguments: '--quick-add=income', iconPath: EXE_PATH, iconIndex: 0, title: 'Novi prihod', description: 'Brzi unos prihoda' }
+    { program: EXE_PATH, arguments: '--quick-add=expense', iconPath: EXE_PATH, iconIndex: 0, title: T('Novi rashod'), description: T('Brzi unos rashoda') },
+    { program: EXE_PATH, arguments: '--quick-add=income', iconPath: EXE_PATH, iconIndex: 0, title: T('Novi prihod'), description: T('Brzi unos prihoda') }
   ]);
 
   if (settings.lastVersion && settings.lastVersion !== app.getVersion()) updatedFrom = settings.lastVersion;
@@ -822,6 +855,7 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
         try { result = await runInMain(fs.readFileSync(process.env.KNJIGA_TEST_SCRIPT, 'utf8')); }
         catch (err) { result = { ok: false, failures: ['skripta: ' + err.message] }; }
         result.consoleErrors = errors;
+        result.locale = app.getLocale(); result.lang = LANG;
         if (errors.length) result.ok = false;
         if (process.env.KNJIGA_TEST_SHOT) {
           try { fs.writeFileSync(process.env.KNJIGA_TEST_SHOT, (await mainWindow.webContents.capturePage()).toPNG()); } catch (err) { result.shotError = err.message; }

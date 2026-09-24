@@ -17,6 +17,7 @@ const FILES = [
   ['.gitignore', path.join(root, '.gitignore')],
   ['budzet-tracker.html', path.join(root, 'budzet-tracker.html')],
   ['budzet-core.js', path.join(root, 'budzet-core.js')],
+  ['i18n.js', path.join(root, 'i18n.js')],
   ['xlsx.core.min.js', path.join(root, 'xlsx.core.min.js')],
   ['pokreni-budzet.bat', path.join(root, 'pokreni-budzet.bat')],
   ...['main.js', 'preload.js', 'quick-add.html', 'package.json', 'package-lock.json'].map(f => ['app/' + f, path.join(app, f)]),

@@ -8,6 +8,7 @@ node_modules/
 app/dist/
 app/budzet-tracker.html
 app/budzet-core.js
+app/i18n.js
 app/xlsx.core.min.js
 
 # Lokalne kopije verzija

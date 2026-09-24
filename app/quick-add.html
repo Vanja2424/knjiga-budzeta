@@ -211,15 +211,18 @@
     <div class="msg" id="doneMsg">Dodato</div>
   </div>
 
+<script src="i18n.js"></script>
 <script>
+  I18N.start();
+  const t = I18N.t, LOCALE = I18N.locale;
   const $ = (id) => document.getElementById(id);
   const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
   let type = qs.get('type') === 'income' ? 'income' : 'expense';
   let data = { expenseCats: [], incomeCats: [], history: [], rules: [], accounts: [], rates: {}, rateDate: null };
   let keepOpen = false;
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-  const fmt = n => Math.round(n).toLocaleString('sr-Latn-RS') + ' RSD';
-  const monthLabel = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'long', year:'numeric'}); };
+  const fmt = n => Math.round(n).toLocaleString(LOCALE) + ' RSD';
+  const monthLabel = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString(LOCALE, {month:'long', year:'numeric'}); };
   const addMonths = (m, n) => { const [y,mo] = m.split('-').map(Number); const d = new Date(y, mo-1+n, 1); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`; };
 
   function catsFor(t){ return t === 'expense' ? data.expenseCats : data.incomeCats; }
@@ -254,7 +257,7 @@
   function updateConv(){
     const cur = $('currency').value, v = parseFloat($('amount').value);
     const rate = data.rates[cur];
-    $('conv').textContent = (cur !== 'RSD' && rate) ? (isNaN(v) ? '' : `≈ ${fmt(v * rate)} · `) + `kurs NBS ${rate.toLocaleString('sr-Latn-RS', {maximumFractionDigits: 4})}` : '';
+    $('conv').textContent = (cur !== 'RSD' && rate) ? (isNaN(v) ? '' : `≈ ${fmt(v * rate)} · `) + t('kurs NBS {0}', rate.toLocaleString(LOCALE, {maximumFractionDigits: 4})) : '';
     updateSpreadHint();
     updateSplitTotal();
   }
@@ -268,7 +271,7 @@
     if(!$('spreadStart').value) $('spreadStart').value = ($('date').value || today()).slice(0, 7);
     const n = Math.max(2, Math.min(60, parseInt($('spreadMonths').value, 10) || 2));
     const start = $('spreadStart').value, end = addMonths(start, n - 1), a = amountRsd();
-    $('spreadHint').textContent = `${monthLabel(start)} – ${monthLabel(end)}` + (a > 0 ? ` — po ${fmt(a / n)} mesečno` : '');
+    $('spreadHint').textContent = `${monthLabel(start)} – ${monthLabel(end)}` + (a > 0 ? t(' — po {0} mesečno', fmt(a / n)) : '');
     fit();
   }
   function addSplitRow(cat, amount){
@@ -276,7 +279,7 @@
     row.className = 'split-row';
     row.innerHTML = `<select class="f split-cat" aria-label="Kategorija">${catOptions('expense', cat)}</select>
       <input class="f split-amt" type="number" min="0" step="any" placeholder="Iznos" aria-label="Iznos" value="${amount || ''}">
-      <button type="button" class="icon-btn" title="Ukloni" aria-label="Ukloni">✕</button>`;
+      <button type="button" class="icon-btn" title="${t('Ukloni')}" aria-label="${t('Ukloni')}">✕</button>`;
     row.querySelector('.icon-btn').addEventListener('click', () => { row.remove(); updateSplitTotal(); });
     row.querySelector('.split-amt').addEventListener('input', updateSplitTotal);
     $('splitRows').appendChild(row);
@@ -287,7 +290,7 @@
     if($('splitOn').checked && !$('splitRows').children.length){ addSplitRow($('category').value); addSplitRow(); return; }
     const total = [...document.querySelectorAll('.split-amt')].reduce((s,i) => s + (parseFloat(i.value) || 0), 0);
     const a = parseFloat($('amount').value);
-    $('splitTotal').textContent = $('splitOn').checked ? `Ukupno: ${total.toLocaleString('sr-Latn-RS')} ${$('currency').value}` + (!isNaN(a) && a > 0 && Math.abs(a - total) > 0.001 ? ` (iznos gore: ${a.toLocaleString('sr-Latn-RS')})` : '') : '';
+    $('splitTotal').textContent = $('splitOn').checked ? t('Ukupno: {0} {1}', total.toLocaleString(LOCALE), $('currency').value) + (!isNaN(a) && a > 0 && Math.abs(a - total) > 0.001 ? t(' (iznos gore: {0})', a.toLocaleString(LOCALE)) : '') : '';
     fit();
   }
   let fitRaf = 0;
@@ -371,7 +374,7 @@
     try{
       const r = await window.desktop.quick.add(entry);
       if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; fit(); return; }
-      $('doneMsg').textContent = `${type === 'expense' ? 'Rashod' : 'Prihod'} dodat: ${r.amountText}`;
+      $('doneMsg').textContent = t(type === 'expense' ? 'Rashod dodat:' : 'Prihod dodat:') + ' ' + r.amountText;
       $('done').classList.add('show');
       if(stay){
         setTimeout(() => { const t = type; resetForm(); type = t; loadData().then(() => $('amount').focus()); }, 650);
@@ -379,7 +382,7 @@
         setTimeout(() => window.desktop.quick.close(), 800);
       }
     } catch(err){
-      $('err').textContent = 'Greška: ' + err.message; $('addBtn').disabled = false; fit();
+      $('err').textContent = t('Greška:') + ' ' + err.message; $('addBtn').disabled = false; fit();
     }
   });
 

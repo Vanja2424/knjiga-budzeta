@@ -1416,11 +1416,33 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 .del-btn:active, .edit-btn:active, .dup-btn:active, .envelope-suggest-btn:active{ transform: scale(0.9); }
 .del-btn, .edit-btn, .dup-btn, .envelope-suggest-btn{ transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
 
+/* ---------- Skupljanje bocnog menija ---------- */
+.sb-toggle{
+  margin-left: auto; width: 30px; height: 30px; flex-shrink: 0; border: none; border-radius: 7px; background: transparent;
+  color: var(--ink-soft); display: grid; place-items: center; cursor: default;
+  transition: background-color var(--dur-fast) ease, color var(--dur-fast) ease, transform var(--dur-fast) ease;
+}
+.sb-toggle svg{ width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.sb-toggle:hover{ background: var(--fill); color: var(--ink); }
+.sb-toggle:active{ transform: scale(0.92); }
+.sidebar{ transition: flex-basis var(--dur) var(--ease), width var(--dur) var(--ease); }
+html.sidebar-collapsed .sidebar{ flex-basis: 64px; width: 64px; padding-left: 8px; padding-right: 8px; }
+html.sidebar-collapsed .sb-name, html.sidebar-collapsed .tab-label{ display: none; }
+html.sidebar-collapsed .sb-brand{ flex-direction: column; gap: 10px; padding-left: 0; padding-right: 0; }
+html.sidebar-collapsed .sb-toggle{ margin-left: 0; }
+html.sidebar-collapsed nav.tabs button{ justify-content: center; padding: 9px 0; position: relative; }
+html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; }
+.lang-seg{ display:inline-flex; gap: 2px; padding: 3px; background: var(--fill); border-radius: 9px; }
+.lang-seg button{ border: none; background: transparent; color: var(--ink); border-radius: 7px; padding: 6px 18px; font: 500 13.5px var(--font); cursor: default; }
+.lang-seg button.active{ background: var(--card); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
+[data-theme="dark"] .lang-seg button.active{ background: #636366; }
+
 /* ---------- Uski prozori ---------- */
 @media (max-width: 980px){
   .sidebar{ flex-basis: 64px; width: 64px; padding-left: 8px; padding-right: 8px; }
   .sb-name, .tab-label{ display: none; }
   .sb-brand{ justify-content: center; padding-left: 0; padding-right: 0; }
+  .sb-toggle{ display: none; }
   nav.tabs button{ justify-content: center; padding: 9px 0; position: relative; }
   nav.tabs .tab-badge{ position: absolute; top: 2px; right: 4px; min-width: 16px; height: 16px; padding: 0 4px; font-size: 10px; }
   .wrap{ padding-left: 24px; padding-right: 24px; }
@@ -1493,7 +1515,9 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 <div class="app-scroll" id="appScroll">
 <div class="shell">
 <aside class="sidebar no-print">
-  <div class="sb-brand"><span class="sb-appicon" aria-hidden="true">K</span><span class="sb-name">Knjiga budžeta</span></div>
+  <div class="sb-brand"><span class="sb-appicon" aria-hidden="true">K</span><span class="sb-name">Knjiga budžeta</span>
+    <button class="sb-toggle" id="sidebarToggle" type="button" aria-expanded="true" title="Skupi bočni meni"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg></button>
+  </div>
   <nav class="tabs" aria-label="Glavni meni">
     <button data-group="pregled" class="active" title="Pregled"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="tab-label">Pregled</span></button>
     <button data-group="transakcije" title="Transakcije"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.75" cy="6" r="1.1"/><circle cx="4.75" cy="12" r="1.1"/><circle cx="4.75" cy="18" r="1.1"/></svg><span class="tab-label">Transakcije</span><span class="tab-badge" id="rashodiBadge" style="display:none;"></span></button>
@@ -2110,6 +2134,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         <label class="paid-checkbox-label"><input type="checkbox" id="soundToggle"> Zvučni efekti (plaćeno, brisanje, cilj ostvaren)</label>
       </div>
 
+      <div class="settings-group">
+        <h3>Jezik / Language</h3>
+        <div class="lang-seg" role="radiogroup" aria-label="Jezik / Language" translate="no">
+          <button type="button" data-lang="sr" role="radio">Srpski</button>
+          <button type="button" data-lang="en" role="radio">English</button>
+        </div>
+      </div>
+
       <div id="desktopSettings" style="display:none;">
         <div class="settings-group">
           <h3>Desktop aplikacija</h3>
@@ -2177,6 +2209,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></span><span>Sačuvaj izveštaj kao PDF</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd></span><span>Svetla / tamna tema</span>
             <span><kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span><span>Uvećaj / umanji / stvarna veličina</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>S</kbd></span><span>Skupi / proširi bočni meni</span>
             <span><kbd>F11</kbd></span><span>Ceo ekran</span>
             <span><kbd>Ctrl</kbd> + <kbd>W</kbd></span><span>Zatvori prozor (app ostaje u tray-u)</span>
             <span><kbd>Ctrl</kbd> + <kbd>Q</kbd></span><span>Izađi iz aplikacije</span>
@@ -2363,11 +2396,18 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   </div>
 </div>
 
-<script src=xlsx.core.min.js></script>
-<script src=budzet-core.js></script>
+<script src="xlsx.core.min.js"></script>
+<script src="budzet-core.js"></script>
+<script src="i18n.js"></script>
 <script>
 (function(){
   const C = window.BudzetCore;
+  // Prevodi: staticki tekst se prevodi sam; poruke sa vrednostima idu kroz t('... {0}', x)
+  I18N.start();
+  const t = I18N.t;
+  const LOCALE = I18N.locale;
+  const daysTxt = n => t(n === 1 ? '{0} dan' : '{0} dana', n);
+  const monthsTxt = n => t(n === 1 ? '{0} mesec' : '{0} meseci', n);
   const ENTRIES_KEY = 'budzet-stavke-v2';
   const CATS_KEY = 'budzet-kategorije-v2';
   const LIMITS_KEY = 'budzet-limiti-v1';
@@ -2459,7 +2499,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   let savedScenarios = JSON.parse(localStorage.getItem(SAVED_SCENARIOS_KEY) || '[]');
   const saveSavedScenarios = () => localStorage.setItem(SAVED_SCENARIOS_KEY, JSON.stringify(savedScenarios));
 
-  const fmt = n => Math.round(n).toLocaleString('sr-Latn-RS') + ' RSD';
+  const fmt = n => Math.round(n).toLocaleString(LOCALE) + ' RSD';
   const saveEntries = () => localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
   const saveCats = () => localStorage.setItem(CATS_KEY, JSON.stringify(expenseCats));
   const saveLimits = () => localStorage.setItem(LIMITS_KEY, JSON.stringify(limits));
@@ -2590,7 +2630,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const fill = document.getElementById('undoProgressFill');
     if(undoStack.length === 0){ hideToast(); return; }
     const top = undoStack[undoStack.length - 1];
-    const label = undoStack.length > 1 ? `${top.message} (+${undoStack.length - 1} još na čekanju)` : top.message;
+    const label = undoStack.length > 1 ? t('{0} (+{1} još na čekanju)', top.message, undoStack.length - 1) : top.message;
     document.getElementById('undoMessage').textContent = label;
     const newBtn = document.getElementById('undoBtn').cloneNode(true);
     document.getElementById('undoBtn').replaceWith(newBtn);
@@ -2827,7 +2867,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   }
 
   document.getElementById('todayLine').textContent =
-    new Date().toLocaleDateString('sr-Latn-RS', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+    new Date().toLocaleDateString(LOCALE, {weekday:'long', year:'numeric', month:'long', day:'numeric'});
   document.getElementById('incDate').value = toISODateLocal(new Date());
   document.getElementById('expDate').value = toISODateLocal(new Date());
 
@@ -2854,6 +2894,39 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       if(!localStorage.getItem(THEME_KEY)) applyTheme(e.matches ? 'dark' : 'light', false);
     });
   }
+  // ---- Jezik ----
+  document.querySelectorAll('.lang-seg button').forEach(b=>{
+    const on = b.dataset.lang === I18N.lang;
+    b.classList.toggle('active', on); b.setAttribute('aria-checked', on);
+    b.addEventListener('click', async ()=>{
+      if(b.dataset.lang === I18N.lang) return;
+      const lang = b.dataset.lang;
+      try{ localStorage.setItem(I18N.LANG_KEY, lang); } catch(e){ /* ignorisano */ }
+      if(window.desktop && window.desktop.setSetting){
+        // Desktop: jezik pamti glavni program (meniji, datumi) i aplikacija se ponovo pokrece
+        if(window.__desktopData) await window.__desktopData.saveNow();
+        window.desktop.setSetting('lang', lang);
+      } else location.reload();
+    });
+  });
+
+  // ---- Bocni meni: skupljanje na ikonice (pamti se) ----
+  const SIDEBAR_KEY = 'budzet-meni-skupljen-v1';
+  function setSidebarCollapsed(on){
+    document.documentElement.classList.toggle('sidebar-collapsed', on);
+    const btn = document.getElementById('sidebarToggle');
+    btn.setAttribute('aria-expanded', !on);
+    btn.title = t(on ? 'Proširi bočni meni' : 'Skupi bočni meni') + ' (Ctrl+Alt+S)';
+    btn.setAttribute('aria-label', t(on ? 'Proširi bočni meni' : 'Skupi bočni meni'));
+    try{ localStorage.setItem(SIDEBAR_KEY, on ? '1' : ''); } catch(e){ /* ignorisano */ }
+  }
+  setSidebarCollapsed(localStorage.getItem(SIDEBAR_KEY) === '1');
+  document.getElementById('sidebarToggle').addEventListener('click', ()=> setSidebarCollapsed(!document.documentElement.classList.contains('sidebar-collapsed')));
+  document.addEventListener('keydown', (e)=>{
+    if(e.ctrlKey && e.altKey && (e.key === 's' || e.key === 'S')){ e.preventDefault(); setSidebarCollapsed(!document.documentElement.classList.contains('sidebar-collapsed')); }
+  });
+  window.__toggleSidebar = ()=> setSidebarCollapsed(!document.documentElement.classList.contains('sidebar-collapsed'));
+
   const soundToggle = document.getElementById('soundToggle');
   soundToggle.checked = soundOn;
   soundToggle.addEventListener('change', ()=>{
@@ -3086,7 +3159,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const cats = budgetCats();
     if(cats.length === 0 && !(monthlyBudget > 0)){ panel.style.display = 'none'; return; }
     panel.style.display = 'block';
-    document.getElementById('envelopesTitle').textContent = 'Budžet — ' + monthYearLabelSr(viewMonth);
+    document.getElementById('envelopesTitle').textContent = t('Budžet — {0}', monthYearLabelSr(viewMonth));
     const isCurrent = viewMonth === currentMonthKey();
     const rows = [];
     if(monthlyBudget > 0){
@@ -3096,7 +3169,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     cats.map(cat=> ({ cat, info: envelopeRemainingThisMonth(cat, viewMonth) }))
       .sort((a,b)=> (b.info.spent / (b.info.allocated + b.info.rollover || 1)) - (a.info.spent / (a.info.allocated + a.info.rollover || 1)))
       .forEach(({cat, info})=>{
-        const rolloverTxt = info.rollover !== 0 ? ` <span style="opacity:0.65;">(${info.rollover>0?'+':''}${fmt(info.rollover)} preneto)</span>` : '';
+        const rolloverTxt = info.rollover !== 0 ? ` <span style="opacity:0.65;">(${t('{0} preneto', (info.rollover>0?'+':'') + fmt(info.rollover))})</span>` : '';
         rows.push({ name: catTagHtml(cat), spent: info.spent, total: info.allocated + info.rollover, rolloverTxt });
       });
     const list = document.getElementById('envelopesList');
@@ -3105,8 +3178,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const pct = r.total > 0 ? r.spent / r.total * 100 : 100;
       const barClass = remaining < 0 ? 'over' : (pct >= 80 ? 'near' : 'ok');
       const right = remaining >= 0
-        ? `${fmt(r.spent)} / ${fmt(r.total)} · <span style="color:var(--ink-soft);">preostalo ${fmt(remaining)}</span>`
-        : `${fmt(r.spent)} / ${fmt(r.total)} · <span style="color:var(--rust-text);">prekoračeno ${fmt(-remaining)}</span>`;
+        ? `${fmt(r.spent)} / ${fmt(r.total)} · <span style="color:var(--ink-soft);">${t('preostalo {0}', fmt(remaining))}</span>`
+        : `${fmt(r.spent)} / ${fmt(r.total)} · <span style="color:var(--rust-text);">${t('prekoračeno {0}', fmt(-remaining))}</span>`;
       return `<div class="breakdown-item">
         <div class="row"><span>${r.name}${r.rolloverTxt}</span><span>${right}</span></div>
         <div class="bar-track"><div class="bar-fill ${barClass}" data-target="${Math.min(100,Math.max(0,pct)).toFixed(1)}%"></div></div>
@@ -3119,7 +3192,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(totalSurplus > 0 && goals.length > 0){
       sweepBtn.style.display = 'inline-block';
       sweepBtn.dataset.amount = totalSurplus;
-      sweepBtn.textContent = `Prebaci preostali budžet (${fmt(totalSurplus)}) u cilj`;
+      sweepBtn.textContent = t('Prebaci preostali budžet ({0}) u cilj', fmt(totalSurplus));
     } else {
       sweepBtn.style.display = 'none';
     }
@@ -3127,7 +3200,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   document.getElementById('envelopeSweepBtn').addEventListener('click', ()=>{
     const amount = parseFloat(document.getElementById('envelopeSweepBtn').dataset.amount) || 0;
     if(amount <= 0 || goals.length === 0) return;
-    openEditModal(`Prebaci preostali budžet (${fmt(amount)}) u cilj`, [
+    openEditModal(t('Prebaci preostali budžet ({0}) u cilj', fmt(amount)), [
       {key:'goalName', label:'Cilj', type:'select', value: goals[0].name, options: goals.map(g=>g.name)},
     ], (vals)=>{
       const g = goals.find(x=>x.name === vals.goalName);
@@ -3185,7 +3258,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   }
   function monthYearLabelSr(mKey){
     const [y,mo] = mKey.split('-');
-    return new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long', year:'numeric'});
+    return new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'long', year:'numeric'});
   }
   const MONTH_NAMES_SR = ['Januar','Februar','Mart','April','Maj','Jun','Jul','Avgust','Septembar','Oktobar','Novembar','Decembar'];
   const FREQ_OPTIONS = ['Mesečno', 'Kvartalno', 'Godišnje'];
@@ -3301,8 +3374,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(lastPaidK < 1) return null;
     const mKey = monthKeyPlus(lastPaidK);
     const [y,mo] = mKey.split('-');
-    const label = new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'long', year:'numeric'});
-    return 'avansno plaćeno zaključno sa: ' + label;
+    const label = new Date(y, mo-1, 1).toLocaleDateString(LOCALE, {month:'long', year:'numeric'});
+    return t('avansno plaćeno zaključno sa:') + ' ' + label;
   }
 
   function getPending(){
@@ -3328,10 +3401,10 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   function spreadLabel(e){
     if(!isSpread(e)) return '';
     const { n, start, end } = C.spreadOf(e);
-    const short = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'short'}).replace('.','') + (start.slice(0,4) !== end.slice(0,4) ? ' ' + y.slice(2) : ''); };
-    return `${n} mes. (${short(start)} – ${short(end)})`;
+    const short = m => { const [y,mo] = m.split('-'); return new Date(y, mo-1, 1).toLocaleDateString(LOCALE, {month:'short'}).replace('.','') + (start.slice(0,4) !== end.slice(0,4) ? ' ' + y.slice(2) : ''); };
+    return t('{0} mes. ({1} – {2})', n, short(start), short(end));
   }
-  const spreadTag = e => isSpread(e) ? ` <span class="tag-chip" title="Iznos se raspoređuje na više meseci">⇄ ${spreadLabel(e)}</span>` : '';
+  const spreadTag = e => isSpread(e) ? ` <span class="tag-chip" title="${t('Iznos se raspoređuje na više meseci')}">⇄ ${spreadLabel(e)}</span>` : '';
 
   function togglePaid(r, checked, customAmount){
     const mKey = currentMonthKey();
@@ -3454,28 +3527,28 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   }
   function renderSummary(){
     const cur = currentMonthKey();
-    const t = monthTotals(viewMonth);
+    const mt = monthTotals(viewMonth);
     const prev = monthTotals(C.addMonths(viewMonth, -1));
-    animateNumber(document.getElementById('totalIncome'), prevSummaryVals.income, t.income);
-    animateNumber(document.getElementById('totalExpense'), prevSummaryVals.expense, t.expense);
+    animateNumber(document.getElementById('totalIncome'), prevSummaryVals.income, mt.income);
+    animateNumber(document.getElementById('totalExpense'), prevSummaryVals.expense, mt.expense);
     const balEl = document.getElementById('totalBalance');
-    balEl.className = 'value balance ' + (t.net >= 0 ? 'pos' : 'neg');
-    animateNumber(balEl, prevSummaryVals.balance, t.net);
-    const diffTxt = (now, before) => before > 0 ? `${Math.abs(Math.round((now-before)/before*100))}% ${now >= before ? 'više' : 'manje'} nego mesec ranije` : '';
-    document.getElementById('incomeSub').textContent = diffTxt(t.income, prev.income);
-    document.getElementById('expenseSub').textContent = diffTxt(t.expense, prev.expense);
+    balEl.className = 'value balance ' + (mt.net >= 0 ? 'pos' : 'neg');
+    animateNumber(balEl, prevSummaryVals.balance, mt.net);
+    const diffTxt = (now, before) => before > 0 ? t(now >= before ? '{0}% više nego mesec ranije' : '{0}% manje nego mesec ranije', Math.abs(Math.round((now-before)/before*100))) : '';
+    document.getElementById('incomeSub').textContent = diffTxt(mt.income, prev.income);
+    document.getElementById('expenseSub').textContent = diffTxt(mt.expense, prev.expense);
     let balanceNow;
-    if(accounts.length){ const bal = accountBalances(); balanceNow = 'Na računima: ' + fmt(accounts.reduce((s,a)=> s + bal[a.id], 0)); }
-    else balanceNow = 'Ukupno stanje: ' + fmt(overallBalance());
+    if(accounts.length){ const bal = accountBalances(); balanceNow = t('Na računima: {0}', fmt(accounts.reduce((s,a)=> s + bal[a.id], 0))); }
+    else balanceNow = t('Ukupno stanje: {0}', fmt(overallBalance()));
     document.getElementById('balanceSub').textContent = balanceNow;
 
     const p = pendingForMonth(viewMonth);
     animateNumber(document.getElementById('pendingTotal'), prevSummaryVals.pending, p.expense);
     document.getElementById('pendingTotal').classList.toggle('zero', p.expense === 0);
-    prevSummaryVals = { income: t.income, expense: t.expense, pending: p.expense, balance: t.net };
+    prevSummaryVals = { income: mt.income, expense: mt.expense, pending: p.expense, balance: mt.net };
     const parts = [];
-    parts.push(p.count ? `${p.count} ${p.count===1?'stavka':'stavki'}` : (viewMonth < cur ? 'ništa neplaćeno' : 'sve plaćeno'));
-    if(p.income > 0) parts.push(`očekuje se +${fmt(p.income)}`);
+    parts.push(p.count ? t(p.count===1?'{0} stavka':'{0} stavki', p.count) : t(viewMonth < cur ? 'ništa neplaćeno' : 'sve plaćeno'));
+    if(p.income > 0) parts.push(t('očekuje se +{0}', fmt(p.income)));
     document.getElementById('pendingSub').textContent = parts.join(' · ');
     renderPeriodBar();
   }
@@ -3526,8 +3599,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       sel.style.display = available.length > 1 ? '' : 'none';
     });
   }
-  const fmtRate = r => r.toLocaleString('sr-Latn-RS', { minimumFractionDigits: 2, maximumFractionDigits: 4 });
-  const fmtOrig = (amount, cur) => amount.toLocaleString('sr-Latn-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (CURRENCY_SYMBOL[cur] || cur);
+  const fmtRate = r => r.toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 4 });
+  const fmtOrig = (amount, cur) => amount.toLocaleString(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' ' + (CURRENCY_SYMBOL[cur] || cur);
   // Iznos iz forme: vraca { amount (RSD), foreign: {origAmount, currency, rate} | null }
   function readAmountField(prefix){
     const raw = parseFloat(document.getElementById(prefix + 'Amount').value);
@@ -3543,8 +3616,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const cur = document.getElementById(prefix + 'Currency').value;
     const raw = parseFloat(document.getElementById(prefix + 'Amount').value);
     if(cur === 'RSD' || !fx.rates[cur]){ hint.textContent = ''; return; }
-    const dateTxt = fx.date ? parseLocalDate(fx.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit'}) : '';
-    hint.textContent = (isNaN(raw) ? '' : `≈ ${fmt(raw * fx.rates[cur])} · `) + `kurs NBS ${fmtRate(fx.rates[cur])}${dateTxt ? ' (' + dateTxt + ')' : ''}`;
+    const dateTxt = fx.date ? parseLocalDate(fx.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit'}) : '';
+    hint.textContent = (isNaN(raw) ? '' : `≈ ${fmt(raw * fx.rates[cur])} · `) + t('kurs NBS {0}', fmtRate(fx.rates[cur])) + (dateTxt ? ' (' + dateTxt + ')' : '');
   }
   ['inc', 'exp', 'rec'].forEach(p=>{
     ['input', 'change'].forEach(ev=>{
@@ -3570,7 +3643,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const amount = readAmountField(prefix).amount;
     const probe = { amount: isNaN(amount) ? 0 : amount, date, spreadMonths: s.spreadMonths, spreadStart: startInput.value };
     const { start, end } = C.spreadOf(probe);
-    hint.textContent = `${monthYearLabelSr(start)} – ${monthYearLabelSr(end)}` + (probe.amount > 0 ? ` — po ${fmt(probe.amount / s.spreadMonths)} mesečno` : '') + '. Na račun se ceo iznos računa na dan uplate.';
+    hint.textContent = `${monthYearLabelSr(start)} – ${monthYearLabelSr(end)}` + (probe.amount > 0 ? t(' — po {0} mesečno', fmt(probe.amount / s.spreadMonths)) : '') + t('. Na račun se ceo iznos računa na dan uplate.');
   }
   ['inc', 'exp'].forEach(p=>{
     [p + 'SpreadToggle', p + 'SpreadMonths', p + 'SpreadStart', p + 'Amount', p + 'Currency', p + 'Date'].forEach(id=>{
@@ -3623,8 +3696,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(!el) return;
     const list = CURRENCIES.filter(c=> c !== 'RSD' && fx.rates[c]).map(c=> `${c} ${fmtRate(fx.rates[c])}`).join(' · ');
     el.textContent = list
-      ? `Srednji kurs NBS${fx.date ? ' za ' + parseLocalDate(fx.date).toLocaleDateString('sr-Latn-RS') : ''}: ${list}${r && r.stale ? ' (nema interneta — prikazan poslednji preuzet kurs)' : ''}`
-      : 'Kursna lista još nije preuzeta' + (r && r.error ? ` (${r.error})` : '') + '.';
+      ? t('Srednji kurs NBS{0}: {1}{2}', fx.date ? t(' za {0}', parseLocalDate(fx.date).toLocaleDateString(LOCALE)) : '', list, r && r.stale ? t(' (nema interneta — prikazan poslednji preuzet kurs)') : '')
+      : t('Kursna lista još nije preuzeta') + (r && r.error ? ` (${r.error})` : '') + '.';
   }
 
   function renderAccountsOverview(){
@@ -3658,7 +3731,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       openEditModal('Uredi račun', [
         {key:'name', label:'Naziv', type:'text', value:a.name},
         {key:'type', label:'Vrsta', type:'select', value:ACCOUNT_TYPE_LABEL[a.type], options:Object.values(ACCOUNT_TYPE_LABEL)},
-        {key:'actual', label:`Stvarno stanje danas (RSD) — sada u aplikaciji: ${fmt(current)}`, type:'number', value:Math.round(current)},
+        {key:'actual', label: t('Stvarno stanje danas (RSD) — sada u aplikaciji: {0}', fmt(current)), type:'number', value:Math.round(current)},
       ], (vals)=>{
         const name = (vals.name||'').trim();
         if(!name) return;
@@ -3687,14 +3760,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     section.style.display = accounts.length >= 2 ? 'grid' : 'none';
     const transfers = entries.filter(isTransfer).sort((a,b)=> b.date.localeCompare(a.date)).slice(0, 30);
     const tl = document.getElementById('transfersList');
-    tl.innerHTML = transfers.map(e=> `<li data-row-id="${e.id}"><span class="name">${parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'})} · ${escapeHtml(accountName(e.fromAccount))} → ${escapeHtml(accountName(e.toAccount))}${e.desc ? ' · ' + escapeHtml(e.desc) : ''}</span>
+    tl.innerHTML = transfers.map(e=> `<li data-row-id="${e.id}"><span class="name">${parseLocalDate(e.date).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'})} · ${escapeHtml(accountName(e.fromAccount))} → ${escapeHtml(accountName(e.toAccount))}${e.desc ? ' · ' + escapeHtml(e.desc) : ''}</span>
       <span style="font-variant-numeric:tabular-nums;">${fmt(e.amount)}</span>
       <button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></li>`).join('') || '<li class="empty">Još nema prenosa.</li>';
     wireDeleteButton(tl, {
       rowSelector: 'li',
       find: id => entries.find(e=> e.id === id),
       onDelete: (entry)=>{ entries = entries.filter(e=> e.id !== entry.id); saveEntries(); },
-      undoLabel: () => 'Obrisan prenos',
+      undoLabel: () => t('Obrisan prenos'),
       onUndo: entry => { entries.push(entry); saveEntries(); }
     });
   }
@@ -3728,7 +3801,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(g.accountId && accountById(g.accountId)){
       const from = fromAccount || (accounts.find(a=> a.id !== g.accountId) || {}).id;
       if(from && from !== g.accountId){
-        entries.push({ id: newId(), type: 'transfer', desc: 'Uplata u cilj: ' + g.name, amount, date: toISODateLocal(new Date()), fromAccount: from, toAccount: g.accountId, goalId: g.id });
+        entries.push({ id: newId(), type: 'transfer', desc: t('Uplata u cilj: {0}', g.name), amount, date: toISODateLocal(new Date()), fromAccount: from, toAccount: g.accountId, goalId: g.id });
         saveEntries();
       }
     }
@@ -3751,7 +3824,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const maxVal = Math.max(1, ...Object.values(byCat));
     const total = Object.values(byCat).reduce((s,v)=>s+v,0);
     const breakdownEl = document.getElementById('breakdown');
-    document.getElementById('breakdownTitle').textContent = 'Rashodi po kategorijama — ' + monthYearLabelSr(viewMonth);
+    document.getElementById('breakdownTitle').textContent = t('Rashodi po kategorijama — {0}', monthYearLabelSr(viewMonth));
     breakdownEl.innerHTML = catEntries.length === 0
       ? '<div class="empty" style="padding:1em 0;">Nema plaćenih rashoda u ovom mesecu.</div>'
       : catEntries.map(([cat,val])=>{
@@ -3768,19 +3841,19 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 
     const recent = entries.filter(e=> (e.type === 'income' || e.type === 'expense') && (monthKey(e.date) === viewMonth || C.shareInMonth(e, viewMonth) > 0))
       .sort((a,b)=> b.date.localeCompare(a.date)).slice(0,10);
-    document.getElementById('recentTitle').textContent = 'Poslednje stavke — ' + monthYearLabelSr(viewMonth);
+    document.getElementById('recentTitle').textContent = t('Poslednje stavke — {0}', monthYearLabelSr(viewMonth));
     const recentBody = document.getElementById('recentBody');
     const recentEmpty = document.getElementById('recentEmpty');
     if(recent.length === 0){ recentBody.innerHTML = ''; recentEmpty.style.display = 'block'; }
     else {
       recentEmpty.style.display = 'none';
       recentBody.innerHTML = recent.map(e=>{
-        const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
+        const d = parseLocalDate(e.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit', year:'numeric'});
         const sign = e.type === 'income' ? '+' : '−';
         const pendingTag = (e.type==='expense' && !isExpensePaid(e)) ? ' <span class="cat-tag" style="color:var(--gold-text);border-color:var(--gold);">na čekanju</span>' : '';
         const share = C.shareInMonth(e, viewMonth);
         const amountHtml = isSpread(e)
-          ? `${sign} ${fmt(share)}<span class="orig-amt">deo od ${fmt(e.amount)}</span>`
+          ? `${sign} ${fmt(share)}<span class="orig-amt">${t('deo od {0}', fmt(e.amount))}</span>`
           : `${sign} ${fmt(e.amount)}${origTag(e)}`;
         return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${pendingTag}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount ${e.type}">${amountHtml}</td></tr>`;
@@ -3882,15 +3955,15 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const forecastEl = document.getElementById('patternsForecast');
     forecastEl.innerHTML = (forecast != null) ? `<div class="insight-card" style="border-bottom:none; padding:0;">
       <div class="big">${fmt(Math.round(forecast))}</div>
-      <div class="small">Procena ukupnih rashoda za sledeći mesec, na osnovu trenda poslednjih ${monthlyExpense.length} meseci.</div>
+      <div class="small">${t('Procena ukupnih rashoda za sledeći mesec, na osnovu trenda poslednjih {0} meseci.', monthlyExpense.length)}</div>
     </div>` : '';
 
     const rows = [];
     creep.forEach(({r,first,last,pct})=>{
-      rows.push({level:'caution', icon:'📈', txt:`<b>${escapeHtml(r.desc)}</b> je poskupeo za ${pct}% od prve naplate (${fmt(first)} → ${fmt(last)}) — vredi proveriti da li je i dalje isplativ.`});
+      rows.push({level:'caution', icon:'📈', txt: t('<b>{0}</b> je poskupeo za {1}% od prve naplate ({2} → {3}) — vredi proveriti da li je i dalje isplativ.', escapeHtml(r.desc), pct, fmt(first), fmt(last))});
     });
     anomalies.forEach(({cat,thisMonth,priorAvg,pct})=>{
-      rows.push({level:'caution', icon:'⚠', txt:`Kategorija <b>${escapeHtml(cat)}</b> je ovog meseca ${pct}% iznad proseka poslednja 3 meseca (${fmt(thisMonth)} naspram proseka ${fmt(Math.round(priorAvg))}).`});
+      rows.push({level:'caution', icon:'⚠', txt: t('Kategorija <b>{0}</b> je ovog meseca {1}% iznad proseka poslednja 3 meseca ({2} naspram proseka {3}).', escapeHtml(cat), pct, fmt(thisMonth), fmt(Math.round(priorAvg)))});
     });
     document.getElementById('patternsList').innerHTML = rows.map(w=>`<div class="warning-item caution"><span class="icon">${w.icon}</span><span class="txt">${w.txt}</span></div>`).join('');
   }
@@ -3903,7 +3976,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const daysInMonth = C.daysInMonth(mKey);
     const firstDow = (new Date(year, month, 1).getDay() + 6) % 7;
     const todayNum = mKey === currentMonthKey() ? new Date().getDate() : -1;
-    document.getElementById('monthCalendarTitle').textContent = 'Kalendar — ' + monthYearLabelSr(mKey);
+    document.getElementById('monthCalendarTitle').textContent = t('Kalendar — {0}', monthYearLabelSr(mKey));
     const days = [];
     for(let day=1; day<=daysInMonth; day++){
       const dateStr = mKey + '-' + String(day).padStart(2,'0');
@@ -3915,14 +3988,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     }
     const maxSpent = Math.max(1, ...days.map(d=>d.spent));
     const label = d => {
-      const parts = [parseLocalDate(d.dateStr).toLocaleDateString('sr-Latn-RS', {weekday:'long', day:'numeric', month:'long'})];
-      if(d.spent) parts.push('rashodi ' + fmt(d.spent));
-      if(d.earned) parts.push('prihodi ' + fmt(d.earned));
-      if(d.due.length) parts.push('dospeva: ' + d.due.map(r=>r.desc).join(', '));
-      if(!d.spent && !d.earned && !d.due.length) parts.push('nema stavki');
+      const parts = [parseLocalDate(d.dateStr).toLocaleDateString(LOCALE, {weekday:'long', day:'numeric', month:'long'})];
+      if(d.spent) parts.push(t('rashodi {0}', fmt(d.spent)));
+      if(d.earned) parts.push(t('prihodi {0}', fmt(d.earned)));
+      if(d.due.length) parts.push(t('dospeva: {0}', d.due.map(r=>r.desc).join(', ')));
+      if(!d.spent && !d.earned && !d.due.length) parts.push(t('nema stavki'));
       return parts.join(' · ');
     };
-    let html = ['P','U','S','Č','P','S','N'].map(w=>`<div class="mcal-weekday">${w}</div>`).join('');
+    let html = (I18N.lang === 'en' ? ['M','T','W','T','F','S','S'] : ['P','U','S','Č','P','S','N']).map(w=>`<div class="mcal-weekday">${w}</div>`).join('');
     for(let i=0;i<firstDow;i++) html += '<div></div>';
     days.forEach(d=>{
       const pct = d.spent > 0 ? Math.round(14 + (d.spent / maxSpent) * 56) : 0;
@@ -3944,7 +4017,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   function openDayDetail(dateStr){
     currentDayDetailDate = dateStr;
     const overlay = document.getElementById('dayDetailOverlay');
-    const label = parseLocalDate(dateStr).toLocaleDateString('sr-Latn-RS', {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
+    const label = parseLocalDate(dateStr).toLocaleDateString(LOCALE, {weekday:'long', day:'2-digit', month:'long', year:'numeric'});
     document.getElementById('dayDetailTitle').textContent = label;
     document.getElementById('dayQuickDesc').value = '';
     document.getElementById('dayQuickAmount').value = '';
@@ -3973,7 +4046,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       rowSelector: 'li',
       find: id => entries.find(e=>e.id === id),
       onDelete: (entry, b)=>{ entries = entries.filter(e=>e.id !== b.dataset.id); unmarkRecurringEntry(b.dataset.id); saveEntries(); renderDayDetailList(); },
-      undoLabel: entry => `Obrisana stavka: "${entry.desc}"`,
+      undoLabel: entry => t('Obrisana stavka: "{0}"', entry.desc),
       onUndo: entry => { entries.push(entry); remarkRecurringEntry(entry.id); saveEntries(); renderDayDetailList(); }
     });
   }
@@ -4027,7 +4100,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     el.innerHTML = `<h2 style="margin-top:1.6em;">Predlog</h2>` + candidates.map((c,i)=>`
       <div class="warning-item ok">
         <span class="icon">🔁</span>
-        <span class="txt">Trošak <b>${escapeHtml(c.desc)}</b> se ponovio ${c.count}x — dodati kao ponavljajuću stavku (${fmt(c.amount)}, dan ${c.day}.)?
+        <span class="txt">${t('Trošak <b>{0}</b> se ponovio {1}x — dodati kao ponavljajuću stavku ({2}, dan {3}.)?', escapeHtml(c.desc), c.count, fmt(c.amount), c.day)}
           <button class="btn-secondary" style="margin-left:0.6em; padding:0.3em 0.7em; font-size:0.85em;" data-suggest-idx="${i}">Dodaj</button>
         </span>
       </div>`).join('');
@@ -4114,7 +4187,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     }).join('');
     const labels = months.map((m,i)=>{
       const [y,mo] = m.split('-');
-      const label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'short'}).replace('.','');
+      const label = new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'short'}).replace('.','');
       return `<text x="${xFor(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">${label}</text>`;
     }).join('');
     const dotsIncome = incomeVals.map((v,i)=>`<circle class="trend-dot" style="animation-delay:${(0.55+i*0.06).toFixed(2)}s" cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="var(--pos)"><title>${fmt(v)}</title></circle>`).join('');
@@ -4175,7 +4248,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const zeroLine = minVal < 0 ? `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--paper-line)" stroke-width="1" stroke-dasharray="3 3"/>` : '';
     const labels = months.map((m,i)=>{
       const [y,mo] = m.split('-');
-      const label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'short'}).replace('.','');
+      const label = new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'short'}).replace('.','');
       return `<text x="${xFor(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">${label}</text>`;
     }).join('');
     const dots = vals.map((v,i)=>`<circle class="trend-dot" style="animation-delay:${(0.55+i*0.06).toFixed(2)}s" cx="${xFor(i).toFixed(1)}" cy="${yFor(v).toFixed(1)}" r="3" fill="${lineColor}"><title>${fmt(v)}</title></circle>`).join('');
@@ -4332,7 +4405,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const zeroLine = minVal < 0 ? `<line x1="${padL}" y1="${zeroY.toFixed(1)}" x2="${W-padR}" y2="${zeroY.toFixed(1)}" stroke="var(--paper-line)" stroke-width="1" stroke-dasharray="3 3"/>` : '';
     const labels = baseline.months.map((m,i)=>{
       const [y,mo] = m.split('-');
-      const label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'short'}).replace('.','');
+      const label = new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'short'}).replace('.','');
       return `<text x="${xFor(i).toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">${label}</text>`;
     }).join('');
     document.getElementById('scenarioChart').innerHTML = `
@@ -4356,7 +4429,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const printBody = document.getElementById('scenarioPrintTableBody');
     printBody.innerHTML = baseline.months.map((m,i)=>{
       const [y,mo] = m.split('-');
-      const label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long', year:'numeric'});
+      const label = new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'long', year:'numeric'});
       const diff = scenario.vals[i] - baseline.vals[i];
       return `<tr><td>${label}</td><td style="text-align:right;">${fmt(baseline.vals[i])}</td><td style="text-align:right;">${fmt(scenario.vals[i])}</td><td style="text-align:right;">${diff>=0?'+':''}${fmt(diff)}</td></tr>`;
     }).join('');
@@ -4368,11 +4441,11 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const realRows = recurring.map(r=>{
       const excluded = scenarioExcludedRecurringIds.has(r.id);
       return `<li${excluded?' style="opacity:0.5;text-decoration:line-through;"':''}>
-        <span class="name">${escapeHtml(r.desc)} (${r.type==='income'?'prihod':'rashod'}, ${fmt(r.amount)})</span>
+        <span class="name">${t('{0} ({1}, {2})', escapeHtml(r.desc), t(r.type==='income'?'prihod':'rashod'), fmt(r.amount))}</span>
         <button class="btn-secondary" data-real-rec="${r.id}">${excluded?'Vrati':'Ukloni u scenariju'}</button></li>`;
     }).join('');
     const extraRows = scenarioExtraRecurring.map(r=>`<li>
-        <span class="name">${escapeHtml(r.desc)} (${r.type==='income'?'prihod':'rashod'}, ${fmt(r.amount)}) — novo</span>
+        <span class="name">${t('{0} ({1}, {2}) — novo', escapeHtml(r.desc), t(r.type==='income'?'prihod':'rashod'), fmt(r.amount))}</span>
         <button class="btn-secondary" data-extra-rec="${r.id}">Obriši</button></li>`).join('');
     recList.innerHTML = (realRows + extraRows) || '<li class="empty">Nema ponavljajućih stavki.</li>';
     recList.querySelectorAll('[data-real-rec]').forEach(b=>{
@@ -4391,7 +4464,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 
     const oneList = document.getElementById('scenarioOneTimeList');
     oneList.innerHTML = scenarioExtraEntries.map(e=>{
-      const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'});
+      const d = parseLocalDate(e.date).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'});
       return `<li><span class="name">${escapeHtml(e.desc)} — ${d} (${e.type==='income'?'+':'−'}${fmt(e.amount)})</span>
         <button class="btn-secondary" data-onetime="${e.id}">Obriši</button></li>`;
     }).join('') || '<li class="empty">Nema jednokratnih izmena.</li>';
@@ -4473,7 +4546,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const [topCat, topVal] = catEntries[0];
       const pct = ((topVal/totalExpense)*100).toFixed(0);
       cards.push(`<div class="insight-card"><div class="big">${escapeHtml(topCat)}</div>
-        <div class="small">Najveći trošak ovog meseca — <b>${pct}%</b> svih rashoda (${fmt(topVal)}).</div></div>`);
+        <div class="small">${t('Najveći trošak ovog meseca — <b>{0}%</b> svih rashoda ({1}).', pct, fmt(topVal))}</div></div>`);
     }
     const thisExp = totalExpense;
     const prevExp = monthTotals(C.addMonths(viewMonth, -1)).expense;
@@ -4481,7 +4554,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const diff = ((thisExp-prevExp)/prevExp*100);
       const dir = diff >= 0 ? 'više' : 'manje';
       cards.push(`<div class="insight-card"><div class="big">${diff>=0?'+':''}${diff.toFixed(0)}%</div>
-        <div class="small">${isCurrent ? 'Ovaj mesec trošiš' : 'U ovom mesecu potrošeno je'} <b>${Math.abs(diff).toFixed(0)}% ${dir}</b> nego mesec ranije${isCurrent ? ' (a mesec još traje)' : ''}.</div></div>`);
+        <div class="small">${t(isCurrent ? 'Ovaj mesec trošiš <b>{0}% {1}</b> nego mesec ranije (a mesec još traje).' : 'U ovom mesecu potrošeno je <b>{0}% {1}</b> nego mesec ranije.', Math.abs(diff).toFixed(0), t(dir))}</div></div>`);
     }
     if(totalIncome > 0){
       const savings = ((totalIncome-totalExpense)/totalIncome*100);
@@ -4520,7 +4593,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       }
       if(counts[bestIdx] > 0){
         cards.push(`<div class="insight-card"><div class="big">${dayNames[bestIdx]}</div>
-          <div class="small">Dan u nedelji kad u proseku trošiš najviše (${fmt(sums[bestIdx]/counts[bestIdx])} po danu).</div></div>`);
+          <div class="small">${t('Dan u nedelji kad u proseku trošiš najviše ({0} po danu).', fmt(sums[bestIdx]/counts[bestIdx]))}</div></div>`);
       }
     }
     // Streak (vezan za danasnji dan, pa samo u tekucem mesecu)
@@ -4536,8 +4609,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         const daySum = expenseEntries.filter(e=>e.date===dStr).reduce((s,e)=>s+e.amount,0);
         if(daySum <= avgDailyAll) streak++; else break;
       }
-      cards.push(`<div class="insight-card"><div class="big">${streak} ${streak===1?'dan':'dana'}</div>
-        <div class="small">Niz dana zaredom bez prekoračenja tvog dnevnog proseka (${fmt(avgDailyAll)}).</div></div>`);
+      cards.push(`<div class="insight-card"><div class="big">${daysTxt(streak)}</div>
+        <div class="small">${t('Niz dana zaredom bez prekoračenja tvog dnevnog proseka ({0}).', fmt(avgDailyAll))}</div></div>`);
     }
     el.innerHTML = cards.join('') || '<div class="empty" style="padding:0.8em 0;">Nema dovoljno podataka.</div>';
   }
@@ -4559,12 +4632,12 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(catEntries.length){
       const [topCat, topVal] = catEntries[0];
       const pct = totalExpense ? (topVal/totalExpense*100) : 0;
-      if(pct >= 45) warnings.push({level:'danger', icon:'🔥', txt:`Kategorija <b>${escapeHtml(topCat)}</b> guta ${pct.toFixed(0)}% svih rashoda — ozbiljna neravnoteža budžeta.`});
-      else if(pct >= 30) warnings.push({level:'caution', icon:'⚡', txt:`Kategorija <b>${escapeHtml(topCat)}</b> čini ${pct.toFixed(0)}% rashoda — vredi držati je na oku.`});
+      if(pct >= 45) warnings.push({level:'danger', icon:'🔥', txt: t('Kategorija <b>{0}</b> guta {1}% svih rashoda — ozbiljna neravnoteža budžeta.', escapeHtml(topCat), pct.toFixed(0))});
+      else if(pct >= 30) warnings.push({level:'caution', icon:'⚡', txt: t('Kategorija <b>{0}</b> čini {1}% rashoda — vredi držati je na oku.', escapeHtml(topCat), pct.toFixed(0))});
     }
     if(prevExp > 0 && thisExp > prevExp * 1.2){
       const diff = ((thisExp-prevExp)/prevExp*100).toFixed(0);
-      warnings.push({level:'caution', icon:'📈', txt:`Potrošnja je skočila za <b>${diff}%</b> u odnosu na prošli mesec.`});
+      warnings.push({level:'caution', icon:'📈', txt: t('Potrošnja je skočila za <b>{0}%</b> u odnosu na prošli mesec.', diff)});
     }
     if(thisInc === 0 && thisExp > 0){
       warnings.push({level:'caution', icon:'✎', txt: isCurrent ? `Nisi uneo nijedan <b>prihod</b> za tekući mesec.` : `Za ovaj mesec nema unetih <b>prihoda</b>.`});
@@ -4576,17 +4649,17 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     catEntries.forEach(([cat,val])=>{
       const limit = limits[cat];
       if(limit && val > limit){
-        warnings.push({level:'danger', icon:'🚨', txt:`Premašen limit za <b>${escapeHtml(cat)}</b>: ${fmt(val)} od ${fmt(limit)}.`});
+        warnings.push({level:'danger', icon:'🚨', txt: t('Premašen limit za <b>{0}</b>: {1} od {2}.', escapeHtml(cat), fmt(val), fmt(limit))});
       } else if(limit && val >= limit*0.8){
-        warnings.push({level:'caution', icon:'🔔', txt:`Blizu si limita za <b>${escapeHtml(cat)}</b>: ${fmt(val)} od ${fmt(limit)}.`});
+        warnings.push({level:'caution', icon:'🔔', txt: t('Blizu si limita za <b>{0}</b>: {1} od {2}.', escapeHtml(cat), fmt(val), fmt(limit))});
       }
     });
     // Ukupan mesecni budzet
     if(monthlyBudget > 0){
       if(thisExp > monthlyBudget){
-        warnings.push({level:'danger', icon:'💸', txt:`Premašen ukupan mesečni budžet: ${fmt(thisExp)} od ${fmt(monthlyBudget)}.`});
+        warnings.push({level:'danger', icon:'💸', txt: t('Premašen ukupan mesečni budžet: {0} od {1}.', fmt(thisExp), fmt(monthlyBudget))});
       } else if(thisExp >= monthlyBudget*0.8){
-        warnings.push({level:'caution', icon:'💸', txt:`Blizu si ukupnog mesečnog budžeta: ${fmt(thisExp)} od ${fmt(monthlyBudget)}.`});
+        warnings.push({level:'caution', icon:'💸', txt: t('Blizu si ukupnog mesečnog budžeta: {0} od {1}.', fmt(thisExp), fmt(monthlyBudget))});
       }
     }
     // Podsetnici za ponavljajuce stavke koje dospevaju ili su zakasnile
@@ -4597,9 +4670,9 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const diff = dueDayNow(r) - todayDay;
       const rLabel = r.type === 'income' ? 'naplatiš' : 'platiš';
       if(diff < 0){
-        warnings.push({level:'danger', icon:'⏰', txt:`Trebalo je da ${rLabel} <b>${escapeHtml(r.desc)}</b> pre ${Math.abs(diff)} ${Math.abs(diff)===1?'dan':'dana'} (dan ${dueDayNow(r)}. u mesecu).`});
+        warnings.push({level:'danger', icon:'⏰', txt: t(r.type === 'income' ? 'Trebalo je da naplatiš <b>{0}</b> pre {1} (dan {2}. u mesecu).' : 'Trebalo je da platiš <b>{0}</b> pre {1} (dan {2}. u mesecu).', escapeHtml(r.desc), daysTxt(Math.abs(diff)), dueDayNow(r))});
       } else if(diff <= 3){
-        warnings.push({level:'caution', icon:'⏰', txt:`<b>${escapeHtml(r.desc)}</b> dospeva ${diff===0?'danas':'za '+diff+' '+(diff===1?'dan':'dana')}.`});
+        warnings.push({level:'caution', icon:'⏰', txt: diff === 0 ? t('<b>{0}</b> dospeva danas.', escapeHtml(r.desc)) : t('<b>{0}</b> dospeva za {1}.', escapeHtml(r.desc), daysTxt(diff))});
       }
     });
     // Dugovi/pozajmice sa prosetlim rokom
@@ -4608,14 +4681,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const remaining = d.amount - (d.paidAmount||0);
       if(remaining <= 0 || !d.due || d.due >= todayStr) return;
       const verb = d.direction === 'owed_to_me' ? 'da ti vrati' : 'da vratiš';
-      warnings.push({level:'caution', icon:'🤝', txt:`<b>${escapeHtml(d.person)}</b> je trebalo ${verb} ${fmt(remaining)} — rok je prošao.`});
+      warnings.push({level:'caution', icon:'🤝', txt: t(d.direction === 'owed_to_me' ? '<b>{0}</b> je trebalo da ti vrati {1} — rok je prošao.' : '<b>{0}</b> je trebalo da vratiš {1} — rok je prošao.', escapeHtml(d.person), fmt(remaining))});
     });
 
     // Moguci duplikati — zadrzi PRVU stavku, ponudi brisanje ostalih u grupi jednim klikom.
     detectDuplicateEntries().forEach(group=>{
       const extra = group.slice(1);
       const kind = group[0].type === 'income' ? 'prihoda' : 'rashoda';
-      warnings.push({level:'caution', icon:'🧩', txt:`Moguć duplikat: ${group.length} identične stavke ${kind} "${escapeHtml(group[0].desc)}" (${fmt(group[0].amount)}, ${group[0].date}). <button type="button" class="dup-warning-remove" data-ids="${extra.map(e=>e.id).join(',')}">Ukloni suvišne (${extra.length})</button>`});
+      warnings.push({level:'caution', icon:'🧩', txt: t('Moguć duplikat: {0} identične stavke {1} "{2}" ({3}, {4}).', group.length, t(kind), escapeHtml(group[0].desc), fmt(group[0].amount), group[0].date) + ` <button type="button" class="dup-warning-remove" data-ids="${extra.map(e=>e.id).join(',')}">${t('Ukloni suvišne ({0})', extra.length)}</button>`});
     });
 
     if(warnings.length === 0){
@@ -4632,7 +4705,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         saveEntries();
         playDeleteSound();
         renderAll();
-        showUndoToast(`Obrisano ${removed.length} dupliranih stavki`, ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
+        showUndoToast(t('Obrisano {0} dupliranih stavki', removed.length), ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
       });
     });
   }
@@ -4662,7 +4735,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const diff = dueDayNow(r) - todayDay;
       if(diff < 0){
         const verb = r.type === 'income' ? 'naplaćeno' : 'plaćeno';
-        sendNotificationOnce(`rec-${r.id}-${curMonthKey}`, 'Kasni plaćanje', `${r.desc} je trebalo da bude ${verb} pre ${Math.abs(diff)} ${Math.abs(diff)===1?'dan':'dana'}.`);
+        sendNotificationOnce(`rec-${r.id}-${curMonthKey}`, t('Kasni plaćanje'), t(r.type === 'income' ? '{0} je trebalo da bude naplaćeno pre {1}.' : '{0} je trebalo da bude plaćeno pre {1}.', r.desc, daysTxt(Math.abs(diff))));
       } else if(diff <= 1 && r.type === 'expense' && !r.autoPay){
         // Podsetnik unapred: dan pre i na dan dospeca
         sendNotificationOnce(`due-${r.id}-${curMonthKey}-${diff}`, diff === 0 ? 'Danas dospeva' : 'Sutra dospeva', `${r.desc} — ${fmt(r.amount)}.`);
@@ -4672,7 +4745,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     debts.forEach(d=>{
       const remaining = d.amount - (d.paidAmount||0);
       if(remaining <= 0 || !d.due || d.due >= todayStr) return;
-      sendNotificationOnce(`debt-${d.id}-${d.due}`, 'Dug/pozajmica kasni', `${d.person}: rok za ${fmt(remaining)} je prošao.`);
+      sendNotificationOnce(`debt-${d.id}-${d.due}`, t('Dug/pozajmica kasni'), t('{0}: rok za {1} je prošao.', d.person, fmt(remaining)));
     });
   }
   document.getElementById('enableNotifBtn').addEventListener('click', async ()=>{
@@ -4742,7 +4815,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       : {label:'Slabo', token:'--neg'};
     ring.style.setProperty('--ring', `var(${tier.token})`);
     ring.style.setProperty('--pct', Math.max(0, Math.min(100, score)));
-    ring.setAttribute('aria-label', `Finansijsko zdravlje: ${score} od 100 (${tier.label})`);
+    ring.setAttribute('aria-label', t('Finansijsko zdravlje: {0} od 100 ({1})', score, t(tier.label)));
     document.getElementById('healthScoreNum').textContent = score;
     document.getElementById('healthScoreLabel').textContent = tier.label;
 
@@ -4774,7 +4847,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(breakdown[weakestKey] >= 70){
       recEl.textContent = 'Sve komponente su solidne ovog meseca — nema konkretne preporuke, samo nastavi tako.';
     } else {
-      recEl.innerHTML = `<b>${labels[weakestKey]}</b> je trenutno najslabija tačka (${Math.round(breakdown[weakestKey])}/100): ${tips[weakestKey]}`;
+      recEl.innerHTML = t('<b>{0}</b> je trenutno najslabija tačka ({1}/100): {2}', t(labels[weakestKey]), Math.round(breakdown[weakestKey]), t(tips[weakestKey]));
     }
 
     const svg = document.getElementById('healthTrendSvg');
@@ -4799,7 +4872,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const bar = document.getElementById('incomeBulkBar');
     const n = selectedIncomeIds.size;
     bar.style.display = n > 0 ? 'flex' : 'none';
-    document.getElementById('incomeBulkCount').textContent = `Izabrano: ${n}`;
+    document.getElementById('incomeBulkCount').textContent = t('Izabrano: {0}', n);
   }
 
   function renderIncome(){
@@ -4813,7 +4886,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     } else {
       emptyEl.style.display='none';
       body.innerHTML = list.map(e=>{
-        const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
+        const d = parseLocalDate(e.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit', year:'numeric'});
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedIncomeIds.has(e.id)?'checked':''} title="Izaberi"></td>
           <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
@@ -4832,7 +4905,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         rowSelector: 'tr',
         find: id => entries.find(e=>e.id === id),
         onDelete: (entry, b)=>{ entries = entries.filter(e=>e.id !== b.dataset.id); unmarkRecurringEntry(b.dataset.id); saveEntries(); },
-        undoLabel: entry => `Obrisan prihod: "${entry.desc}"`,
+        undoLabel: entry => t('Obrisan prihod: "{0}"', entry.desc),
         onUndo: entry => { entries.push(entry); remarkRecurringEntry(entry.id); saveEntries(); }
       });
       body.querySelectorAll('.dup-btn').forEach(b=>{
@@ -4883,7 +4956,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     saveEntries();
     playDeleteSound();
     renderAll();
-    showUndoToast(`Obrisano ${removed.length} prihoda`, ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
+    showUndoToast(t('Obrisano {0} prihoda', removed.length), ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
   });
 
   document.getElementById('incomeForm').addEventListener('submit', function(e){
@@ -4963,7 +5036,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const prevMonth = monthSel.value;
     monthSel.innerHTML = '<option value="">Svi meseci</option>' + months.map(m=>{
       const [y,mo] = m.split('-');
-      const label = new Date(y, mo-1, 1).toLocaleDateString('sr-Latn-RS', {month:'long', year:'numeric'});
+      const label = new Date(y, mo-1, 1).toLocaleDateString(LOCALE, {month:'long', year:'numeric'});
       return `<option value="${m}">${label}</option>`;
     }).join('');
     if(months.includes(prevMonth)) monthSel.value = prevMonth;
@@ -4993,7 +5066,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const bar = document.getElementById('expenseBulkBar');
     const n = selectedExpenseIds.size;
     bar.style.display = n > 0 ? 'flex' : 'none';
-    document.getElementById('expenseBulkCount').textContent = `Izabrano: ${n}`;
+    document.getElementById('expenseBulkCount').textContent = t('Izabrano: {0}', n);
   }
 
   function renderExpenses(){
@@ -5007,7 +5080,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     } else {
       emptyEl.style.display='none';
       body.innerHTML = filtered.map(e=>{
-        const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
+        const d = parseLocalDate(e.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit', year:'numeric'});
         const paid = isExpensePaid(e);
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''} ${!paid?'expense-pending':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedExpenseIds.has(e.id)?'checked':''} title="Izaberi"></td>
@@ -5028,7 +5101,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         rowSelector: 'tr',
         find: id => entries.find(e=>e.id === id),
         onDelete: (entry, b)=>{ entries = entries.filter(e=>e.id !== b.dataset.id); unmarkRecurringEntry(b.dataset.id); saveEntries(); },
-        undoLabel: entry => `Obrisan rashod: "${entry.desc}"`,
+        undoLabel: entry => t('Obrisan rashod: "{0}"', entry.desc),
         onUndo: entry => { entries.push(entry); remarkRecurringEntry(entry.id); saveEntries(); }
       });
       body.querySelectorAll('.dup-btn').forEach(b=>{
@@ -5101,7 +5174,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     saveEntries();
     playDeleteSound();
     renderAll();
-    showUndoToast(`Obrisano ${removed.length} rashoda`, ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
+    showUndoToast(t('Obrisano {0} rashoda', removed.length), ()=>{ entries.push(...removed); removed.forEach(e=>remarkRecurringEntry(e.id)); saveEntries(); renderAll(); });
   });
 
   // ---- Podela rashoda na vise kategorija ----
@@ -5114,7 +5187,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
   }
   function updateSplitTotal(){
     const total = [...document.querySelectorAll('.split-amount')].reduce((s,i)=> s + (parseFloat(i.value) || 0), 0);
-    document.getElementById('expSplitTotal').textContent = `Ukupno: ${fmt(total)}`;
+    document.getElementById('expSplitTotal').textContent = t('Ukupno: {0}', fmt(total));
   }
   function addSplitRow(){
     const wrap = document.createElement('div');
@@ -5215,8 +5288,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const avgIncome = months.reduce((s,m)=> s + monthTotals(m).income, 0) / months.length;
     const parts = [];
     if(total > 0) parts.push(`Zbir budžeta po kategorijama: <b>${fmt(total)}</b>`);
-    if(monthlyBudget > 0 && total > monthlyBudget) parts.push(`<span style="color:var(--rust-text);">veći je od ukupnog mesečnog budžeta (${fmt(monthlyBudget)})</span>`);
-    if(avgIncome > 0 && total > 0) parts.push(`prosečan prihod poslednja 3 meseca: ${fmt(avgIncome)}${total > avgIncome ? ' — <span style="color:var(--rust-text);">budžet je veći od prihoda</span>' : ''}`);
+    if(monthlyBudget > 0 && total > monthlyBudget) parts.push(`<span style="color:var(--rust-text);">${t('veći je od ukupnog mesečnog budžeta ({0})', fmt(monthlyBudget))}</span>`);
+    if(avgIncome > 0 && total > 0) parts.push(t('prosečan prihod poslednja 3 meseca: {0}', fmt(avgIncome)) + (total > avgIncome ? ` — <span style="color:var(--rust-text);">${t('budžet je veći od prihoda')}</span>` : ''));
     document.getElementById('budgetSummary').innerHTML = parts.join(' · ');
   }
   function renderCategories(){
@@ -5234,13 +5307,13 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const colorVal = catColorFor(c, i);
       const suggestion = avgMonthlySpend3(c);
       const suggestBtn = (!limitVal && suggestion > 0)
-        ? `<button class="envelope-suggest-btn" data-cat="${escapeHtml(c)}" data-suggest="${suggestion}" title="Predlog na osnovu proseka poslednja 3 meseca: ${fmt(suggestion)}">💡</button>`
+        ? `<button class="envelope-suggest-btn" data-cat="${escapeHtml(c)}" data-suggest="${suggestion}" title="${t('Predlog na osnovu proseka poslednja 3 meseca: {0}', fmt(suggestion))}">💡</button>`
         : '<span class="envelope-suggest-btn" style="visibility:hidden;" aria-hidden="true">💡</span>';
       return `<li><span class="name">${escapeHtml(c)}</span>
         ${categorySparklineSvg(c)}
         <input type="color" class="cat-color-input" data-cat="${escapeHtml(c)}" value="${colorVal}" title="Boja kategorije">
         <button class="edit-btn cat-color-reset" data-cat="${escapeHtml(c)}" title="Vrati automatsku boju" ${catColors[c]?'':'style="visibility:hidden;"'}>⟲</button>
-        <input type="number" class="limit-input" data-cat="${escapeHtml(c)}" placeholder="Budžet/mes." title="Mesečni budžet (RSD)" aria-label="Mesečni budžet za ${escapeHtml(c)}" value="${limitVal}" min="0" step="1">
+        <input type="number" class="limit-input" data-cat="${escapeHtml(c)}" placeholder="Budžet/mes." title="Mesečni budžet (RSD)" aria-label="${t('Mesečni budžet za {0}', escapeHtml(c))}" value="${limitVal}" min="0" step="1">
         ${suggestBtn}
         <button class="edit-btn" data-cat="${escapeHtml(c)}" title="Preimenuj">✎</button>
         <button class="del-btn" data-cat="${escapeHtml(c)}" ${disabledAttr}>✕</button></li>`;
@@ -5460,13 +5533,13 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const throughLabel = paidThroughLabel(r);
       const due = isDueThisMonth(r, mKey);
       const freqLabel = frequencyLabel(r);
-      const freqTag = freqLabel ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--paper-line);">${freqLabel}${r.spreadPeriod ? ' · raspoređeno' : ''}</span>` : '';
+      const freqTag = freqLabel ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--paper-line);">${t(freqLabel)}${r.spreadPeriod ? ' · ' + t('raspoređeno') : ''}</span>` : '';
       const subTag = r.isSubscription ? ` <span class="cat-tag" style="background:transparent;border:1px solid var(--gold);color:var(--gold-text);">🔔 pretplata</span>` : '';
       let statusHtml;
       if(paid) statusHtml = '<span class="paid-tag">plaćeno ✓</span>';
       else if(skippedThisMonth) statusHtml = '<span class="paid-tag" style="color:var(--ink-soft);">pauzirano ⏸</span>';
-      else if(!due) statusHtml = `sledeći put: ${monthYearLabelSr(nextDueMonthKey(r, mKey))}`;
-      else statusHtml = 'dan '+dueDayNow(r)+'.';
+      else if(!due) statusHtml = t('sledeći put: {0}', monthYearLabelSr(nextDueMonthKey(r, mKey)));
+      else statusHtml = t('dan {0}.', dueDayNow(r));
       const showAheadRow = due && !paid && !skippedThisMonth;
       const showPayAheadControls = showAheadRow && (!r.frequency || r.frequency === 'monthly');
       return `
@@ -5484,14 +5557,14 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
             <button class="del-btn" data-id="${r.id}" title="Obriši">✕</button>
           </span>
         </div>
-        ${skippedThisMonth ? `<div class="paid-through">⏸ Pauzirano za ovaj mesec — <a href="#" class="skip-undo-link" data-id="${r.id}">vrati</a></div>` : (showAheadRow ? `
+        ${skippedThisMonth ? `<div class="paid-through">${t('⏸ Pauzirano za ovaj mesec — ')}<a href="#" class="skip-undo-link" data-id="${r.id}">${t('vrati')}</a></div>` : (showAheadRow ? `
         <div class="ahead-row">
           ${showPayAheadControls ? `
           <span style="font-family:var(--font);font-variant-numeric:tabular-nums; font-size:0.78em; color:var(--ink-soft);">Plati unapred:</span>
           <input type="number" min="1" max="24" value="2" data-ahead-input="${r.id}">
           <span style="font-family:var(--font);font-variant-numeric:tabular-nums; font-size:0.78em; color:var(--ink-soft);">meseci</span>
           <button data-ahead-btn="${r.id}">Plati</button>` : ''}
-          <button type="button" class="skip-month-btn" data-id="${r.id}">⏸ Pauziraj ${freqLabel ? 'ovaj termin' : 'mesec'}</button>
+          <button type="button" class="skip-month-btn" data-id="${r.id}">${t(freqLabel ? '⏸ Pauziraj ovaj termin' : '⏸ Pauziraj mesec')}</button>
         </div>` : '')}
         ${throughLabel ? `<div class="paid-through">${throughLabel}</div>` : ''}
       </div>`;
@@ -5521,9 +5594,9 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
           const nowAmount = recurringAmountNow(r);
           const hasDifferentHistory = !foreign && lastAmount != null && lastAmount !== r.amount;
           const label = foreign
-            ? `Iznos (RSD) — ${fmtOrig(r.origAmount, r.currency)} po današnjem kursu NBS`
-            : 'Iznos (RSD)' + (hasDifferentHistory ? ` — poslednji put: ${fmt(lastAmount)}` : '');
-          openEditModal(`Plati: ${r.desc}`, [
+            ? t('Iznos (RSD) — {0} po današnjem kursu NBS', fmtOrig(r.origAmount, r.currency))
+            : (hasDifferentHistory ? t('Iznos (RSD) — poslednji put: {0}', fmt(lastAmount)) : t('Iznos (RSD)'));
+          openEditModal(t('Plati: {0}', r.desc), [
             {key:'amount', label, type:'number', value: hasDifferentHistory ? lastAmount : nowAmount}
           ], (vals)=>{
             if(isNaN(vals.amount) || vals.amount <= 0) return;
@@ -5540,7 +5613,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       buildFields: r => [
         {key:'desc', label:'Opis', type:'text', value:r.desc},
         (r.currency && r.currency !== 'RSD')
-          ? {key:'amount', label:`Iznos (${r.currency}) — u RSD po današnjem kursu ≈ ${fmt(recurringAmountNow(r))}`, type:'number', value:r.origAmount}
+          ? {key:'amount', label: t('Iznos ({0}) — u RSD po današnjem kursu ≈ {1}', r.currency, fmt(recurringAmountNow(r))), type:'number', value:r.origAmount}
           : {key:'amount', label:'Iznos (RSD)', type:'number', value:r.amount},
         ...accountEditField(r.accountId),
         {key:'category', label:'Kategorija', type:'select', value:r.category, options: r.type === 'expense' ? expenseCats : incomeCats},
@@ -5575,7 +5648,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         saveRecurring();
         return snapshot;
       },
-      undoLabel: r => `Obrisana ponavljajuća stavka: "${r ? r.desc : ''}"`,
+      undoLabel: r => t('Obrisana ponavljajuća stavka: "{0}"', r ? r.desc : ''),
       onUndo: (r, snapshot) => { if(r){ recurring.push(r); if(snapshot) restoreRecurringOccurrences(r, snapshot); } saveRecurring(); }
     });
     list.querySelectorAll('[data-ahead-btn]').forEach(b=>{
@@ -5590,7 +5663,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const { pendingItems, pendingExpense, pendingIncome } = getPending();
     if(pendingItems.length){
       pendingLine.style.display = 'flex';
-      pendingLine.innerHTML = `<span>Na čekanju ovaj mesec</span><span>rashodi ${fmt(pendingExpense)} · prihodi ${fmt(pendingIncome)}</span>`;
+      pendingLine.innerHTML = `<span>${t('Na čekanju ovaj mesec')}</span><span>${t('rashodi {0} · prihodi {1}', fmt(pendingExpense), fmt(pendingIncome))}</span>`;
     } else {
       pendingLine.style.display = 'none';
     }
@@ -5621,7 +5694,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     if(deadline.getDate() < today.getDate()) months -= 1;
     months = Math.max(1, months);
     const monthly = (g.target - g.current) / months;
-    return `<div class="goal-suggestion">Predlog: uplaćuj ~${fmt(monthly)}/mesečno da stigneš do roka (${months} mes.).</div>`;
+    return `<div class="goal-suggestion">${t('Predlog: uplaćuj ~{0}/mesečno da stigneš do roka ({1} mes.).', fmt(monthly), months)}</div>`;
   }
 
   function renderGoals(){
@@ -5633,7 +5706,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     list.innerHTML = goals.map(g=>{
       const pct = Math.min(100, (g.current/g.target*100));
       const barClass = pct >= 100 ? 'ok' : (pct >= 70 ? 'near' : '');
-      const deadlineTxt = g.deadline ? parseLocalDate(g.deadline).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'}) : 'bez roka';
+      const deadlineTxt = g.deadline ? parseLocalDate(g.deadline).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'}) : t('bez roka');
       return `<div class="goal-card ${justCompletedId===g.id?'celebrate':''}" data-goal-id="${g.id}" data-row-id="${g.id}">
         <div class="goal-head">
           <span class="goal-name">${escapeHtml(g.name)}</span>
@@ -5644,7 +5717,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         </div>
         <div class="goal-amounts">${fmt(g.current)} / ${fmt(g.target)} — ${pct.toFixed(0)}%</div>
         <div class="bar-track"><div class="bar-fill ${barClass}" data-target="${pct.toFixed(1)}%"></div></div>
-        <div class="goal-meta"><span>Rok: ${deadlineTxt}${g.accountId && accountById(g.accountId) ? ' · račun: ' + escapeHtml(accountName(g.accountId)) : ''}</span><span>${pct>=100?'<span class="done-label"><svg class="goal-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Cilj ostvaren</span>':fmt(g.target-g.current)+' preostalo'}</span></div>
+        <div class="goal-meta"><span>${t('Rok: {0}', deadlineTxt)}${g.accountId && accountById(g.accountId) ? t(' · račun: {0}', escapeHtml(accountName(g.accountId))) : ''}</span><span>${pct>=100?'<span class="done-label"><svg class="goal-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>' + t('Cilj ostvaren') + '</span>':t('{0} preostalo', fmt(g.target-g.current))}</span></div>
         ${goalSuggestionHtml(g)}
         <div class="goal-contribute">
           <input type="number" placeholder="Iznos uplate (RSD)" min="1" data-goal="${g.id}" class="goal-add-input">
@@ -5681,7 +5754,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       rowSelector: '.goal-card',
       find: id => goals.find(g=>g.id === id),
       onDelete: (g, b)=>{ goals = goals.filter(x=>x.id !== b.dataset.id); saveGoals(); },
-      undoLabel: g => `Obrisan cilj: "${g.name}"`,
+      undoLabel: g => t('Obrisan cilj: "{0}"', g.name),
       onUndo: g => { goals.push(g); saveGoals(); }
     });
     wireContributeButton(list, 'goal', 'goal-add-input', (id, val)=>{
@@ -5746,8 +5819,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       return;
     }
     const { balances, months, payoffMonth } = computeDebtPayoffPlan(capacity);
-    const order = balances.map((d,i)=>`<li><span class="name">${i+1}. ${escapeHtml(d.person)}</span><span>otplaćeno za ${payoffMonth[d.id]||'—'}. mesec</span></li>`).join('');
-    resultEl.innerHTML = `<p style="margin:0 0 0.6em;">Uz ${fmt(capacity)}/mesečno, svi dugovi su otplaćeni za <b>${months} ${months===1?'mesec':'meseci'}</b>.</p>
+    const order = balances.map((d,i)=>`<li><span class="name">${i+1}. ${escapeHtml(d.person)}</span><span>${t('otplaćeno za {0}. mesec', payoffMonth[d.id]||'—')}</span></li>`).join('');
+    resultEl.innerHTML = `<p style="margin:0 0 0.6em;">${t('Uz {0}/mesečno, svi dugovi su otplaćeni za <b>{1}</b>.', fmt(capacity), monthsTxt(months))}</p>
       <ul class="cat-list">${order}</ul>`;
   }
   document.getElementById('debtMonthlyCapacity').addEventListener('input', (e)=>{
@@ -5767,7 +5840,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const remaining = Math.max(0, d.amount - (d.paidAmount||0));
       const settled = remaining <= 0;
       const dirLabel = d.direction === 'owed_to_me' ? 'Duguje mi' : 'Dugujem';
-      const dueTxt = d.due ? parseLocalDate(d.due).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+      const dueTxt = d.due ? parseLocalDate(d.due).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
       const overdue = d.due && !settled && d.due < todayStr;
       return `<div class="goal-card" data-debt-id="${d.id}" data-row-id="${d.id}">
         <div class="goal-head">
@@ -5781,7 +5854,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         <div class="bar-track"><div class="bar-fill ${settled?'ok':''}" data-target="${Math.min(100,((d.paidAmount||0)/d.amount*100)).toFixed(1)}%"></div></div>
         <div class="goal-meta">
           <span>${d.note ? escapeHtml(d.note) : ''}</span>
-          <span style="${overdue?'color:var(--rust-text);':''}">${dueTxt ? 'Rok: '+dueTxt : ''}</span>
+          <span style="${overdue?'color:var(--rust-text);':''}">${dueTxt ? t('Rok: {0}', dueTxt) : ''}</span>
         </div>
         ${!settled ? `<div class="goal-contribute">
           <input type="number" placeholder="Iznos uplate (RSD)" min="1" data-debt="${d.id}" class="debt-add-input">
@@ -5820,7 +5893,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       rowSelector: '.goal-card',
       find: id => debts.find(d=>d.id === id),
       onDelete: (d, b)=>{ debts = debts.filter(x=>x.id !== b.dataset.id); saveDebts(); },
-      undoLabel: d => `Obrisano: "${d.person}"`,
+      undoLabel: d => t('Obrisano: "{0}"', d.person),
       onUndo: d => { debts.push(d); saveDebts(); }
     });
     wireContributeButton(list, 'debt', 'debt-add-input', (id, val)=>{
@@ -5838,7 +5911,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const allMonths = [...new Set(entries.map(e=>monthKey(e.date)))].sort().reverse();
     const selA = document.getElementById('compareMonthA');
     const selB = document.getElementById('compareMonthB');
-    const labelFor = m => { const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long',year:'numeric'}); };
+    const labelFor = m => { const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}); };
     const opts = '<option value="">Izaberi mesec</option>' + allMonths.map(m=>`<option value="${m}">${labelFor(m)}</option>`).join('');
     const prevA = selA.value, prevB = selB.value;
     selA.innerHTML = opts; selB.innerHTML = opts;
@@ -5925,7 +5998,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const labels = months.map((m,i)=>{
       const gx = padL + i*groupW + groupW/2;
       const [yy,mo] = m.split('-');
-      const label = new Date(yy,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'short'}).replace('.','');
+      const label = new Date(yy,mo-1,1).toLocaleDateString(LOCALE,{month:'short'}).replace('.','');
       return `<text x="${gx.toFixed(1)}" y="${H-8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)" font-family="-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">${label}</text>`;
     }).join('');
     svg.innerHTML = gridLines + bars + labels;
@@ -5953,7 +6026,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     else {
       emptyEl.style.display='none';
       body.innerHTML = list.map(e=>{
-        const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS', {day:'2-digit', month:'2-digit', year:'numeric'});
+        const d = parseLocalDate(e.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit', year:'numeric'});
         const sign = e.type === 'income' ? '+' : '−';
         return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${tagsHtml(e.tags)}</td>
           <td>${e.type==='income'?'Prihod':'Rashod'}</td><td class="amount ${e.type}">${sign} ${fmt(e.amount)}</td></tr>`;
@@ -5985,7 +6058,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const yearSel = document.getElementById('reportYear');
     const months = [...new Set(entries.map(e=>monthKey(e.date)))].sort().reverse();
     const years = [...new Set(entries.map(e=>e.date.slice(0,4)))].sort().reverse();
-    const labelForMonth = m => { const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long',year:'numeric'}); };
+    const labelForMonth = m => { const [y,mo]=m.split('-'); return new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'}); };
     const prevMonth = monthSel.value, prevYear = yearSel.value;
     monthSel.innerHTML = months.map(m=>`<option value="${m}">${labelForMonth(m)}</option>`).join('') || '<option value="">Nema podataka</option>';
     yearSel.innerHTML = years.map(y=>`<option value="${y}">${y}</option>`).join('') || '<option value="">Nema podataka</option>';
@@ -6013,12 +6086,12 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       if(!m){ preview.innerHTML = '<div class="empty">Nema podataka za prikaz.</div>'; return; }
       rangeEntries = periodEntries([m]);
       const [y,mo] = m.split('-');
-      label = new Date(y,mo-1,1).toLocaleDateString('sr-Latn-RS',{month:'long',year:'numeric'});
+      label = new Date(y,mo-1,1).toLocaleDateString(LOCALE,{month:'long',year:'numeric'});
     } else {
       const y = document.getElementById('reportYear').value;
       if(!y){ preview.innerHTML = '<div class="empty">Nema podataka za prikaz.</div>'; return; }
       rangeEntries = periodEntries(C.monthRange(y + '-01', y + '-12'));
-      label = y + '. godina';
+      label = t('{0}. godina', y);
     }
     const income = rangeEntries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
     const expense = rangeEntries.filter(e=>e.type==='expense' && isExpensePaid(e)).reduce((s,e)=>s+e.amount,0);
@@ -6042,19 +6115,19 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const topCatShare = (catRows.length && expense > 0) ? (catRows[0][1]/expense*100) : 0;
       const cards = [];
       cards.push(`<div class="insight-card"><div class="big">${savingsRate.toFixed(0)}%</div><div class="small">Stopa uštede — od prihoda ove godine, toliko je ostalo posle svih rashoda.</div></div>`);
-      if(catRows.length) cards.push(`<div class="insight-card"><div class="big">${escapeHtml(catRows[0][0])}</div><div class="small">Najveća kategorija rashoda — ${topCatShare.toFixed(0)}% svih rashoda (${fmt(catRows[0][1])}).</div></div>`);
-      if(biggestExpense) cards.push(`<div class="insight-card"><div class="big">${fmt(biggestExpense.amount)}</div><div class="small">Najveći pojedinačni trošak — "${escapeHtml(biggestExpense.desc)}" (${parseLocalDate(biggestExpense.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'})}).</div></div>`);
+      if(catRows.length) cards.push(`<div class="insight-card"><div class="big">${escapeHtml(catRows[0][0])}</div><div class="small">${t('Najveća kategorija rashoda — {0}% svih rashoda ({1}).', topCatShare.toFixed(0), fmt(catRows[0][1]))}</div></div>`);
+      if(biggestExpense) cards.push(`<div class="insight-card"><div class="big">${fmt(biggestExpense.amount)}</div><div class="small">${t('Najveći pojedinačni trošak — "{0}" ({1}).', escapeHtml(biggestExpense.desc), parseLocalDate(biggestExpense.date).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'}))}</div></div>`);
       if(prevEntries.length && prevExpense > 0){
         const expDiff = ((expense-prevExpense)/prevExpense*100);
-        cards.push(`<div class="insight-card"><div class="big">${expDiff>=0?'+':''}${expDiff.toFixed(0)}%</div><div class="small">Rashodi u odnosu na ${prevYear}. godinu.</div></div>`);
+        cards.push(`<div class="insight-card"><div class="big">${expDiff>=0?'+':''}${expDiff.toFixed(0)}%</div><div class="small">${t('Rashodi u odnosu na {0}. godinu.', prevYear)}</div></div>`);
       }
       cards.push(`<div class="insight-card"><div class="big">${rangeEntries.length}</div><div class="small">Ukupno unetih stavki (prihoda i rashoda) ove godine.</div></div>`);
       yearRecapHtml = `<div class="report-section-title">Godina u brojkama</div>${cards.join('')}`;
     }
 
     preview.innerHTML = `
-      <div class="report-title">Izveštaj — ${escapeHtml(label)}</div>
-      <div class="report-sub">Generisano: ${new Date().toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
+      <div class="report-title">${t('Izveštaj — {0}', escapeHtml(label))}</div>
+      <div class="report-sub">${t('Generisano:')} ${new Date().toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'})}</div>
       <div class="report-grid">
         <div class="cell"><div class="label">PRIHODI</div><div class="value" style="color:var(--pos-text);">${fmt(income)}</div></div>
         <div class="cell"><div class="label">RASHODI</div><div class="value" style="color:var(--rust-text);">${fmt(expense)}</div></div>
@@ -6069,11 +6142,11 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       <div class="report-section-title">Sve stavke</div>
       ${listRows.length ? `<div class="table-scroll"><table><thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th>Tip</th><th style="text-align:right;">Iznos</th></tr></thead><tbody>
         ${listRows.map(e=>{
-          const d = parseLocalDate(e.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit',year:'numeric'});
+          const d = parseLocalDate(e.date).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'});
           const sign = e.type==='income' ? '+' : '−';
           const pendingNote = (e.type==='expense' && !isExpensePaid(e)) ? ' (na čekanju)' : '';
-          const spreadNote = e.fullAmount ? ` (deo od ${fmt(e.fullAmount)}, ${spreadLabel(e)})` : '';
-          return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}${spreadNote}</td><td>${escapeHtml(e.category)}</td><td>${e.type==='income'?'Prihod':'Rashod'}${pendingNote}</td><td class="amount ${e.type}">${sign} ${fmt(e.amount)}</td></tr>`;
+          const spreadNote = e.fullAmount ? t(' (deo od {0}, {1})', fmt(e.fullAmount), spreadLabel(e)) : '';
+          return `<tr><td>${d}</td><td>${escapeHtml(e.desc)}${spreadNote}</td><td>${escapeHtml(e.category)}</td><td>${t(e.type==='income'?'Prihod':'Rashod')}${pendingNote ? ' ' + t('(na čekanju)') : ''}</td><td class="amount ${e.type}">${sign} ${fmt(e.amount)}</td></tr>`;
         }).join('')}
       </tbody></table></div>` : '<div class="empty">Nema stavki u ovom periodu.</div>'}
     `;
@@ -6158,18 +6231,18 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const sum = list => list.reduce((s,r)=>s+r.amount,0);
     const dates = fresh.map(r=>r.date).sort();
     const preview = fresh.slice().sort((a,b)=> a.date.localeCompare(b.date)).slice(0, 8).map(r=>
-      `<tr><td>${parseLocalDate(r.date).toLocaleDateString('sr-Latn-RS',{day:'2-digit',month:'2-digit'})}</td><td>${escapeHtml(r.desc.slice(0,38))}</td><td>${escapeHtml(r.category)}</td><td class="amount ${r.type}">${r.type==='income'?'+':'−'} ${fmt(r.amount)}</td></tr>`).join('');
+      `<tr><td>${parseLocalDate(r.date).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit'})}</td><td>${escapeHtml(r.desc.slice(0,38))}</td><td>${escapeHtml(r.category)}</td><td class="amount ${r.type}">${r.type==='income'?'+':'−'} ${fmt(r.amount)}</td></tr>`).join('');
     const msg = fresh.length === 0
-      ? `Sve stavke iz ovog fajla (${dups.length}) su već u knjizi — nema ništa novo za uvoz.`
-      : `<p style="margin-top:0;">Format: <b>${parsed.format}</b> · period ${parseLocalDate(dates[0]).toLocaleDateString('sr-Latn-RS')} – ${parseLocalDate(dates[dates.length-1]).toLocaleDateString('sr-Latn-RS')}</p>
-         <p><b>${fresh.length}</b> novih stavki: ${exp.length} rashoda (${fmt(sum(exp))}) i ${inc.length} prihoda (${fmt(sum(inc))}).</p>
-         ${dups.length ? `<p>Preskače se <b>${dups.length}</b> stavki koje već postoje u knjizi.</p>` : ''}
-         ${parsed.skipped ? `<p>Preskočeno ${parsed.skipped} redova bez datuma ili iznosa.</p>` : ''}
+      ? t('Sve stavke iz ovog fajla ({0}) su već u knjizi — nema ništa novo za uvoz.', dups.length)
+      : `<p style="margin-top:0;">${t('Format: <b>{0}</b> · period {1} – {2}', parsed.format, parseLocalDate(dates[0]).toLocaleDateString(LOCALE), parseLocalDate(dates[dates.length-1]).toLocaleDateString(LOCALE))}</p>
+         <p>${t('<b>{0}</b> novih stavki: {1} rashoda ({2}) i {3} prihoda ({4}).', fresh.length, exp.length, fmt(sum(exp)), inc.length, fmt(sum(inc)))}</p>
+         ${dups.length ? `<p>${t('Preskače se <b>{0}</b> stavki koje već postoje u knjizi.', dups.length)}</p>` : ''}
+         ${parsed.skipped ? `<p>${t('Preskočeno {0} redova bez datuma ili iznosa.', parsed.skipped)}</p>` : ''}
          <div class="table-scroll" style="margin-top:0.6em;"><table style="font-size:0.86em;"><tbody>${preview}</tbody></table></div>
-         ${fresh.length > 8 ? `<p class="hint">…i još ${fresh.length - 8}.</p>` : ''}
+         ${fresh.length > 8 ? `<p class="hint">${t('…i još {0}.', fresh.length - 8)}</p>` : ''}
          <p class="hint">Kategorije su dodeljene po pravilima i ranijim stavkama sa istim opisom — posle uvoza ih možeš promeniti.</p>`;
     if(fresh.length === 0){ await appAlert(msg, { title: 'Uvoz izvoda' }); statusEl.textContent = 'Ništa novo za uvoz.'; return; }
-    if(!(await appConfirm(msg, { title: 'Uvoz izvoda', html: true, okText: `Uvezi ${fresh.length}` }))){ statusEl.textContent = 'Uvoz je otkazan.'; return; }
+    if(!(await appConfirm(msg, { title: t('Uvoz izvoda'), html: true, okText: t('Uvezi {0}', fresh.length) }))){ statusEl.textContent = 'Uvoz je otkazan.'; return; }
     const importId = newId();
     fresh.forEach(r=>{
       if(r.type === 'expense' && !expenseCats.includes(r.category)) expenseCats.push(r.category);
@@ -6181,9 +6254,9 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     });
     saveEntries(); saveCats(); saveIncomeCats();
     populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
-    statusEl.textContent = `Uvezeno ${fresh.length} stavki${dups.length ? `, preskočeno ${dups.length} duplikata` : ''}.`;
+    statusEl.textContent = dups.length ? t('Uvezeno {0} stavki, preskočeno {1} duplikata.', fresh.length, dups.length) : t('Uvezeno {0} stavki.', fresh.length);
     renderAll();
-    showUndoToast(`Uvezeno ${fresh.length} stavki`, ()=>{ entries = entries.filter(e=> e.importId !== importId); saveEntries(); renderAll(); statusEl.textContent = 'Uvoz je poništen.'; });
+    showUndoToast(t('Uvezeno {0} stavki', fresh.length), ()=>{ entries = entries.filter(e=> e.importId !== importId); saveEntries(); renderAll(); statusEl.textContent = 'Uvoz je poništen.'; });
   }
   document.getElementById('csvImportInput').addEventListener('change', function(e){
     const file = e.target.files[0];
@@ -6236,7 +6309,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       document.getElementById('backupReminderText').textContent = 'Još nikad nisi izvezao/la JSON rezervnu kopiju — podaci postoje samo u ovom browseru.';
     } else if(daysSince >= 30){
       el.style.display = 'flex';
-      document.getElementById('backupReminderText').textContent = `Poslednji backup je bio pre ${daysSince} dana — vredi izvesti novi.`;
+      document.getElementById('backupReminderText').textContent = t('Poslednji backup je bio pre {0} dana — vredi izvesti novi.', daysSince);
     } else {
       el.style.display = 'none';
     }
@@ -6354,8 +6427,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         const raw = JSON.parse(evt.target.result);
         // Desktop: kopija celog fajla sa podacima (iz foldera "Rezervne kopije") vraca SVE podatke odjednom.
         if(window.__desktopData && raw && raw.app === 'Knjiga budzeta' && isPlainObject(raw.data)){
-          const when = raw.savedAt ? new Date(raw.savedAt).toLocaleString('sr-Latn-RS', {dateStyle:'medium', timeStyle:'short'}) : 'nepoznato';
-          if(!(await appConfirm(`Vratiti sve podatke iz ove kopije (sačuvana: ${when})?\n\nTrenutni podaci biće zamenjeni. Pre toga se automatski pravi kopija trenutnog stanja.`, { title: 'Vraćanje kopije', okText: 'Vrati kopiju' }))) return;
+          const when = raw.savedAt ? new Date(raw.savedAt).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'}) : 'nepoznato';
+          if(!(await appConfirm(t('Vratiti sve podatke iz ove kopije (sačuvana: {0})?\n\nTrenutni podaci biće zamenjeni. Pre toga se automatski pravi kopija trenutnog stanja.', when), { title: t('Vraćanje kopije'), okText: t('Vrati kopiju') }))) return;
           await window.__desktopData.saveNow();
           await window.desktop.backupNow();
           window.__desktopData.replaceAll(raw.data);
@@ -6435,7 +6508,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       if(!badge) return;
       badge.textContent = pendingCount;
       badge.style.display = pendingCount > 0 ? 'inline-block' : 'none';
-      badge.title = `${pendingCount} neplaćenih rashoda`;
+      badge.title = t('{0} neplaćenih rashoda', pendingCount);
     });
     positionTabIndicator(document.querySelector('nav.tabs button.active'));
     updateDesktopBadge();
@@ -6743,7 +6816,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       await writable.close();
       markDataSynced(syncTimestamp);
       try{ const f = await excelHandle.getFile(); lastKnownFileModified = f.lastModified; } catch(e){ /* ignorisano */ }
-      updateExcelStatus(`Povezano: ${excelHandle.name} — sačuvano u ${new Date().toLocaleTimeString('sr-Latn-RS')}`);
+      updateExcelStatus(`Povezano: ${excelHandle.name} — sačuvano u ${new Date().toLocaleTimeString(LOCALE)}`);
     } catch(err){
       updateExcelStatus('Greška pri čuvanju u Excel: ' + err.message);
     }
@@ -6825,7 +6898,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         showExcelConflict(diffText);
       } else {
         await readExcelFileIntoLocal(excelHandle);
-        updateExcelStatus(`Povezano: ${excelHandle.name} — preuzete izmene sa drugog uređaja u ${new Date().toLocaleTimeString('sr-Latn-RS')}`);
+        updateExcelStatus(`Povezano: ${excelHandle.name} — preuzete izmene sa drugog uređaja u ${new Date().toLocaleTimeString(LOCALE)}`);
       }
     } catch(e){ /* fajl mozda nedostupan trenutno - probaj ponovo na sledecoj provateri */ }
   }
@@ -6909,7 +6982,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       });
       document.getElementById('excelTakeFileBtn').addEventListener('click', async ()=>{
         hideExcelConflict();
-        try{ await readExcelFileIntoLocal(excelHandle); updateExcelStatus(`Povezano: ${excelHandle.name} — preuzeto iz fajla u ${new Date().toLocaleTimeString('sr-Latn-RS')}`); }
+        try{ await readExcelFileIntoLocal(excelHandle); updateExcelStatus(`Povezano: ${excelHandle.name} — preuzeto iz fajla u ${new Date().toLocaleTimeString(LOCALE)}`); }
         catch(err){ updateExcelStatus('Greška: ' + err.message); }
       });
       document.getElementById('excelReconnectBtn').addEventListener('click', async ()=>{
@@ -7123,7 +7196,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const fixed = reconcileAppliedEntries();
     const statusEl = document.getElementById('reconcileStatus');
     if(fixed > 0){
-      statusEl.textContent = `Popravljeno: dopunjeno ${fixed} nedostajuć${fixed===1?'a stavka':'e stavke'}. Brojke su ažurirane.`;
+      statusEl.textContent = t('Popravljeno: dopunjeno {0} nedostajućih stavki. Brojke su ažurirane.', fixed);
       renderAll();
     } else {
       statusEl.textContent = 'Sve je već usklađeno — ništa nije trebalo popraviti.';
@@ -7137,10 +7210,10 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
     const cutoffStr = toISODateLocal(cutoff);
     const toArchive = entries.filter(e => e.date < cutoffStr);
     if(toArchive.length === 0){
-      statusEl.textContent = `Nema stavki starijih od ${cutoffStr} — ništa nije arhivirano.`;
+      statusEl.textContent = t('Nema stavki starijih od {0} — ništa nije arhivirano.', cutoffStr);
       return;
     }
-    if(!(await appConfirm(`Preuzeće se rezervni JSON fajl sa ${toArchive.length} stavki starijih od ${cutoffStr}, a zatim će biti uklonjene iz aktivnog spiska. Nastaviti?`, { title: 'Arhiviranje', okText: 'Arhiviraj' }))) return;
+    if(!(await appConfirm(t('Preuzeće se rezervni JSON fajl sa {0} stavki starijih od {1}, a zatim će biti uklonjene iz aktivnog spiska. Nastaviti?', toArchive.length, cutoffStr), { title: t('Arhiviranje'), okText: t('Arhiviraj') }))) return;
     const blob = new Blob([JSON.stringify({ archivedEntries: toArchive, archivedAt: new Date().toISOString(), cutoff: cutoffStr }, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -7156,7 +7229,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       });
     });
     saveEntries(); saveApplied();
-    statusEl.textContent = `Arhivirano i uklonjeno ${toArchive.length} stavki (fajl je preuzet).`;
+    statusEl.textContent = t('Arhivirano i uklonjeno {0} stavki (fajl je preuzet).', toArchive.length);
     renderAll();
   });
 
@@ -7195,17 +7268,17 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
 
     // Status fajla sa podacima: naslovna traka (zelena tacka = sve sacuvano) + Podesavanja
     const dataStore = window.__desktopData;
-    const timeFmt = (iso)=> new Date(iso).toLocaleTimeString('sr-Latn-RS', {hour:'2-digit', minute:'2-digit'});
+    const timeFmt = (iso)=> new Date(iso).toLocaleTimeString(LOCALE, {hour:'2-digit', minute:'2-digit'});
     function renderDataStatus(){
       const s = dataStore.status;
       const dot = byId('tbDot'), txt = byId('tbStatusText');
       if(s.error){ dot.className = 'tb-dot err'; txt.textContent = 'Greška pri čuvanju — klikni za detalje'; }
-      else if(s.savedAt){ dot.className = 'tb-dot ok'; txt.textContent = 'Sačuvano ' + timeFmt(s.savedAt); }
+      else if(s.savedAt){ dot.className = 'tb-dot ok'; txt.textContent = t('Sačuvano {0}', timeFmt(s.savedAt)); }
       else { dot.className = 'tb-dot'; txt.textContent = 'Čuva se…'; }
       byId('deskDataPath').textContent = s.path;
       byId('deskDataStatus').textContent = (s.warning ? '⚠ ' + s.warning + ' ' : '') + (s.error
         ? 'Poslednje čuvanje nije uspelo: ' + s.error + ' — pokušava se ponovo automatski.'
-        : s.savedAt ? 'Poslednje čuvanje: ' + new Date(s.savedAt).toLocaleString('sr-Latn-RS', {dateStyle:'medium', timeStyle:'short'}) : '');
+        : s.savedAt ? t('Poslednje čuvanje:') + ' ' + new Date(s.savedAt).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'}) : '');
     }
     window.addEventListener('desktop-data-status', renderDataStatus);
     renderDataStatus();
@@ -7267,6 +7340,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         case 'new-income': openNewEntry('income'); break;
         case 'search': showScreen('pretraga'); focusField('searchInput'); break;
         case 'toggle-theme': toggleTheme(); break;
+        case 'toggle-sidebar': window.__toggleSidebar(); break;
         case 'print-report': renderReport(); window.print(); break;
         case 'save-pdf': savePdfReport(); break;
         case 'backup-now': backupNow(); break;
@@ -7278,13 +7352,13 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       try{
         const i = await desktop.backupInfo();
         byId('deskBackupStatus').textContent = i.last
-          ? `Poslednja kopija: ${new Date(i.last).toLocaleString('sr-Latn-RS', {dateStyle:'medium', timeStyle:'short'})} · ${i.count} fajlova u ${i.dir}`
-          : `Još nema kopija — prva se pravi automatski. Folder: ${i.dir}`;
+          ? t('Poslednja kopija: {0} · {1} fajlova u {2}', new Date(i.last).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'}), i.count, i.dir)
+          : t('Još nema kopija — prva se pravi automatski. Folder: {0}', i.dir);
         const list = await desktop.backupList();
         const kindLabel = { daily: 'dnevna', monthly: 'mesečna', manual: 'ručna', before: 'pre vraćanja' };
-        byId('deskBackupList').innerHTML = list.map(b=> `<li><span class="name">${new Date(b.savedAt || b.mtime).toLocaleString('sr-Latn-RS', {dateStyle:'medium', timeStyle:'short'})}
+        byId('deskBackupList').innerHTML = list.map(b=> `<li><span class="name">${new Date(b.savedAt || b.mtime).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'})}
             <span class="cat-tag" style="margin-left:0.4em;">${kindLabel[b.kind] || b.kind}</span>
-            <span style="color:var(--ink-soft); font-size:0.88em; margin-left:0.4em;">${b.entries != null ? b.entries + ' stavki' : ''}</span></span>
+            <span style="color:var(--ink-soft); font-size:0.88em; margin-left:0.4em;">${b.entries != null ? t('{0} stavki', b.entries) : ''}</span></span>
           <button class="btn-secondary" data-restore="${escapeHtml(b.name)}" style="padding:0.35em 0.9em;">Vrati</button></li>`).join('')
           || '<li class="empty">Još nema kopija.</li>';
         byId('deskBackupList').querySelectorAll('[data-restore]').forEach(btn=>{
@@ -7296,8 +7370,8 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       let raw;
       try{ raw = await desktop.backupRead(name); }
       catch(err){ appAlert('Kopija ne može da se pročita: ' + err.message); return; }
-      const when = raw.savedAt ? new Date(raw.savedAt).toLocaleString('sr-Latn-RS', {dateStyle:'medium', timeStyle:'short'}) : name;
-      if(!(await appConfirm(`Vratiti sve podatke na stanje od ${when}?\n\nSve izmene posle tog trenutka biće zamenjene. Pre vraćanja se automatski čuva kopija trenutnog stanja, pa se i ovo može poništiti.`, { title: 'Vraćanje kopije', okText: 'Vrati kopiju' }))) return;
+      const when = raw.savedAt ? new Date(raw.savedAt).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'}) : name;
+      if(!(await appConfirm(t('Vratiti sve podatke na stanje od {0}?\n\nSve izmene posle tog trenutka biće zamenjene. Pre vraćanja se automatski čuva kopija trenutnog stanja, pa se i ovo može poništiti.', when), { title: t('Vraćanje kopije'), okText: t('Vrati kopiju') }))) return;
       await dataStore.saveNow();
       try{ await desktop.backupNow('before'); } catch(e){ /* nema jos fajla */ }
       dataStore.replaceAll(raw.data);
@@ -7354,16 +7428,16 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       if(!s) return;
       updateState = s;
       const pill = byId('tbUpdate');
-      byId('deskVersion').textContent = 'Instalirana verzija: ' + s.current;
+      byId('deskVersion').textContent = t('Instalirana verzija: {0}', s.current);
       const txt = {
         idle: 'Nove verzije se proveravaju automatski (posle starta i na svaka 2 sata) i instaliraju same.',
         checking: 'Proveravam da li postoji nova verzija…',
         current: 'Imaš najnoviju verziju. Nove verzije se instaliraju automatski.',
-        downloading: `Preuzimam verziju ${s.version || ''}… ${s.percent ? s.percent + '%' : ''}`,
+        downloading: t('Preuzimam verziju {0}… {1}', s.version || '', s.percent ? s.percent + '%' : ''),
         ready: s.postponed
-          ? `Verzija ${s.version} je spremna — instaliraće se čim skloniš prozor (tray ili minimizuj) ili zatvoriš aplikaciju.`
-          : `Verzija ${s.version} je spremna i instaliraće se automatski za nekoliko trenutaka.`,
-        installing: `Instaliram verziju ${s.version}…`,
+          ? t('Verzija {0} je spremna — instaliraće se čim skloniš prozor (tray ili minimizuj) ili zatvoriš aplikaciju.', s.version)
+          : t('Verzija {0} je spremna i instaliraće se automatski za nekoliko trenutaka.', s.version),
+        installing: t('Instaliram verziju {0}…', s.version),
         error: 'Provera nije uspela (možda nema interneta) — pokušaću ponovo kasnije. ' + (s.error || '')
       }[s.status] || '';
       byId('deskUpdateStatus').textContent = txt;
@@ -7375,11 +7449,11 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const tick = ()=>{
         const st = updateState;
         let label;
-        if(st.status === 'installing') label = `Instaliram ${st.version}…`;
+        if(st.status === 'installing') label = t('Instaliram {0}…', st.version);
         else if(st.installAt){
           const secs = Math.max(0, Math.ceil((st.installAt - Date.now()) / 1000));
-          label = `Verzija ${st.version} se instalira za ${secs} s`;
-        } else label = `Verzija ${st.version} je spremna`;
+          label = t('Verzija {0} se instalira za {1} s', st.version, secs);
+        } else label = t('Verzija {0} je spremna', st.version);
         byId('tbUpdateText').textContent = label;
       };
       tick();
@@ -7396,10 +7470,10 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
       const el = byId('deskReleaseNotes');
       if(notes && notes.text && notes.version === desktop.info.version){
         el.style.display = '';
-        el.textContent = `Šta je novo u ${notes.version}:\n${notes.text}`;
+        el.textContent = t('Šta je novo u {0}:\n{1}', notes.version, notes.text);
       }
       if(desktop.info.updatedFrom){
-        deskToast(`Aplikacija je ažurirana na verziju ${desktop.info.version} — šta je novo pogledaj u Podešavanjima.`, 8000);
+        deskToast(t('Aplikacija je ažurirana na verziju {0} — šta je novo pogledaj u Podešavanjima.', desktop.info.version), 8000);
       }
     }).catch(()=>{});
 
@@ -7426,7 +7500,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         const type = input.type === 'income' ? 'income' : 'expense';
         const currency = CURRENCIES.includes(input.currency) ? input.currency : 'RSD';
         const rate = currency === 'RSD' ? 1 : fx.rates[currency];
-        if(!rate) return { ok:false, error:'Kurs za ' + currency + ' nije dostupan.' };
+        if(!rate) return { ok:false, error: t('Kurs za {0} nije dostupan.', currency) };
         const toRsd = v => Math.round(v * rate * 100) / 100;
         const parsed = parseQuickAmount(String(input.desc || ''), parseFloat(input.amount));
         if(!parsed.desc) return { ok:false, error:'Unesi opis.' };
@@ -7460,7 +7534,7 @@ footer{ color: var(--ink-tertiary); font-size: 12px; }
         });
         newEntryId = lastId;
         saveEntries(); renderAll();
-        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? ` (${parts.length} kategorije)` : '') };
+        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : '') };
       },
       async flush(){
         dataStore.flushSync();

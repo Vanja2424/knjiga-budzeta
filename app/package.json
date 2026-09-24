@@ -1,6 +1,6 @@
 {
   "name": "knjiga-budzeta",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Knjiga budžeta — desktop aplikacija",
   "author": "Vanja Cernjakovski",
   "main": "main.js",
@@ -39,6 +39,7 @@
       "quick-add.html",
       "budzet-tracker.html",
       "budzet-core.js",
+      "i18n.js",
       "xlsx.core.min.js",
       "build/icon.png"
     ],
