@@ -2,6 +2,9 @@
 *.xlsx
 podaci*.json
 Rezervne kopije/
+*backup*/
+*.bak
+.claude/
 
 # Build i zavisnosti
 node_modules/
