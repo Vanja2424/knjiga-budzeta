@@ -14,11 +14,11 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
-    check('glavni meni ima 8 stavki', document.querySelectorAll('nav.tabs button[data-group]').length === 8);
+    check('glavni meni ima 9 stavki', document.querySelectorAll('nav.tabs button[data-group]').length === 9);
     // Kursevi: omiljena valuta se pojavljuje u izboru valute pri unosu
     go('kursevi'); await sleep(60);
     const favBtn = document.querySelector('.fx-star[data-cur="BAM"]');
@@ -79,6 +79,23 @@
         window.__deleteEntriesById([e.id]);
       }
     }
+
+    // Ekran Nabavka: brzo dodavanje, bez duplikata, grupisanje, stikliranje
+    go('nabavka'); await sleep(80);
+    const shopN0 = window.__shopping().items.length;
+    setVal('shopQuickInput', 'Smoke jogurt 2 kom 120'); $('shopQuickInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(60);
+    const jog = window.__shopping().items.find(i => i.name === 'Smoke jogurt');
+    check('nabavka: brzo dodavanje', !!jog && jog.qty === '2 kom' && jog.price === 120 && jog.needed === true && window.__shopping().items.length === shopN0 + 1, JSON.stringify(jog));
+    jog.needed = false; window.__saveShopping();
+    setVal('shopQuickInput', 'SMOKE JOGURT'); $('shopQuickInput').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(60);
+    check('nabavka: isto ime ne pravi duplikat', window.__shopping().items.length === shopN0 + 1 && window.__shopping().items.find(i => i.name === 'Smoke jogurt').needed === true);
+    check('nabavka: stavka je u listi', [...document.querySelectorAll('#shopList .shop-row')].some(r => r.textContent.includes('Smoke jogurt')));
+    document.querySelector('.shop-by-btn[data-by="store"]').click(); await sleep(40);
+    check('nabavka: grupisanje po prodavnici', [...document.querySelectorAll('#shopList .shop-group-title')].some(h => /Bez prodavnice/.test(h.textContent)));
+    document.querySelector('.shop-by-btn[data-by="section"]').click(); await sleep(40);
+    const jogBox = [...document.querySelectorAll('#shopList .shop-check')].find(c => c.dataset.id === window.__shopping().items.find(i => i.name === 'Smoke jogurt').id);
+    jogBox.click(); await sleep(40);
+    check('nabavka: štikliranje se čuva', JSON.parse(localStorage.getItem('budzet-nabavka-v1')).items.find(i => i.name === 'Smoke jogurt').checked === true);
 
     // Analiza: prva podkartica u Izvestajima, izbor perioda
     document.querySelector('nav.tabs button[data-group="izvestaji"]').click(); await sleep(50);

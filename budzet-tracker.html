@@ -1621,6 +1621,28 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
 /* ---- Nabavka ---- */
 .entry-items{ font-size:12px; color:var(--ink-soft); margin-top:2px; max-width:32em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.shop-quick{ width:100%; font-size:15px; padding:0.7em 0.9em; }
+.shop-controls{ display:flex; flex-wrap:wrap; gap:0.8em; align-items:center; margin-top:0.9em; }
+.shop-by-btn, .shop-show-btn{ border:none; background:transparent; color:var(--ink); border-radius:6px; padding:4px 12px; font:500 12.5px/1.3 var(--font); cursor:default; }
+.shop-by-btn.active, .shop-show-btn.active{ background:var(--card); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,0.12); }
+[data-theme="dark"] .shop-by-btn.active, [data-theme="dark"] .shop-show-btn.active{ background:#636366; }
+.shop-sections{ margin-top:0.9em; padding-top:0.9em; border-top:1px solid var(--paper-line); }
+.shop-sec-row{ display:flex; gap:0.5em; align-items:center; margin-bottom:0.4em; }
+.shop-sec-row input[type="text"]{ flex:1; max-width:22em; }
+.shop-sec-fixed{ flex:1; max-width:22em; padding:0.4em 0.2em; color:var(--ink-soft); }
+.shop-group + .shop-group{ margin-top:1.1em; }
+.shop-group-title{ font:600 13px/1.3 var(--font); color:var(--ink-soft); margin:0 0 0.3em; }
+.shop-group-title .muted{ font-weight:400; margin-left:0.3em; }
+.shop-row{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto auto auto; gap:0.7em; align-items:center; padding:0.45em 0; border-bottom:1px solid var(--paper-line); }
+.shop-name{ min-width:0; overflow-wrap:anywhere; }
+.shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.shop-row.done .shop-name{ color:var(--ink-soft); text-decoration:line-through; }
+.shop-check-space{ width:20px; }
+.shop-check{ appearance:none; -webkit-appearance:none; width:20px; height:20px; margin:0; padding:0; border-radius:50%; border:1.5px solid var(--ink-tertiary); background:transparent; position:relative; cursor:default; transition:background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
+.shop-check:checked{ background:var(--accent); border-color:var(--accent); }
+.shop-check:checked::after{ content:''; position:absolute; left:6px; top:2.5px; width:5px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
+.shop-check:active{ transform:scale(0.9); }
+.shop-need{ margin:0 !important; }
 </style>
 </head>
 <body>
@@ -1656,6 +1678,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     <button data-group="ciljevi" title="Ciljevi i dugovi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 21V3.5"/><path d="M5.5 4h12l-2.6 4.5 2.6 4.5h-12"/></svg><span class="tab-label">Ciljevi i dugovi</span></button>
     <button data-group="izvestaji" title="Izveštaji"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6.5M10 20V5M15 20v-9.5M20 20v-4"/></svg><span class="tab-label">Izveštaji</span></button>
     <button data-group="kursevi" title="Kursevi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13.5M14 4.5 17.5 8 14 11.5"/><path d="M20 16H6.5M10 12.5 6.5 16l3.5 3.5"/></svg><span class="tab-label">Kursevi</span></button>
+    <button data-group="nabavka" title="Nabavka"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2.2l2.1 10.2h10.4l1.9-7.2H7"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/></svg><span class="tab-label">Nabavka</span></button>
     <span class="sb-spacer"></span>
     <button data-group="podesavanja" title="Podešavanja"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></svg><span class="tab-label">Podešavanja</span></button>
   </nav>
@@ -2298,6 +2321,30 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     </div>
   </div>
 
+  <!-- NABAVKA -->
+  <div class="screen" id="screen-nabavka">
+    <div class="panel">
+      <input type="text" id="shopQuickInput" class="shop-quick" placeholder="Dodaj stavku, npr. Mleko 2 kom 150" aria-label="Dodaj stavku" autocomplete="off">
+      <div class="shop-controls">
+        <div class="trend-range-toggle" role="group" aria-label="Grupiši po">
+          <button class="shop-by-btn" data-by="section">Deo prodavnice</button>
+          <button class="shop-by-btn" data-by="store">Prodavnica</button>
+          <button class="shop-by-btn" data-by="category">Kategorija</button>
+        </div>
+        <div class="trend-range-toggle" role="group" aria-label="Prikaži">
+          <button class="shop-show-btn" data-show="need">Za kupovinu</button>
+          <button class="shop-show-btn" data-show="all">Sve stavke</button>
+        </div>
+        <button class="btn-secondary" id="shopSectionsBtn">Delovi prodavnice</button>
+      </div>
+      <div id="shopSectionsPanel" class="shop-sections" style="display:none;"></div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;">
+      <div id="shopList"></div>
+    </div>
+    <div class="panel shop-footer" id="shopFooter" style="display:none;"></div>
+  </div>
+
   <!-- PODESAVANJA -->
   <div class="screen" id="screen-kursevi">
     <div class="rates-top">
@@ -2739,7 +2786,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const saveShopping = () => localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
   const shoppingCategoryInUse = cat => shopping.items.some(i => i.category === cat);
   window.__shopping = () => shopping;
-  window.__saveShopping = () => { saveShopping(); invalidate(); };
+  window.__saveShopping = () => { saveShopping(); invalidate(); if(activeScreen === 'nabavka') renderShopping(); };
   function catColorFor(cat, fallbackIndex){
     return sanitizeHexColor(catColors[cat]) || PALETTE[fallbackIndex % PALETTE.length];
   }
@@ -3207,6 +3254,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
     izvestaji: [['analiza', 'Analiza'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
+    nabavka: [['nabavka', 'Nabavka']],
     podesavanja: [['podesavanja', 'Podešavanja']]
   };
   const groupOf = screen => Object.keys(SCREEN_GROUPS).find(g => SCREEN_GROUPS[g].some(([s]) => s === screen));
@@ -3228,6 +3276,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     uporedi: ()=> setCompareMode(compareMode),
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
     kursevi: ()=> renderRatesScreen(),
+    nabavka: ()=> renderShopping(),
     podesavanja: ()=>{}
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
@@ -3295,7 +3344,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // ---- Precica "/" za fokus na glavno polje za unos aktivnog ekrana ----
   const QUICK_FOCUS_BY_SCREEN = {
     prihodi: 'incDesc', rashodi: 'expDesc', kategorije: 'newCatInput',
-    ponavljajuce: 'recDesc', ciljevi: 'goalName', pretraga: 'searchInput'
+    ponavljajuce: 'recDesc', ciljevi: 'goalName', pretraga: 'searchInput', nabavka: 'shopQuickInput'
   };
   document.addEventListener('keydown', (e)=>{
     if(e.key !== '/') return;
@@ -4419,6 +4468,146 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   document.getElementById('analizaMonth').addEventListener('change', e=>{ analizaState.month = e.target.value; renderAnaliza(); });
   document.getElementById('analizaTrendCat').addEventListener('change', e=>{ analizaState.cat = e.target.value; renderAnaliza(); });
   document.querySelectorAll('.analiza-period-btn').forEach(btn=> btn.addEventListener('click', ()=>{ analizaState.n = Number(btn.dataset.n); renderAnaliza(); }));
+
+  // ---- Nabavka (lista za kupovinu) ----
+  // Pravila (parsiranje, grupe, procena, raspodela) su u budzet-core.js; ovde stanje ekrana i crtanje.
+  const SHOP_VIEW_KEY = 'budzet-nabavka-prikaz-v1';
+  const shopState = (()=>{ try{ const v = JSON.parse(localStorage.getItem(SHOP_VIEW_KEY) || 'null'); if(v && ['section','store','category'].includes(v.by) && ['need','all'].includes(v.show)) return { by: v.by, show: v.show, sectionsOpen: false }; } catch(e){} return { by: 'section', show: 'need', sectionsOpen: false }; })();
+  const saveShopView = () => localStorage.setItem(SHOP_VIEW_KEY, JSON.stringify({ by: shopState.by, show: shopState.show }));
+  const shopCategoryOf = it => expenseCats.includes(it.category) ? it.category : null;
+  // Podrazumevani delovi prodavnice se prevode samo dok ih korisnik ne preimenuje
+  const shopSectionLabelHtml = s => C.SHOPPING_SECTIONS.includes(s) ? escapeHtml(s) : `<span translate="no">${escapeHtml(s)}</span>`;
+  function defaultShoppingCategory(){
+    const last = shopping.items[shopping.items.length - 1];
+    if(last && expenseCats.includes(last.category)) return last.category;
+    return expenseCats.includes('Hrana') ? 'Hrana' : (expenseCats[0] || 'Ostalo');
+  }
+  function addShoppingFromInput(text){
+    const p = C.parseShoppingInput(text);
+    if(!p.name) return null;
+    let item = C.findShoppingItem(shopping.items, p.name);
+    const created = !item;
+    if(!item){
+      item = { id: newId(), name: p.name, section: C.SHOPPING_OTHER, store: '', category: defaultShoppingCategory(), price: null, qty: '', needed: true, checked: false };
+      shopping.items.push(item);
+    }
+    item.needed = true;
+    if(p.qty) item.qty = p.qty;
+    if(p.price != null) item.price = p.price;
+    saveShopping();
+    return { item, created };
+  }
+  function renderShopping(){
+    document.querySelectorAll('.shop-by-btn').forEach(b=> b.classList.toggle('active', b.dataset.by === shopState.by));
+    document.querySelectorAll('.shop-show-btn').forEach(b=> b.classList.toggle('active', b.dataset.show === shopState.show));
+    const list = document.getElementById('shopList');
+    const visible = shopState.show === 'need' ? shopping.items.filter(i=> i.needed) : shopping.items;
+    if(!shopping.items.length) list.innerHTML = `<div class="empty">${t('Lista je prazna. Dodaj prve stavke, npr. Mleko, Hleb, Jaja.')}</div>`;
+    else if(!visible.length) list.innerHTML = `<div class="empty">${t('Nema ništa za kupovinu. Uključi „treba“ u prikazu Sve stavke ili dodaj novu stavku.')}</div>`;
+    else {
+      const groups = C.groupShoppingItems(visible, shopState.by, { sections: shopping.sections, categories: expenseCats });
+      list.innerHTML = groups.map(g=>{
+        const title = shopState.by === 'section' ? shopSectionLabelHtml(g.label)
+          : g.key === '' ? escapeHtml(g.label) : (shopState.by === 'category' ? catTagHtml(g.label) : `<span translate="no">${escapeHtml(g.label)}</span>`);
+        return `<div class="shop-group"><h3 class="shop-group-title">${title} <span class="muted">${g.items.length}</span></h3>
+          ${g.items.map(i=> `<div class="shop-row${i.checked ? ' done' : ''}" data-row-id="${i.id}">
+            ${i.needed ? `<input type="checkbox" class="shop-check" data-id="${i.id}"${i.checked ? ' checked' : ''} title="${t('Kupljeno')}">` : '<span class="shop-check-space"></span>'}
+            <span class="shop-name" translate="no">${escapeHtml(i.name)}</span>
+            <span class="shop-meta">${[i.qty ? `<span translate="no">${escapeHtml(i.qty)}</span>` : '', i.price ? fmt(i.price) : ''].filter(Boolean).join(' · ')}</span>
+            ${shopState.show === 'all' ? `<label class="paid-checkbox-label shop-need" title="${t('Treba')}"><input type="checkbox" class="shop-need-box" data-id="${i.id}"${i.needed ? ' checked' : ''}></label>` : ''}
+            <button class="edit-btn shop-edit" data-id="${i.id}" title="${t('Uredi')}">✎</button>
+            <button class="del-btn shop-del" data-id="${i.id}" title="${t('Obriši')}">✕</button>
+          </div>`).join('')}</div>`;
+      }).join('');
+    }
+    list.querySelectorAll('.shop-check').forEach(box=> box.addEventListener('change', ()=>{
+      const it = shopping.items.find(x=> x.id === box.dataset.id); if(!it) return;
+      it.checked = box.checked; saveShopping(); renderShopping();
+    }));
+    list.querySelectorAll('.shop-need-box').forEach(box=> box.addEventListener('change', ()=>{
+      const it = shopping.items.find(x=> x.id === box.dataset.id); if(!it) return;
+      it.needed = box.checked; if(!it.needed) it.checked = false; saveShopping(); renderShopping();
+    }));
+    list.querySelectorAll('.shop-edit').forEach(b=> b.addEventListener('click', ()=> editShoppingItem(b.dataset.id)));
+    list.querySelectorAll('.shop-del').forEach(b=> b.addEventListener('click', async ()=>{
+      const it = shopping.items.find(x=> x.id === b.dataset.id); if(!it) return;
+      if(!(await appConfirm(t('Obrisati „{0}“ sa spiska?', it.name), { okText: t('Obriši'), danger: true }))) return;
+      shopping.items = shopping.items.filter(x=> x.id !== it.id); saveShopping(); renderShopping();
+    }));
+    renderShoppingSections();
+    renderShoppingFooter();
+  }
+  function editShoppingItem(id){
+    const it = shopping.items.find(x=> x.id === id); if(!it) return;
+    const NO_CAT = t('— bez kategorije —');
+    openEditModal(t('Uredi stavku'), [
+      {key:'name', label:t('Naziv'), type:'text', value:it.name},
+      {key:'qty', label:t('Količina (npr. 2 kom)'), type:'text', value:it.qty},
+      {key:'price', label:t('Cena (RSD, procena)'), type:'number', value: it.price != null ? it.price : ''},
+      {key:'section', label:t('Deo prodavnice'), type:'select', value:it.section, options:shopping.sections},
+      {key:'store', label:t('Prodavnica'), type:'text', value:it.store},
+      {key:'category', label:t('Kategorija budžeta'), type:'select', value: shopCategoryOf(it) || NO_CAT, options: shopCategoryOf(it) ? expenseCats : [NO_CAT].concat(expenseCats)},
+      {key:'needed', label:t('Treba za sledeću kupovinu'), type:'checkbox', value:it.needed}
+    ], vals=>{
+      const name = String(vals.name || '').replace(/\s+/g, ' ').trim();
+      if(!name) return;
+      const other = C.findShoppingItem(shopping.items, name);
+      if(other && other.id !== it.id){ appAlert(t('Stavka sa tim imenom već postoji.')); return; }
+      it.name = name; it.qty = String(vals.qty || '').trim();
+      it.price = vals.price > 0 ? vals.price : null;
+      it.section = shopping.sections.includes(vals.section) ? vals.section : C.SHOPPING_OTHER;
+      it.store = String(vals.store || '').trim();
+      if(expenseCats.includes(vals.category)) it.category = vals.category;
+      it.needed = !!vals.needed; if(!it.needed) it.checked = false;
+      saveShopping(); renderShopping();
+    });
+  }
+  function renderShoppingSections(){
+    const panel = document.getElementById('shopSectionsPanel');
+    panel.style.display = shopState.sectionsOpen ? '' : 'none';
+    if(!shopState.sectionsOpen) return;
+    const secs = shopping.sections;
+    panel.innerHTML = secs.map((s, i)=> `<div class="shop-sec-row">
+        ${s === C.SHOPPING_OTHER ? `<span class="shop-sec-fixed">${shopSectionLabelHtml(s)}</span>` : `<input type="text" class="shop-sec-name" data-i="${i}" value="${escapeHtml(s)}" aria-label="${t('Naziv dela')}">`}
+        <button class="edit-btn shop-sec-up" data-i="${i}" title="${t('Gore')}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="edit-btn shop-sec-down" data-i="${i}" title="${t('Dole')}" ${i >= secs.length - 2 || s === C.SHOPPING_OTHER ? 'disabled' : ''}>↓</button>
+        ${s === C.SHOPPING_OTHER ? '' : `<button class="del-btn shop-sec-del" data-i="${i}" title="${t('Obriši')}">✕</button>`}
+      </div>`).join('') + `<div class="shop-sec-row"><input type="text" id="shopSecNew" placeholder="${t('Novi deo prodavnice')}" aria-label="${t('Novi deo prodavnice')}"><button class="btn-secondary" id="shopSecAdd">${t('Dodaj')}</button></div>`;
+    const commit = ()=>{ saveShopping(); renderShopping(); };
+    panel.querySelectorAll('.shop-sec-name').forEach(inp=> inp.addEventListener('change', ()=>{
+      const i = Number(inp.dataset.i), old = secs[i], name = inp.value.replace(/\s+/g, ' ').trim();
+      if(!name || name === old) { inp.value = old; return; }
+      if(secs.some(s=> s.toLowerCase() === name.toLowerCase())){ appAlert(t('Deo sa tim imenom već postoji.')); inp.value = old; return; }
+      secs[i] = name; shopping.items.forEach(it=>{ if(it.section === old) it.section = name; }); commit();
+    }));
+    panel.querySelectorAll('.shop-sec-up').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); [secs[i-1], secs[i]] = [secs[i], secs[i-1]]; commit(); }));
+    panel.querySelectorAll('.shop-sec-down').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); [secs[i+1], secs[i]] = [secs[i], secs[i+1]]; commit(); }));
+    panel.querySelectorAll('.shop-sec-del').forEach(b=> b.addEventListener('click', ()=>{
+      const i = Number(b.dataset.i), old = secs[i];
+      secs.splice(i, 1); shopping.items.forEach(it=>{ if(it.section === old) it.section = C.SHOPPING_OTHER; }); commit();
+    }));
+    const add = ()=>{
+      const inp = document.getElementById('shopSecNew'), name = inp.value.replace(/\s+/g, ' ').trim();
+      if(!name) return;
+      if(secs.some(s=> s.toLowerCase() === name.toLowerCase())){ appAlert(t('Deo sa tim imenom već postoji.')); return; }
+      secs.splice(secs.length - 1, 0, name); commit();
+    };
+    document.getElementById('shopSecAdd').addEventListener('click', add);
+    document.getElementById('shopSecNew').addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } });
+  }
+  // Popunjava zadatak 5.
+  function renderShoppingFooter(){}
+  document.getElementById('shopQuickInput').addEventListener('keydown', e=>{
+    if(e.key !== 'Enter') return;
+    e.preventDefault();
+    const res = addShoppingFromInput(e.target.value);
+    if(!res) return;
+    e.target.value = '';
+    renderShopping();
+  });
+  document.querySelectorAll('.shop-by-btn').forEach(b=> b.addEventListener('click', ()=>{ shopState.by = b.dataset.by; saveShopView(); renderShopping(); }));
+  document.querySelectorAll('.shop-show-btn').forEach(b=> b.addEventListener('click', ()=>{ shopState.show = b.dataset.show; saveShopView(); renderShopping(); }));
+  document.getElementById('shopSectionsBtn').addEventListener('click', ()=>{ shopState.sectionsOpen = !shopState.sectionsOpen; renderShoppingSections(); });
 
   // ---- Kalendar meseca (kompaktan): boja = potrosnja dana, tacke = prihod/rashod/dospeva ----
   function renderMonthCalendar(){

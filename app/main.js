@@ -40,7 +40,7 @@ const EN = {
   'Knjiga budžeta radi u pozadini': 'Budget Book is running in the background',
   'Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).': 'Payment reminders still arrive. The app is in the system tray (next to the clock).',
   'Novi rashod': 'New expense', 'Novi prihod': 'New income',
-  'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Kursevi': 'Exchange rates', 'Podešavanja': 'Settings',
+  'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Kursevi': 'Exchange rates', 'Nabavka': 'Shopping', 'Podešavanja': 'Settings',
 };
 const T = (sr, ...args) => (LANG === 'en' && EN[sr] !== undefined ? EN[sr] : sr).replace(/\{(\d+)\}/g, (m, i) => args[i] !== undefined ? args[i] : m);
 
@@ -579,7 +579,7 @@ function setAutostart(on) {
 // ---------- Meni i precice ----------
 const SCREENS = [
   ['pregled', 'Pregled'], ['rashodi', 'Transakcije'], ['kategorije', 'Budžet'], ['ponavljajuce', 'Ponavljajuće'],
-  ['ciljevi', 'Ciljevi i dugovi'], ['izvestaj', 'Izveštaji'], ['kursevi', 'Kursevi'], ['podesavanja', 'Podešavanja']
+  ['ciljevi', 'Ciljevi i dugovi'], ['izvestaj', 'Izveštaji'], ['kursevi', 'Kursevi'], ['nabavka', 'Nabavka'], ['podesavanja', 'Podešavanja']
 ];
 function menuTemplate() {
   return [
