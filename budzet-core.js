@@ -447,6 +447,61 @@
       .map(g => Object.assign(g, { perMonth: g.count / k, monthly: g.total / k, yearly: g.total / k * 12 }));
   }
 
+  function splitFixedVariable(entries, mKey, fixedCategories){
+    const fixed = sumPaid(entries, mKey, e => isFixedEntry(e, fixedCategories));
+    const total = sumPaid(entries, mKey);
+    return { fixed, variable: total - fixed, total, fixedPct: total > 0 ? Math.round(fixed / total * 100) : 0 };
+  }
+  function variableAverage(entries, mKey, n, fixedCategories){
+    return periodStats(entries, analysisPeriod(mKey, n), e => !isFixedEntry(e, fixedCategories)).avg;
+  }
+  // Ponavljajuci troskovi sa godisnjim troskom; "poskupelo" = poslednja naplata > 10% iznad prve (bar 3 naplate).
+  const CREEP_PCT = 0.10;
+  function subscriptionsYearly(recurring, entries){
+    return (recurring || []).filter(r => r.type !== 'income').map(r => {
+      const prefix = 'rec-' + r.id + '-';
+      const hist = entries.filter(e => (e.id || '').startsWith(prefix)).sort((a, b) => a.date.localeCompare(b.date));
+      const first = hist.length ? hist[0].amount : null;
+      const last = hist.length ? hist[hist.length - 1].amount : null;
+      const creep = hist.length >= 3 && first > 0 && last > first * (1 + CREEP_PCT);
+      return { id: r.id, desc: r.desc, category: r.category, frequency: r.frequency || 'monthly', yearly: monthlyEquivalent(r) * 12,
+        first, last, creep, creepPct: creep ? Math.round((last - first) / first * 100) : null };
+    }).sort((a, b) => b.yearly - a.yearly);
+  }
+  // Broj meseci do roka, isto kao predlog kod ciljeva (najmanje 1).
+  function monthsUntil(today, deadlineISO){
+    const [y, m, d] = deadlineISO.split('-').map(Number);
+    let months = (y - today.getFullYear()) * 12 + (m - 1 - today.getMonth());
+    if(d < today.getDate()) months -= 1;
+    return Math.max(1, months);
+  }
+  // "Sta ako smanjim promenljive troskove za pct%": usteda i koliko ranije stize cilj sa najblizim rokom.
+  function whatIf(variableAvg, pct, goals, today){
+    const p = Math.max(0, Math.min(50, Number(pct) || 0));
+    const monthly = variableAvg * p / 100;
+    const res = { pct: p, monthly, yearly: monthly * 12, goal: null };
+    if(monthly <= 0) return res;
+    const todayISO = toISODate(today);
+    const active = (goals || []).filter(g => g.target > g.current && g.deadline && g.deadline > todayISO)
+      .sort((a, b) => a.deadline.localeCompare(b.deadline));
+    if(!active.length) return res;
+    const g = active[0];
+    const remaining = g.target - g.current;
+    const monthsLeft = monthsUntil(today, g.deadline);
+    const newMonths = Math.ceil(remaining / (remaining / monthsLeft + monthly));
+    const sooner = monthsLeft - newMonths;
+    if(sooner >= 1) res.goal = { id: g.id, name: g.name, monthsLeft, newMonths, sooner };
+    return res;
+  }
+  // Jedan poziv za Pregled i Analizu — da brojke uvek budu iste.
+  function savingsSummary(entries, recurring, fixedCategories, mKey, n){
+    const breakdown = categoryBreakdown(entries, mKey, n);
+    const above = aboveAverage(breakdown);
+    const small = smallFrequent(entries, mKey, n, fixedCategories);
+    return { month: mKey, n, enough: breakdown.enough, breakdown, above, aboveTotal: above.reduce((s, r) => s + r.diff, 0),
+      small, smallMonthly: small.reduce((s, g) => s + g.monthly, 0), subscriptions: subscriptionsYearly(recurring, entries) };
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -458,6 +513,7 @@
     accountBalances, convertToRsd,
     linearRegressionForecast, debtPayoffPlan,
     NO_DESC, isPaidExp, cleanDesc, normalizeDesc, analysisPeriod, firstExpenseMonth, sumPaid, periodStats,
-    isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent
+    isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent,
+    splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary
   };
 });

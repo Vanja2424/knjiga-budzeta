@@ -305,3 +305,68 @@ test('smallFrequent: <=1.500 prosecno i >=4 kupovine mesecno, samo promenljivo',
   assert.deepEqual([kafa.count, kafa.perMonth, kafa.monthly, kafa.yearly], [8, 4, 1200, 14400]);
   assert.deepEqual(C.smallFrequent(entries.filter(e => e.date < '2026-04'), '2026-05', 6, []), []); // samo 1 mesec podataka
 });
+
+test('splitFixedVariable i variableAverage', () => {
+  const entries = [
+    ex('rec-n1-2026-05', '2026-05-01', 1200, 'Zabava', 'Netflix'),
+    ex('k1', '2026-05-03', 40000, 'Stanovanje', 'Kirija'),
+    ex('m1', '2026-05-04', 8800, 'Hrana', 'Maxi'),
+    ex('m2', '2026-05-05', 500, 'Hrana', 'Maxi', { paid: false }),
+    ex('a1', '2026-03-04', 6000, 'Hrana', 'Maxi'), ex('a2', '2026-04-04', 10000, 'Hrana', 'Maxi'),
+    ex('rec-n1-2026-04', '2026-04-01', 1200, 'Zabava', 'Netflix')
+  ];
+  assert.deepEqual(C.splitFixedVariable(entries, '2026-05', ['Stanovanje']), { fixed: 41200, variable: 8800, total: 50000, fixedPct: 82 });
+  assert.deepEqual(C.splitFixedVariable([], '2026-05', []), { fixed: 0, variable: 0, total: 0, fixedPct: 0 });
+  assert.equal(C.variableAverage(entries, '2026-05', 6, ['Stanovanje']), 8000); // (6000 + 10000) / 2
+});
+
+test('subscriptionsYearly: godisnji trosak i poskupljenje > 10% (bar 3 placanja)', () => {
+  const recurring = [
+    { id: 'n', desc: 'Netflix', amount: 1400, category: 'Zabava', type: 'expense', frequency: 'monthly' },
+    { id: 'o', desc: 'Osiguranje', amount: 24000, category: 'Ostalo', type: 'expense', frequency: 'yearly' },
+    { id: 's', desc: 'Spotify', amount: 600, category: 'Zabava', type: 'expense', frequency: 'monthly' },
+    { id: 'p', desc: 'Plata', amount: 100000, category: 'Plata', type: 'income', frequency: 'monthly' }
+  ];
+  const entries = [
+    ex('rec-n-2026-01', '2026-01-05', 1200, 'Zabava', 'Netflix'), ex('rec-n-2026-02', '2026-02-05', 1300, 'Zabava', 'Netflix'),
+    ex('rec-n-2026-03', '2026-03-05', 1400, 'Zabava', 'Netflix'),                        // +16,7% -> poskupelo
+    ex('rec-s-2026-01', '2026-01-05', 600, 'Zabava', 'Spotify'), ex('rec-s-2026-02', '2026-02-05', 660, 'Zabava', 'Spotify'),
+    ex('rec-s-2026-03', '2026-03-05', 660, 'Zabava', 'Spotify'),                          // tacno +10% -> NE
+    ex('rec-o-2025-01', '2025-01-05', 20000, 'Ostalo', 'Osiguranje'), ex('rec-o-2026-01', '2026-01-05', 24000, 'Ostalo', 'Osiguranje') // samo 2 -> NE
+  ];
+  const res = C.subscriptionsYearly(recurring, entries);
+  assert.deepEqual(res.map(r => [r.id, r.yearly, r.creep, r.creepPct]), [
+    ['o', 24000, false, null], ['n', 16800, true, 17], ['s', 7200, false, null]
+  ]);
+  assert.deepEqual([res[1].first, res[1].last], [1200, 1400]);
+  assert.deepEqual(C.subscriptionsYearly([], entries), []);
+});
+
+test('whatIf: usteda i cilj N meseci ranije', () => {
+  const today = new Date(2026, 8, 28); // 28.09.2026.
+  const goals = [
+    { id: 'g1', name: 'More', target: 130000, current: 10000, deadline: '2027-09-28' }, // 12 meseci, tempo 10.000
+    { id: 'g2', name: 'Auto', target: 900000, current: 0, deadline: '2029-01-01' },
+    { id: 'g3', name: 'Gotov', target: 5000, current: 5000, deadline: '2026-12-01' },
+    { id: 'g4', name: 'Bez roka', target: 50000, current: 0, deadline: '' },
+    { id: 'g5', name: 'Prosao', target: 50000, current: 0, deadline: '2026-01-01' }
+  ];
+  const r = C.whatIf(20000, 10, goals, today); // 2.000 mesecno
+  assert.deepEqual([r.pct, r.monthly, r.yearly], [10, 2000, 24000]);
+  assert.deepEqual(r.goal, { id: 'g1', name: 'More', monthsLeft: 12, newMonths: 10, sooner: 2 }); // 120000 / 12000 = 10
+  assert.equal(C.whatIf(20000, 0, goals, today).goal, null);
+  assert.equal(C.whatIf(20000, 80, [], today).pct, 50);     // klizac najvise 50%
+  assert.equal(C.whatIf(20000, 10, goals.slice(2), today).goal, null); // samo gotov / bez roka / prosao
+  assert.equal(C.whatIf(20000, 1, [goals[0]], today).goal, null); // 200/mes ne skracuje ni za ceo mesec -> null
+  assert.equal(C.monthsUntil(today, '2026-10-01'), 1);
+});
+
+test('savingsSummary: isti rezultat za Pregled i Analizu', () => {
+  const entries = [ex('v1', '2026-03-05', 3000, 'Prevoz', 'b'), ex('v2', '2026-04-05', 3000, 'Prevoz', 'b'), ex('v3', '2026-05-05', 5000, 'Prevoz', 'b')];
+  const s = C.savingsSummary(entries, [], [], '2026-05', 6);
+  assert.equal(s.enough, true);
+  assert.deepEqual(s.above.map(r => r.cat), ['Prevoz']);
+  assert.equal(s.aboveTotal, 2000);
+  assert.deepEqual([s.small, s.smallMonthly, s.subscriptions], [[], 0, []]);
+  assert.equal(s.breakdown.rows.length, 1);
+});
