@@ -75,22 +75,40 @@
     setVal('analizaWhatIf', '20'); await sleep(40);
     check('Analiza: klizač šta ako', /20%/.test($('analizaWhatIfLabel').textContent) && $('analizaWhatIfResult').textContent.trim().length > 0, $('analizaWhatIfResult').textContent);
 
-    // Pregled → Analiza: isti iznos na oba mesta
-    go('pregled'); await sleep(80);
+    // Pregled → Analiza: isti iznos na oba mesta.
+    // Pravi podaci trenutno mozda nemaju nijednu ustedu (nema reda), pa se ovde seeduje testna
+    // kategorija sa zagarantovanom potrosnjom iznad proseka (dva prethodna meseca po 1.000,
+    // tekuci mesec 5.000), da bi grana sa dugmetom (iznos, klik → Analiza) uvek bila izvrsena.
+    go('pregled'); await sleep(50);
+    const seedCat = 'Smoke analiza';
+    window.__addExpenseCategory(seedCat);
+    const seedDate = monthsAgo => {
+      const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - monthsAgo); d.setDate(10);
+      return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    };
+    [[2, 1000], [1, 1000], [0, 5000]].forEach(([monthsAgo, amount]) => {
+      const r = window.__desktopBridge.addEntry({ type: 'expense', desc: 'Smoke analiza trošak', amount, category: seedCat, date: seedDate(monthsAgo) });
+      if (!r.ok) throw new Error('Seed za Analizu nije uspeo: ' + r.error);
+    });
+    await sleep(80);
+
     const S = window.BudzetCore.savingsSummary(entries(), JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]'),
       JSON.parse(localStorage.getItem('budzet-fiksne-kategorije-v1') || '[]'), monthKey(new Date()), 6);
-    // Dugme uvek postoji u HTML-u; "ima reda" = dugme i panel su vidljivi
-    const linkEl = $('patternsAnalizaLink');
-    const link = linkEl && linkEl.style.display !== 'none' && $('patternsPanel').style.display !== 'none' ? linkEl : null;
-    const expectLink = S.above.length > 0 || S.small.length > 0;
-    check('Pregled: red za Analizu kad ima uštede', !!link === expectLink, JSON.stringify({ above: S.above.length, small: S.small.length }));
-    if (link) {
-      const want = Math.round(S.above.length ? S.aboveTotal : S.smallMonthly);
-      check('Pregled i Analiza: isti iznos', Number(link.dataset.total) === want, link.dataset.total + ' vs ' + want);
-      link.click(); await sleep(120);
-      check('Pregled: red vodi na Analizu', $('screen-analiza').classList.contains('active') && $('analizaSummary').dataset.n === '6');
-      go('pregled');
-    }
+    check('Pregled: seed test podaci ulaze u iznad proseka', S.above.some(a => a.cat === seedCat), JSON.stringify(S.above));
+    const link = $('patternsAnalizaLink');
+    const linkVisible = link.style.display !== 'none' && $('patternsPanel').style.display !== 'none';
+    check('Pregled: red za Analizu kad ima uštede', linkVisible, JSON.stringify({ above: S.above.length, small: S.small.length }));
+    const want = Math.round(S.above.length ? S.aboveTotal : S.smallMonthly);
+    check('Pregled i Analiza: isti iznos', linkVisible && Number(link.dataset.total) === want, link.dataset.total + ' vs ' + want);
+    link.click(); await sleep(120);
+    check('Pregled: red vodi na Analizu', $('screen-analiza').classList.contains('active') && $('analizaSummary').dataset.n === '6');
+    go('pregled'); await sleep(50);
+
+    // Ciscenje seedovanih test podataka (kategorija mora biti nekoriscena da bi se obrisala)
+    const seedIds = entries().filter(e => e.category === seedCat).map(e => e.id);
+    window.__deleteEntriesById(seedIds);
+    window.__deleteExpenseCategory(seedCat);
+    await sleep(50);
 
     go('pregled');
 

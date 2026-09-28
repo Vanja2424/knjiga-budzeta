@@ -5857,6 +5857,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   window.__setCategoryFixed = setCategoryFixed;
   window.__renameCategory = (a, b) => renameCategory(a, b);
   window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
+  // Samo za automatske provere: uklanja stavke po id-u (npr. da bi se izbrisala test kategorija posle).
+  window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); invalidate(); };
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();
     if(!newName || newName === oldName) return;
