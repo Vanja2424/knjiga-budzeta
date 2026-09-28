@@ -534,8 +534,8 @@
     [...counts.keys()].sort((a, b) => a.localeCompare(b)).forEach(s => { if(counts.get(s) > bestN){ best = s; bestN = counts.get(s); } });
     return best;
   }
-  const itemsToCell = items => Array.isArray(items) ? items.join(', ') : '';
-  const cellToItems = cell => String(cell == null ? '' : cell).split(',').map(x => x.trim()).filter(Boolean);
+  const itemsToCell = items => Array.isArray(items) ? items.join('; ') : '';
+  const cellToItems = cell => String(cell == null ? '' : cell).split(';').map(x => x.trim()).filter(Boolean);
   // Proverava i dopunjuje sacuvanu listu: nepoznat deo -> Ostalo, duplikat naziva se izbacuje, Ostalo uvek postoji.
   function normalizeShopping(raw, makeId){
     const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};

@@ -403,11 +403,14 @@ test('purchaseItemLabel i mostCommonStore', () => {
 });
 
 test('itemsToCell / cellToItems', () => {
-  assert.equal(C.itemsToCell(['Mleko (2 kom)', 'Hleb']), 'Mleko (2 kom), Hleb');
+  assert.equal(C.itemsToCell(['Mleko (2 kom)', 'Hleb']), 'Mleko (2 kom); Hleb');
   assert.equal(C.itemsToCell(undefined), '');
-  assert.deepEqual(C.cellToItems('Mleko (2 kom), Hleb ,, '), ['Mleko (2 kom)', 'Hleb']);
+  assert.deepEqual(C.cellToItems('Mleko (2 kom); Hleb ;; '), ['Mleko (2 kom)', 'Hleb']);
   assert.deepEqual(C.cellToItems(''), []);
   assert.deepEqual(C.cellToItems(undefined), []);
+  // zarez u kolicini/nazivu prezivljava put kroz Excel
+  const withComma = [C.purchaseItemLabel({ name: 'Jabuke', qty: '1,5 kg' }), 'Mleko 2,8%'];
+  assert.deepEqual(C.cellToItems(C.itemsToCell(withComma)), withComma);
 });
 
 test('normalizeShopping: podrazumevano, neispravni podaci, Ostalo uvek postoji', () => {
