@@ -51,7 +51,7 @@ Ključ u localStorage je `budzet-nabavka-v1`. Desktop verzija ga automatski upis
 - Novo neobavezno polje na rashodu: `items`, niz tekstova, npr. `["Mleko (2 kom)", "Hleb"]`.
 - Rashodi prikazuju skraćeni spisak ispod opisa, npr. „Mleko, Hleb, Jaja +3“, a klik ili tooltip pokazuje ceo spisak.
 - Izmena rashoda zadržava `items`.
-- Excel: list „Stavke“ dobija kolonu **Kupljeno** (stavke razdvojene sa „, “). Uvoz iz Excela čita tu kolonu nazad u `items`.
+- Excel: list „Stavke“ dobija kolonu **Kupljeno** (stavke razdvojene sa „; “, jer zarez može biti u količini, npr. „1,5 kg“). Uvoz iz Excela čita tu kolonu nazad u `items`.
 - JSON rezervna kopija čuva `items` na rashodu. Provera podataka propušta samo nizove tekstova.
 
 ### Kategorije budžeta
