@@ -199,8 +199,9 @@
     check('panel stanja na računima', $('accountsOverviewPanel').style.display !== 'none' && /Smoke štednja/.test($('accountsOverview').textContent));
     await sleep(800); // animacija iznosa u sazetku
     const m = monthKey(new Date());
-    const expSum = entries().filter(e => e.type === 'expense' && e.paid !== false && e.date.startsWith(m)).reduce((s, e) => s + e.amount, 0);
-    const incSum = entries().filter(e => e.type === 'income' && e.date.startsWith(m)).reduce((s, e) => s + e.amount, 0);
+    // Stavke raspoređene na više meseci (npr. plata za 2 meseca) ulaze samo mesečnim delom
+    const expSum = entries().filter(e => e.type === 'expense' && e.paid !== false).reduce((s, e) => s + BudzetCore.shareInMonth(e, m), 0);
+    const incSum = entries().filter(e => e.type === 'income').reduce((s, e) => s + BudzetCore.shareInMonth(e, m), 0);
     check('prenos nije ni prihod ni rashod',
       $('totalExpense').textContent.replace(/\D/g, '') === String(Math.round(expSum)) && $('totalIncome').textContent.replace(/\D/g, '') === String(Math.round(incSum)),
       `${$('totalExpense').textContent} / ${$('totalIncome').textContent} vs ${expSum} / ${incSum}`);
