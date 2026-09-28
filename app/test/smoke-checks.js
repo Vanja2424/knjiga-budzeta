@@ -101,6 +101,26 @@
     check('nabavka: Ostalo ostaje poslednji deo (dugme gore isključeno)', !!ostaloRow && ostaloRow.querySelector('.shop-sec-up').disabled);
     $('shopSectionsBtn').click(); await sleep(40);
 
+    // Zavrsi kupovinu: dve kategorije -> dva rashoda sa items i oznakom nabavka; zbir = uneti iznos
+    const catsQ = window.__desktopBridge.getQuickAddData().expenseCats;
+    const sh2 = window.__shopping();
+    const jog2 = sh2.items.find(i => i.name === 'Smoke jogurt');
+    jog2.category = catsQ[0]; jog2.checked = true; jog2.needed = true;
+    sh2.items.push({ id: 'smoke-shop-2', name: 'Smoke sapun', section: 'Higijena', store: 'dm', category: catsQ[1], price: 360, qty: '', needed: true, checked: true });
+    window.__saveShopping(); await sleep(40);
+    check('nabavka: procena u donjoj traci', /480/.test($('shopFooter').textContent.replace(/\D/g, '')) || /480/.test($('shopFooter').textContent), $('shopFooter').textContent);
+    const nE = entries().length;
+    const fin = window.__finishPurchase({ total: 1001 });
+    const made = entries().filter(e => (e.tags || []).includes('nabavka') && e.items && e.items.some(x => /^Smoke (jogurt|sapun)/.test(x)));
+    check('nabavka: završi kupovinu pravi dva rashoda', fin && entries().length === nE + 2 && made.length === 2, JSON.stringify(made));
+    check('nabavka: zbir rashoda = uneti iznos', made.reduce((s, e) => s + e.amount, 0) === 1001);
+    check('nabavka: rashod nosi kupljene stvari', made.some(e => e.items.includes('Smoke jogurt (2 kom)')) && made.some(e => e.items.includes('Smoke sapun')));
+    check('nabavka: kupljeno skinuto sa liste', window.__shopping().items.filter(i => /^Smoke (jogurt|sapun)$/.test(i.name)).every(i => !i.needed && !i.checked));
+    // ciscenje
+    window.__deleteEntriesById(made.map(e => e.id));
+    window.__shopping().items = window.__shopping().items.filter(i => !/^Smoke (jogurt|sapun)$/.test(i.name));
+    window.__saveShopping();
+
     // Analiza: prva podkartica u Izvestajima, izbor perioda
     document.querySelector('nav.tabs button[data-group="izvestaji"]').click(); await sleep(50);
     check('Analiza je prva podkartica Izveštaja', ($('subtabs').querySelector('button') || {}).dataset?.screen === 'analiza', $('subtabs').innerHTML.slice(0, 200));

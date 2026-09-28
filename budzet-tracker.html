@@ -1643,6 +1643,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-check:checked::after{ content:''; position:absolute; left:6px; top:2.5px; width:5px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
 .shop-check:active{ transform:scale(0.9); }
 .shop-need{ margin:0 !important; }
+.shop-footer{ position:sticky; bottom:0; z-index:5; margin-top:1.5em; }
+.shop-foot-main{ display:flex; justify-content:space-between; align-items:center; gap:1em; flex-wrap:wrap; }
+.shop-estimate{ font-size:14.5px; }
+.shop-budget-row{ font-size:13px; color:var(--ink-soft); margin-top:0.35em; }
+.shop-budget-row.over{ color:var(--warn-text); font-weight:600; }
+.finish-split-row{ display:flex; align-items:center; justify-content:space-between; gap:0.8em; margin:0.35em 0; }
+.finish-split-row input{ max-width:9em; }
+#finishSplitLeft.bad{ color:var(--warn-text); font-weight:600; }
 </style>
 </head>
 <body>
@@ -2608,6 +2616,21 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   </div>
 </div>
 
+<div class="modal-overlay" id="finishShopOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="finishShopTitle" tabindex="-1">
+    <h3 id="finishShopTitle">Završi kupovinu</h3>
+    <div class="modal-field"><label for="finishShopTotal">Iznos sa računa (RSD)</label><input type="number" id="finishShopTotal" min="0" step="1"></div>
+    <div class="modal-field"><label for="finishShopDate">Datum</label><input type="date" id="finishShopDate"></div>
+    <div class="modal-field" id="finishShopAccountField"><label for="finishShopAccount">Račun</label><select id="finishShopAccount"></select></div>
+    <div class="modal-field"><label for="finishShopStore">Prodavnica</label><input type="text" id="finishShopStore" list="finishShopStores" autocomplete="off"><datalist id="finishShopStores"></datalist></div>
+    <div id="finishShopSplit"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="finishShopCancel">Otkaži</button>
+      <button class="save-btn" id="finishShopSave">Dodaj rashod</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dialogOverlay" style="z-index:1150;">
   <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody" tabindex="-1">
     <h3 id="dialogTitle">Potvrda</h3>
@@ -3052,6 +3075,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(e.key !== 'Escape') return;
     if(document.getElementById('dialogOverlay').classList.contains('show')){ closeDialog(false); return; }
     if(document.getElementById('editModalOverlay').classList.contains('show')){ closeEditModal(); return; }
+    if(document.getElementById('finishShopOverlay').classList.contains('show')){ closeFinishPurchase(); return; }
     if(document.getElementById('dayDetailOverlay').classList.contains('show')){ closeDayDetail(); return; }
     if(document.getElementById('undoToast').classList.contains('show')){ dismissTopUndo(); }
   });
@@ -4595,8 +4619,113 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     document.getElementById('shopSecAdd').addEventListener('click', add);
     document.getElementById('shopSecNew').addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); add(); } });
   }
-  // Popunjava zadatak 5.
-  function renderShoppingFooter(){}
+  const shopChecked = () => shopping.items.filter(i=> i.needed && i.checked);
+  // Kategorija za racun: nepostojeca kategorija stavke -> prva kategorija rashoda (oznaceno u raspodeli)
+  const shopPurchaseCat = it => shopCategoryOf(it) || expenseCats[0] || 'Ostalo';
+  function renderShoppingFooter(){
+    const foot = document.getElementById('shopFooter');
+    const est = C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY })));
+    if(!est.count){ foot.style.display = 'none'; return; }
+    foot.style.display = '';
+    const nChecked = shopChecked().length;
+    const catRows = Object.keys(est.byCategory).map(cat=>{
+      const sum = est.byCategory[cat];
+      const env = cat === C.NO_CATEGORY ? null : envelopeRemainingThisMonth(cat);
+      const name = cat === C.NO_CATEGORY ? escapeHtml(cat) : catTagHtml(cat);
+      if(!env) return `<div class="shop-budget-row">${t('{0}: nabavka ~{1}', name, fmt(sum))}</div>`;
+      const over = sum > env.remaining;
+      return `<div class="shop-budget-row${over ? ' over' : ''}">${t('{0}: ostalo {1} od {2} · nabavka ~{3}', name, fmt(env.remaining), fmt(env.allocated + env.rollover), fmt(sum))}</div>`;
+    }).join('');
+    foot.innerHTML = `<div class="shop-foot-main">
+        <div class="shop-estimate"><b>${t('Za kupovinu: {0} · procena ~{1}', est.count, fmt(est.total))}</b>${est.unpriced ? ' ' + t('({0} bez cene)', est.unpriced) : ''}</div>
+        <button class="save-btn" id="shopFinishBtn"${nChecked ? '' : ' disabled'}>${t('Završi kupovinu ({0})', nChecked)}</button>
+      </div>${catRows}`;
+    document.getElementById('shopFinishBtn').addEventListener('click', openFinishPurchase);
+  }
+  let finishSplitEdited = false;
+  function finishSplitRows(total){
+    return C.splitPurchase(shopChecked().map(i=> Object.assign({}, i, { category: shopPurchaseCat(i) })), total);
+  }
+  function renderFinishSplit(){
+    const box = document.getElementById('finishShopSplit');
+    const total = parseFloat(document.getElementById('finishShopTotal').value) || 0;
+    const cats = new Set(shopChecked().map(shopPurchaseCat));
+    if(cats.size < 2){ box.innerHTML = ''; return; }
+    if(!finishSplitEdited || !box.querySelector('.finish-split-amt')){
+      const rows = finishSplitRows(total);
+      box.innerHTML = `<div class="modal-field"><label>${t('Raspodela po kategorijama')}</label>${rows.map(r=>{
+        const missing = r.items.some(i=> !shopCategoryOf(i));
+        return `<div class="finish-split-row">${catTagHtml(r.category)}${missing ? ` <span class="muted">${t('(bez kategorije → {0})', escapeHtml(r.category))}</span>` : ''}
+          <input type="number" class="finish-split-amt" data-cat="${escapeHtml(r.category)}" value="${r.amount}" min="0" step="1"></div>`;
+      }).join('')}<div class="hint" id="finishSplitLeft"></div></div>`;
+      box.querySelectorAll('.finish-split-amt').forEach(inp=> inp.addEventListener('input', ()=>{ finishSplitEdited = true; updateFinishLeft(); }));
+    }
+    updateFinishLeft();
+  }
+  function finishSplitValues(){
+    return [...document.querySelectorAll('#finishShopSplit .finish-split-amt')].map(inp=> ({ category: inp.dataset.cat, amount: parseFloat(inp.value) }));
+  }
+  function updateFinishLeft(){
+    const el = document.getElementById('finishSplitLeft'); if(!el) return;
+    const total = parseFloat(document.getElementById('finishShopTotal').value) || 0;
+    const left = Math.round((total - finishSplitValues().reduce((s, r)=> s + (r.amount || 0), 0)) * 100) / 100;
+    el.textContent = t('Za raspodelu: {0}', fmt(left));
+    el.classList.toggle('bad', left !== 0);
+  }
+  function openFinishPurchase(){
+    const checked = shopChecked(); if(!checked.length) return;
+    finishSplitEdited = false;
+    document.getElementById('finishShopTotal').value = '';
+    document.getElementById('finishShopDate').value = toISODateLocal(new Date());
+    const accField = document.getElementById('finishShopAccountField');
+    accField.style.display = accounts.length >= 2 ? '' : 'none';
+    document.getElementById('finishShopAccount').innerHTML = accounts.map(a=> `<option value="${a.id}"${a.id === defaultAccountId() ? ' selected' : ''}>${escapeHtml(a.name)}</option>`).join('');
+    document.getElementById('finishShopStore').value = C.mostCommonStore(checked);
+    const stores = [...new Set(shopping.items.map(i=> i.store).filter(Boolean))].sort((a, b)=> a.localeCompare(b));
+    document.getElementById('finishShopStores').innerHTML = stores.map(s=> `<option value="${escapeHtml(s)}">`).join('');
+    renderFinishSplit();
+    document.getElementById('finishShopOverlay').classList.add('show');
+    setTimeout(()=> document.getElementById('finishShopTotal').focus(), 0);
+  }
+  function closeFinishPurchase(){ document.getElementById('finishShopOverlay').classList.remove('show'); }
+  // Pravi rashod(e) od stikliranih stavki. opts (za smoke) moze da zada total/rows bez modala.
+  function confirmFinishPurchase(opts){
+    opts = opts || {};
+    const checked = shopChecked(); if(!checked.length) return false;
+    const total = opts.total != null ? Number(opts.total) : parseFloat(document.getElementById('finishShopTotal').value);
+    if(!(total > 0)){ appAlert(t('Upiši iznos sa računa.')); return false; }
+    const auto = finishSplitRows(total);
+    let rows = auto;
+    if(!opts.total && auto.length > 1){
+      const vals = finishSplitValues();
+      if(vals.some(v=> !(v.amount > 0)) || Math.round(vals.reduce((s, v)=> s + v.amount, 0) * 100) !== Math.round(total * 100)){ appAlert(t('Zbir po kategorijama mora da bude jednak iznosu sa računa.')); return false; }
+      rows = auto.map(r=> Object.assign({}, r, { amount: (vals.find(v=> v.category === r.category) || {}).amount }));
+    }
+    const date = opts.total != null ? toISODateLocal(new Date()) : (document.getElementById('finishShopDate').value || toISODateLocal(new Date()));
+    const store = (opts.total != null ? C.mostCommonStore(checked) : document.getElementById('finishShopStore').value).trim();
+    const accountId = accounts.length ? (accounts.length >= 2 && opts.total == null ? document.getElementById('finishShopAccount').value : defaultAccountId()) : undefined;
+    const made = rows.map(r=>{
+      const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: r.amount, category: r.category, date, paid: true, tags: ['nabavka'], items: r.items.map(C.purchaseItemLabel) };
+      if(accountId) e.accountId = accountId;
+      entries.push(e); applyRoundUpSaving(r.amount);
+      return e;
+    });
+    const before = checked.map(i=> ({ i, needed: i.needed, checked: i.checked }));
+    checked.forEach(i=>{ i.needed = false; i.checked = false; });
+    saveEntries(); saveShopping(); closeFinishPurchase(); renderAll();
+    showUndoToast(t('Rashod {0} dodat ({1} stavki)', fmt(total), checked.length), ()=>{
+      const ids = new Set(made.map(e=> e.id));
+      entries = entries.filter(e=> !ids.has(e.id));
+      before.forEach(b=>{ b.i.needed = b.needed; b.i.checked = b.checked; });
+      saveEntries(); saveShopping(); renderAll();
+    });
+    return true;
+  }
+  window.__finishPurchase = opts => confirmFinishPurchase(opts);
+  document.getElementById('finishShopTotal').addEventListener('input', renderFinishSplit);
+  document.getElementById('finishShopCancel').addEventListener('click', closeFinishPurchase);
+  document.getElementById('finishShopSave').addEventListener('click', ()=> confirmFinishPurchase());
+  document.getElementById('finishShopOverlay').addEventListener('click', e=>{ if(e.target.id === 'finishShopOverlay') closeFinishPurchase(); });
   document.getElementById('shopQuickInput').addEventListener('keydown', e=>{
     if(e.isComposing) return;
     if(e.key !== 'Enter') return;
