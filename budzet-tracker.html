@@ -1854,6 +1854,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       </div>
       <div class="panel">
         <h2>Svi prihodi</h2>
+        <div class="filter-row">
+          <select id="incFilterMonth" aria-label="Mesec"></select>
+        </div>
         <div class="bulk-bar" id="incomeBulkBar" style="display:none;">
           <span id="incomeBulkCount"></span>
           <button class="btn-secondary" id="incomeBulkDeleteBtn">Obriši izabrano</button>
@@ -2122,8 +2125,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <form id="debtForm">
           <label for="debtPerson">Osoba</label>
           <input type="text" id="debtPerson" placeholder="npr. Marko" required>
-          <label for="debtAmount">Iznos (RSD)</label>
-          <input type="number" id="debtAmount" step="1" min="1" placeholder="0" required>
+          <label for="debtAmount">Iznos</label>
+          <div class="amount-row"><input type="number" id="debtAmount" step="any" min="0" placeholder="0" required><select id="debtCurrency" class="currency-select" aria-label="Valuta"></select></div>
+          <div class="import-status currency-hint" id="debtCurrencyHint"></div>
           <label for="debtDirection">Smer</label>
           <select id="debtDirection">
             <option value="owed_to_me">Duguje mi</option>
@@ -2776,6 +2780,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Mesec koji prikazuju sazetak i Pregled. Prati tekuci mesec dok korisnik ne izabere drugi.
   let viewMonth = C.monthKeyOf(new Date());
   let viewMonthFollowsToday = true;
+  // Liste Rashodi/Prihodi prate izabrani mesec ('' = svi meseci); rucni izbor u filteru vazi do sledece promene meseca
+  let expListMonth = viewMonth;
+  let incListMonth = viewMonth;
   let currentRecType = 'expense';
   let justPaidId = null;
   let newEntryId = null;
@@ -3874,7 +3881,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function setViewMonth(mKey){
     viewMonth = mKey;
     viewMonthFollowsToday = mKey === currentMonthKey();
+    expListMonth = incListMonth = mKey;
+    dirtyScreens.add('rashodi'); dirtyScreens.add('prihodi');
     renderSummary(); renderPregled();
+    if(activeScreen === 'rashodi' || activeScreen === 'prihodi') renderScreen(activeScreen);
   }
   document.getElementById('periodPrev').addEventListener('click', ()=> setViewMonth(C.addMonths(viewMonth, -1)));
   document.getElementById('periodNext').addEventListener('click', ()=> setViewMonth(C.addMonths(viewMonth, 1)));
@@ -3934,7 +3944,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const dateTxt = fx.date ? parseLocalDate(fx.date).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit'}) : '';
     hint.textContent = (isNaN(raw) ? '' : `≈ ${fmt(raw * fx.rates[cur])} · `) + t(fx.source === 'fallback' ? 'kurs {0}' : 'kurs NBS {0}', fmtRate(fx.rates[cur])) + (dateTxt ? ' (' + dateTxt + ')' : '');
   }
-  ['inc', 'exp', 'rec'].forEach(p=>{
+  ['inc', 'exp', 'rec', 'debt'].forEach(p=>{
     ['input', 'change'].forEach(ev=>{
       document.getElementById(p + 'Amount').addEventListener(ev, ()=> updateCurrencyHint(p));
       document.getElementById(p + 'Currency').addEventListener(ev, ()=> updateCurrencyHint(p));
@@ -5671,9 +5681,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
 
   function renderIncome(){
-    const list = entries.filter(e=>e.type==='income').sort((a,b)=> b.date.localeCompare(a.date));
+    const allIncome = entries.filter(e=>e.type==='income');
+    fillListMonthSelect(document.getElementById('incFilterMonth'), allIncome, incListMonth);
+    const list = allIncome.filter(e=> !incListMonth || monthKey(e.date) === incListMonth).sort((a,b)=> b.date.localeCompare(a.date));
     const body = document.getElementById('incomeBody');
     const emptyEl = document.getElementById('incomeEmpty');
+    emptyEl.textContent = incListMonth ? t('Nema prihoda u ovom mesecu.') : t('Još nema unesenih prihoda.');
     const selectAllCb = document.getElementById('selectAllIncome');
     if(list.length === 0){
       body.innerHTML=''; emptyEl.style.display='block';
@@ -5823,25 +5836,24 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if([...sel.options].some(o=>o.value===prev)) sel.value = prev;
   }
 
+  // Izbor meseca za listu: "Svi meseci" + meseci sa stavkama + izabrani mesec i kad jos nema stavki
+  function fillListMonthSelect(sel, list, selected){
+    const months = [...new Set(list.map(e=>monthKey(e.date)).concat(selected ? [selected] : []))].sort().reverse();
+    sel.innerHTML = `<option value="">${t('Svi meseci')}</option>` + months.map(m=> `<option value="${m}">${monthYearLabelSr(m)}</option>`).join('');
+    sel.value = selected || '';
+  }
   function populateExpenseFilters(){
     const expenseOnly = entries.filter(e=>e.type==='expense');
     const monthSel = document.getElementById('filterMonth');
     const catSel = document.getElementById('filterCategory');
-    const months = [...new Set(expenseOnly.map(e=>monthKey(e.date)))].sort().reverse();
-    const prevMonth = monthSel.value;
-    monthSel.innerHTML = '<option value="">Svi meseci</option>' + months.map(m=>{
-      const [y,mo] = m.split('-');
-      const label = new Date(y, mo-1, 1).toLocaleDateString(LOCALE, {month:'long', year:'numeric'});
-      return `<option value="${m}">${label}</option>`;
-    }).join('');
-    if(months.includes(prevMonth)) monthSel.value = prevMonth;
+    fillListMonthSelect(monthSel, expenseOnly, expListMonth);
     const prevCat = catSel.value;
     catSel.innerHTML = '<option value="">Sve kategorije</option>' + expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
     if(expenseCats.includes(prevCat)) catSel.value = prevCat;
   }
 
   function getFilteredExpenses(){
-    const m = document.getElementById('filterMonth').value;
+    const m = expListMonth;
     const c = document.getElementById('filterCategory').value;
     const p = document.getElementById('filterPaid').value;
     return entries.filter(e=> e.type==='expense' && (!m || monthKey(e.date)===m) && (!c || e.category===c)
@@ -5866,9 +5878,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
 
   function renderExpenses(){
+    fillListMonthSelect(document.getElementById('filterMonth'), entries.filter(e=>e.type==='expense'), expListMonth);
     const filtered = getFilteredExpenses();
     const body = document.getElementById('expenseBody');
     const emptyEl = document.getElementById('expenseEmpty');
+    emptyEl.textContent = expListMonth ? t('Nema rashoda u ovom mesecu.') : t('Nema rashoda za prikaz.');
     const selectAllCb = document.getElementById('selectAllExpenses');
     if(filtered.length === 0){
       body.innerHTML=''; emptyEl.style.display='block';
@@ -6062,7 +6076,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     populateExpenseCategorySelect(); document.getElementById('expDesc').focus();
   });
 
-  document.getElementById('filterMonth').addEventListener('change', renderExpenses);
+  document.getElementById('filterMonth').addEventListener('change', e=>{ expListMonth = e.target.value; renderExpenses(); });
+  document.getElementById('incFilterMonth').addEventListener('change', e=>{ incListMonth = e.target.value; renderIncome(); });
   document.getElementById('filterCategory').addEventListener('change', renderExpenses);
   document.getElementById('filterPaid').addEventListener('change', renderExpenses);
 
@@ -6596,15 +6611,18 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   document.getElementById('debtForm').addEventListener('submit', function(e){
     e.preventDefault();
     const person = document.getElementById('debtPerson').value.trim();
-    const amount = parseFloat(document.getElementById('debtAmount').value);
+    // Strana valuta se kao kod rashoda odmah pretvara u RSD po danasnjem kursu; original ostaje zapisan
+    const fa = readAmountField('debt');
+    const amount = fa.amount;
     const direction = document.getElementById('debtDirection').value;
     const date = document.getElementById('debtDate').value;
     const due = document.getElementById('debtDue').value;
     const note = document.getElementById('debtNote').value.trim();
     if(!person || isNaN(amount) || amount <= 0 || !date) return;
-    debts.push({ id: newId(), person, amount, direction, date, due, note, paidAmount: 0 });
+    debts.push(Object.assign({ id: newId(), person, amount, direction, date, due, note, paidAmount: 0 }, fa.foreign || {}));
     saveDebts(); renderDebts(); renderSummary();
     this.reset(); document.getElementById('debtDate').value = toISODateLocal(new Date());
+    updateCurrencyHint('debt');
   });
   document.getElementById('debtDate').value = toISODateLocal(new Date());
 
@@ -6659,7 +6677,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <button class="del-btn" data-id="${d.id}" title="Obriši">✕</button>
           </span>
         </div>
-        <div class="goal-amounts">${fmt(d.paidAmount||0)} / ${fmt(d.amount)}${settled?' — izmireno ✓':''}</div>
+        <div class="goal-amounts">${fmt(d.paidAmount||0)} / ${fmt(d.amount)}${origTag(d)}${settled?' — izmireno ✓':''}</div>
         <div class="bar-track"><div class="bar-fill ${settled?'ok':''}" data-target="${Math.min(100,((d.paidAmount||0)/d.amount*100)).toFixed(1)}%"></div></div>
         <div class="goal-meta">
           <span>${d.note ? escapeHtml(d.note) : ''}</span>
@@ -6692,7 +6710,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       ],
       onSave: (d, vals)=>{
         if(!vals.person || !vals.person.trim() || isNaN(vals.amount) || vals.amount <= 0) return;
-        d.person = vals.person.trim(); d.amount = vals.amount;
+        d.person = vals.person.trim(); applyAmountEdit(d, vals.amount);
         d.paidAmount = isNaN(vals.paidAmount) ? (d.paidAmount||0) : Math.max(0, vals.paidAmount);
         d.due = vals.due || ''; d.note = (vals.note||'').trim();
         saveDebts(); renderDebts(); renderSummary();
@@ -7187,7 +7205,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       direction: (d.direction === 'i_owe') ? 'i_owe' : 'owed_to_me',
       date: (typeof d.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.date)) ? d.date : toISODateLocal(new Date()),
       due: (typeof d.due === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.due)) ? d.due : '',
-      note: String(d.note || '')
+      note: String(d.note || ''),
+      ...(CURRENCIES.includes(d.currency) && d.currency !== 'RSD' ? { currency: d.currency, origAmount: Number(d.origAmount) || undefined, rate: Number(d.rate) || undefined } : {})
     })).filter(d => d.person && d.amount > 0);
     const cleanCatColors = {};
     if(isPlainObject(data.catColors)){
@@ -7464,7 +7483,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     Object.keys(applied).forEach(mKey=>{ (applied[mKey]||[]).forEach(rid=> paidRows.push({Mesec:mKey, RecurringID:rid})); });
     const wsPlac = XLSX.utils.json_to_sheet(paidRows.length ? paidRows : [{Mesec:'', RecurringID:''}]);
     XLSX.utils.book_append_sheet(wb, wsPlac, 'PlacenoLog');
-    const wsDug = XLSX.utils.json_to_sheet(debts.map(d=>({ID:d.id, Osoba:d.person, Iznos:d.amount, Uplaceno:d.paidAmount||0, Smer:d.direction, Datum:d.date||'', Rok:d.due||'', Napomena:d.note||''})));
+    const wsDug = XLSX.utils.json_to_sheet(debts.map(d=>({ID:d.id, Osoba:d.person, Iznos:d.amount, Uplaceno:d.paidAmount||0, Smer:d.direction, Datum:d.date||'', Rok:d.due||'', Napomena:d.note||'', Valuta: d.currency || '', IznosUValuti: d.origAmount || '', Kurs: d.rate || ''})));
     XLSX.utils.book_append_sheet(wb, wsDug, 'Dugovi');
     const skipRows = [];
     Object.keys(skipped).forEach(mKey=>{ (skipped[mKey]||[]).forEach(rid=> skipRows.push({Mesec:mKey, RecurringID:rid})); });
@@ -7558,7 +7577,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       direction: (String(r.Smer) === 'i_owe') ? 'i_owe' : 'owed_to_me',
       date: r.Datum ? normalizeDateCell(r.Datum) : toISODateLocal(new Date()),
       due: r.Rok ? normalizeDateCell(r.Rok) : '',
-      note: String(r.Napomena || '')
+      note: String(r.Napomena || ''),
+      ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {})
     }));
 
     const skipRows = sheetRows('Preskoceno');
@@ -7999,7 +8019,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const changed = processAutoPay();
     if(changed || today !== lastSeenDay){
       lastSeenDay = today;
-      if(viewMonthFollowsToday) viewMonth = currentMonthKey();
+      if(viewMonthFollowsToday && viewMonth !== currentMonthKey()){ viewMonth = currentMonthKey(); expListMonth = incListMonth = viewMonth; }
       renderAll();
     }
   }, 15*60*1000);

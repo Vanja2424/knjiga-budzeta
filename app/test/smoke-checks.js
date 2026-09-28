@@ -389,6 +389,35 @@
       check('unos iz prozora u EUR', re.ok && ee.currency === 'EUR' && ee.origAmount === 100 && Math.abs(ee.amount - 100 * qd.rates.EUR) < 0.01);
     }
 
+    // Dug u stranoj valuti: pretvara se u RSD pri unosu, original se cuva
+    const eurRate = window.__desktopBridge.getQuickAddData().rates.EUR;
+    if (eurRate) {
+      go('dugovi'); await sleep(50);
+      check('dug: izbor valute', !!$('debtCurrency') && [...$('debtCurrency').options].some(o => o.value === 'EUR'));
+      setVal('debtPerson', 'Smoke evro dug'); setVal('debtAmount', '100'); setVal('debtCurrency', 'EUR');
+      $('debtForm').requestSubmit(); await sleep(80);
+      const dbt = JSON.parse(localStorage.getItem('budzet-dugovi-v1') || '[]').find(d => d.person === 'Smoke evro dug');
+      check('dug u EUR sačuvan u RSD sa originalom', !!dbt && dbt.currency === 'EUR' && dbt.origAmount === 100 && Math.abs(dbt.amount - 100 * eurRate) < 0.01, JSON.stringify(dbt));
+      const card = document.querySelector(`[data-debt-id="${dbt && dbt.id}"]`);
+      check('dug prikazuje originalni iznos', !!card && /€/.test(card.textContent), card && card.textContent);
+    }
+    // Promena meseca: liste rashoda i prihoda prikazuju samo izabrani mesec
+    const curM = monthKey(new Date()), prevM = window.BudzetCore.addMonths(curM, -1);
+    go('rashodi'); await sleep(60);
+    check('rashodi: filter prati tekući mesec', $('filterMonth').value === curM, $('filterMonth').value);
+    $('periodPrev').click(); await sleep(80);
+    const expRows = [...document.querySelectorAll('#expenseBody tr[data-row-id]')].map(tr => tr.dataset.rowId);
+    const expPrev = entries().filter(e => e.type === 'expense' && e.date.startsWith(prevM)).map(e => e.id);
+    check('rashodi: posle promene meseca samo taj mesec', $('filterMonth').value === prevM && expRows.length === expPrev.length && expRows.every(id => expPrev.includes(id)), `${$('filterMonth').value} ${expRows.length}/${expPrev.length}`);
+    go('prihodi'); await sleep(60);
+    const incRows = [...document.querySelectorAll('#incomeBody tr[data-row-id]')].map(tr => tr.dataset.rowId);
+    const incPrev = entries().filter(e => e.type === 'income' && e.date.startsWith(prevM)).map(e => e.id);
+    check('prihodi: posle promene meseca samo taj mesec', !!$('incFilterMonth') && $('incFilterMonth').value === prevM && incRows.length === incPrev.length, `${$('incFilterMonth') && $('incFilterMonth').value} ${incRows.length}/${incPrev.length}`);
+    setVal('incFilterMonth', ''); await sleep(60);
+    check('prihodi: ručno Svi meseci', document.querySelectorAll('#incomeBody tr[data-row-id]').length === entries().filter(e => e.type === 'income').length);
+    $('periodToday').click(); await sleep(80);
+    check('prihodi: povratak na tekući mesec vraća filter', $('incFilterMonth').value === curM);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
