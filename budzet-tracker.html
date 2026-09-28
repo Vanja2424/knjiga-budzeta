@@ -1576,6 +1576,30 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   .wrap{ padding: 0; background: #fff !important; box-shadow: none !important; border-radius: 0 !important; }
   .panel, .summary .cell{ box-shadow: none; }
 }
+
+/* ---- Analiza potrosnje ---- */
+.analiza-controls{ display:flex; flex-wrap:wrap; gap:0.8em; align-items:center; }
+.analiza-period-btn{ border:none; background:transparent; color:var(--ink); border-radius:6px; padding:4px 12px; font:500 12.5px/1.3 var(--font); cursor:default; }
+.analiza-period-btn.active{ background:var(--card); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,0.12); }
+[data-theme="dark"] .analiza-period-btn.active{ background:#636366; }
+.analiza-summary{ margin-top:0.8em; font:600 15px/1.4 var(--font); color:var(--ink); }
+.analiza-head{ display:flex; justify-content:space-between; align-items:baseline; gap:0.6em; flex-wrap:wrap; }
+.analiza-head h2{ border-bottom:none; margin-bottom:0.4em; }
+.analiza-cat{ border-bottom:1px solid var(--paper-line); }
+.analiza-cat-head{ width:100%; display:grid; grid-template-columns:minmax(8em,1.2fr) 2fr auto 4.5em; gap:0.8em; align-items:center;
+  background:none; border:none; padding:0.65em 0; text-align:left; color:var(--ink); font:inherit; cursor:default; }
+.analiza-bar{ height:6px; border-radius:3px; background:var(--fill); overflow:hidden; }
+.analiza-bar i{ display:block; height:100%; border-radius:3px; }
+.analiza-cat-head .amt{ font-variant-numeric:tabular-nums; font-weight:600; text-align:right; }
+.analiza-diff{ font-size:12px; font-weight:600; text-align:right; }
+.analiza-diff.up{ color:var(--neg-text); } .analiza-diff.down{ color:var(--pos-text); }
+.analiza-groups{ width:100%; margin:0 0 0.7em; font-size:13px; }
+.analiza-groups td{ padding:0.25em 0; } .analiza-groups td.num{ text-align:right; font-variant-numeric:tabular-nums; }
+.analiza-groups td.muted{ color:var(--ink-soft); padding-left:0.8em; }
+.analiza-bar-col{ fill:var(--fill-strong); } .analiza-bar-sel{ fill:var(--ledger); }
+#screen-analiza .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0; text-align:left; }
+#screen-analiza .btn-link:hover{ text-decoration:underline; }
+@media (max-width: 600px){ .analiza-cat-head{ grid-template-columns:1fr auto; } .analiza-cat-head .analiza-bar{ grid-column:1 / -1; order:3; } }
 </style>
 </head>
 <body>
@@ -2071,6 +2095,48 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       <label for="debtMonthlyCapacity">Mesečni kapacitet za otplatu (RSD)</label>
       <input type="number" id="debtMonthlyCapacity" min="0" step="1" placeholder="npr. 20000" style="max-width:220px;">
       <div id="debtPlanResult" style="margin-top:1em;"></div>
+    </div>
+  </div>
+
+  <!-- ANALIZA -->
+  <div class="screen" id="screen-analiza">
+    <div class="panel">
+      <div class="analiza-controls">
+        <select id="analizaMonth" aria-label="Mesec"></select>
+        <div class="trend-range-toggle" role="group" aria-label="Period">
+          <button class="analiza-period-btn" data-n="3">3 meseca</button>
+          <button class="analiza-period-btn" data-n="6">6 meseci</button>
+          <button class="analiza-period-btn" data-n="12">12 meseci</button>
+        </div>
+      </div>
+      <div id="analizaSummary" class="analiza-summary"></div>
+    </div>
+    <div class="panel" id="analizaWhere" style="margin-top:1.5em;">
+      <h2>Na šta ide novac</h2>
+      <div id="analizaWhereList"></div>
+    </div>
+    <div class="panel chart-panel" id="analizaTrend" style="margin-top:1.5em;">
+      <div class="analiza-head">
+        <h2>Kroz vreme</h2>
+        <select id="analizaTrendCat" aria-label="Kategorija"></select>
+      </div>
+      <svg id="analizaTrendChart" class="trend-svg" viewBox="0 0 760 200" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="analizaTrendNote" class="hint"></div>
+    </div>
+    <div class="panel" id="analizaFixed" style="margin-top:1.5em;">
+      <h2>Fiksno / promenljivo</h2>
+      <div id="analizaFixedBar"></div>
+      <div class="hint">Troškovi iz ponavljajućih stavki su uvek fiksni.</div>
+      <div id="analizaFixedCats" class="analiza-fixed-cats"></div>
+    </div>
+    <div class="panel" id="analizaSave" style="margin-top:1.5em;">
+      <h2>Gde mogu da uštedim</h2>
+      <div id="analizaSaveBody"></div>
+      <div class="analiza-whatif">
+        <label for="analizaWhatIf" id="analizaWhatIfLabel"></label>
+        <input type="range" id="analizaWhatIf" min="0" max="50" step="5" value="10">
+        <div id="analizaWhatIfResult"></div>
+      </div>
     </div>
   </div>
 
@@ -3102,7 +3168,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     budzet: [['kategorije', 'Budžet i kategorije']],
     ponavljajuce: [['ponavljajuce', 'Ponavljajuće']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
-    izvestaji: [['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    izvestaji: [['analiza', 'Analiza'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     podesavanja: [['podesavanja', 'Podešavanja']]
   };
@@ -3120,6 +3186,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     ponavljajuce: ()=> renderRecurring(),
     ciljevi: ()=> renderGoals(),
     dugovi: ()=> renderDebts(),
+    analiza: ()=> renderAnaliza(),
     izvestaj: ()=> renderReport(),
     uporedi: ()=> setCompareMode(compareMode),
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
@@ -4165,6 +4232,115 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     });
     document.getElementById('patternsList').innerHTML = rows.map(w=>`<div class="warning-item caution"><span class="icon">${w.icon}</span><span class="txt">${w.txt}</span></div>`).join('');
   }
+
+  // ---- Analiza potrosnje (Izvestaji → Analiza) ----
+  // Sva racunanja su u budzet-core.js (C.categoryBreakdown, C.savingsSummary...); ovde je samo crtanje.
+  const analizaState = { month: null, n: 6, cat: null, open: new Set(), showAll: new Set(), whatIf: 10 };
+  const analizaPeriodTxt = n => n === 3 ? t('3 meseca') : n === 12 ? t('12 meseci') : t('6 meseci');
+  function analizaMonthOptions(){
+    const cur = currentMonthKey();
+    const first = C.firstExpenseMonth(entries) || cur;
+    return C.monthRange(first < cur ? first : cur, cur).reverse();
+  }
+  function renderAnaliza(){
+    const months = analizaMonthOptions();
+    if(!analizaState.month || !months.includes(analizaState.month)) analizaState.month = months[0];
+    const month = analizaState.month;
+    const sel = document.getElementById('analizaMonth');
+    sel.innerHTML = months.map(m=> `<option value="${m}"${m === month ? ' selected' : ''}>${monthYearLabelSr(m)}</option>`).join('');
+    document.querySelectorAll('.analiza-period-btn').forEach(b=> b.classList.toggle('active', Number(b.dataset.n) === analizaState.n));
+    const b = C.categoryBreakdown(entries, month, analizaState.n);
+    const sum = document.getElementById('analizaSummary');
+    sum.dataset.n = String(analizaState.n);
+    if(b.total <= 0) sum.textContent = t('{0}: {1}', monthYearLabelSr(month), t('Nema plaćenih troškova u ovom mesecu'));
+    else if(!b.enough) sum.textContent = t('{0}: {1}', monthYearLabelSr(month), fmt(b.total)) + ' · ' + t('Za poređenje su potrebna bar 2 meseca podataka');
+    else {
+      const pct = b.avg > 0 ? Math.round((b.total - b.avg) / b.avg * 100) : 0;
+      sum.textContent = t('{0}: {1} · prosek ({2}) {3} · {4}', monthYearLabelSr(month), fmt(b.total), analizaPeriodTxt(analizaState.n), fmt(b.avg), (pct > 0 ? '+' : '') + pct + '%');
+    }
+    renderAnalizaWhere(b);
+    renderAnalizaTrend(b);
+    renderAnalizaFixed(month);
+    renderAnalizaSave(month);
+  }
+  function renderAnalizaWhere(b){
+    const el = document.getElementById('analizaWhereList');
+    if(!b.rows.length){ el.innerHTML = `<div class="empty">${t('Nema plaćenih troškova u ovom mesecu')}</div>`; return; }
+    el.innerHTML = b.rows.map(r=>{
+      const share = b.total > 0 ? Math.round(r.total / b.total * 100) : 0;
+      const color = catColorFor(r.cat, Math.max(0, expenseCats.indexOf(r.cat)));
+      const diff = r.pct == null ? '' : `<span class="analiza-diff ${r.diff > 0 ? 'up' : 'down'}">${r.diff > 0 ? '▲' : '▼'} ${Math.abs(r.pct)}%</span>`;
+      const open = analizaState.open.has(r.cat);
+      let groups = '';
+      if(open){
+        const all = C.groupByDesc(entries, [b.month], e=> e.category === r.cat);
+        const shown = analizaState.showAll.has(r.cat) ? all : all.slice(0, 5);
+        groups = `<table class="analiza-groups">${shown.map(g=> `<tr>
+            <td${g.label === C.NO_DESC ? '' : ' translate="no"'}>${escapeHtml(g.label)}</td>
+            <td class="muted">${t('{0}×', g.count)} · ${t('prosečno {0}', fmt(g.avgPurchase))}</td>
+            <td class="num">${fmt(g.total)}</td></tr>`).join('')}</table>
+          ${all.length > 5 ? `<button class="btn-link analiza-more" data-cat="${escapeHtml(r.cat)}">${analizaState.showAll.has(r.cat) ? t('prikaži manje') : t('prikaži sve')}</button>` : ''}`;
+      }
+      return `<div class="analiza-cat${open ? ' open' : ''}">
+        <button class="analiza-cat-head" data-cat="${escapeHtml(r.cat)}">
+          <span class="name">${catTagHtml(r.cat)}</span>
+          <span class="analiza-bar"><i style="width:${share}%; background:${color};"></i></span>
+          <span class="amt">${fmt(r.total)}</span>${diff}
+        </button>${groups}</div>`;
+    }).join('');
+    el.querySelectorAll('.analiza-cat-head').forEach(btn=> btn.addEventListener('click', ()=>{
+      const c = btn.dataset.cat;
+      analizaState.open.has(c) ? analizaState.open.delete(c) : analizaState.open.add(c);
+      renderAnalizaWhere(b);
+    }));
+    el.querySelectorAll('.analiza-more').forEach(btn=> btn.addEventListener('click', ()=>{
+      const c = btn.dataset.cat;
+      analizaState.showAll.has(c) ? analizaState.showAll.delete(c) : analizaState.showAll.add(c);
+      renderAnalizaWhere(b);
+    }));
+  }
+  function renderAnalizaTrend(b){
+    const sel = document.getElementById('analizaTrendCat');
+    const svg = document.getElementById('analizaTrendChart');
+    const note = document.getElementById('analizaTrendNote');
+    const cats = [...new Set(entries.filter(isPaidExpense).map(e=> e.category))];
+    if(!cats.length){ sel.innerHTML = ''; svg.innerHTML = ''; note.textContent = t('Nema podataka.'); return; }
+    if(!analizaState.cat || !cats.includes(analizaState.cat)) analizaState.cat = (b.rows[0] || {}).cat || cats[0];
+    const cat = analizaState.cat;
+    sel.innerHTML = cats.map(c=> `<option value="${escapeHtml(c)}"${c === cat ? ' selected' : ''} translate="no">${escapeHtml(c)}</option>`).join('');
+    const cols = b.months.concat([b.month]);
+    const vals = cols.map(m=> sumMonth(m, e=> isPaidExpense(e) && e.category === cat));
+    const st = C.periodStats(entries, b.months, e=> e.category === cat);
+    const W = 760, H = 200, padL = 10, padR = 10, padT = 15, padB = 30;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+    const max = Math.max(1, ...vals, st.avg);
+    const slot = plotW / cols.length, bw = Math.min(46, slot * 0.6);
+    const yFor = v => padT + plotH - v / max * plotH;
+    const bars = cols.map((m, i)=>{
+      const x = padL + i * slot + (slot - bw) / 2, y = yFor(vals[i]);
+      const [yy, mo] = m.split('-');
+      const label = new Date(yy, mo - 1, 1).toLocaleDateString(LOCALE, { month: 'short' }).replace('.', '');
+      const cls = m === b.month ? 'analiza-bar-sel' : 'analiza-bar-col';
+      return `<rect class="${cls}" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="3"><title>${escapeHtml(monthYearLabelSr(m))}: ${fmt(vals[i])}</title></rect>
+        <text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)">${label}</text>`;
+    }).join('');
+    const avgLine = st.enough ? `<line x1="${padL}" x2="${W - padR}" y1="${yFor(st.avg).toFixed(1)}" y2="${yFor(st.avg).toFixed(1)}" stroke="var(--ink-soft)" stroke-width="1.5" stroke-dasharray="5 4"/>` : '';
+    svg.innerHTML = bars + avgLine;
+    note.textContent = st.enough ? t('Isprekidana linija: prosek {0} ({1})', fmt(st.avg), analizaPeriodTxt(analizaState.n)) : t('Za poređenje su potrebna bar 2 meseca podataka');
+  }
+  // Popunjava zadatak 6.
+  function renderAnalizaFixed(month){}
+  function renderAnalizaSave(month){}
+  function openAnaliza(section){
+    analizaState.month = currentMonthKey();
+    analizaState.n = 6;
+    showScreen('analiza');
+    renderScreen('analiza');
+    if(section === 'save') setTimeout(()=> document.getElementById('analizaSave').scrollIntoView({ behavior: 'smooth', block: 'start' }), 60);
+  }
+  document.getElementById('analizaMonth').addEventListener('change', e=>{ analizaState.month = e.target.value; renderAnaliza(); });
+  document.getElementById('analizaTrendCat').addEventListener('change', e=>{ analizaState.cat = e.target.value; renderAnaliza(); });
+  document.querySelectorAll('.analiza-period-btn').forEach(btn=> btn.addEventListener('click', ()=>{ analizaState.n = Number(btn.dataset.n); renderAnaliza(); }));
 
   // ---- Kalendar meseca (kompaktan): boja = potrosnja dana, tacke = prihod/rashod/dospeva ----
   function renderMonthCalendar(){

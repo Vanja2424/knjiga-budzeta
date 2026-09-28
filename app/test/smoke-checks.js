@@ -14,7 +14,7 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
@@ -44,6 +44,23 @@
       window.__deleteExpenseCategory('Smoke fiksna 2');
       check('brisanje kategorije briše oznaku fiksno', !fixedList().includes('Smoke fiksna 2'), localStorage.getItem(fixedKey));
     }
+
+    // Analiza: prva podkartica u Izvestajima, izbor perioda
+    document.querySelector('nav.tabs button[data-group="izvestaji"]').click(); await sleep(50);
+    check('Analiza je prva podkartica Izveštaja', ($('subtabs').querySelector('button') || {}).dataset?.screen === 'analiza', $('subtabs').innerHTML.slice(0, 200));
+    go('analiza'); await sleep(80);
+    document.querySelector('.analiza-period-btn[data-n="3"]').click(); await sleep(50);
+    check('Analiza: period 3 meseca', $('analizaSummary').dataset.n === '3' && document.querySelector('.analiza-period-btn[data-n="3"]').classList.contains('active'));
+    document.querySelector('.analiza-period-btn[data-n="6"]').click(); await sleep(50);
+    check('Analiza: period 6 meseci', $('analizaSummary').dataset.n === '6');
+    check('Analiza: sažetak i kategorije', $('analizaSummary').textContent.trim().length > 0 && !!$('analizaWhereList'));
+    const firstCat = document.querySelector('#analizaWhereList .analiza-cat-head');
+    if (firstCat) {
+      firstCat.click(); await sleep(50);
+      check('Analiza: klik na kategoriju otvara opise', !!document.querySelector('#analizaWhereList .analiza-groups'));
+    }
+    check('Analiza: grafikon kroz vreme', $('analizaTrendChart').querySelectorAll('rect').length > 0 || $('analizaTrendNote').textContent.length > 0);
+
     go('pregled');
 
     // Izbor meseca
