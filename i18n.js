@@ -73,6 +73,7 @@
     'Za kupovinu: {0} · procena ~{1}': 'To buy: {0} · estimate ~{1}', '({0} bez cene)': '({0} without a price)',
     'Završi kupovinu ({0})': 'Finish shopping ({0})', 'Završi kupovinu': 'Finish shopping', 'Iznos sa računa (RSD)': 'Receipt total (RSD)',
     'Raspodela po kategorijama': 'Split by category', '(bez kategorije → {0})': '(no category → {0})',
+    'Stavke bez kategorije idu u: {0}': 'Items without a category go to: {0}',
     'Za raspodelu: {0}': 'Left to split: {0}', 'Upiši iznos sa računa.': 'Enter the receipt total.',
     'Zbir po kategorijama mora da bude jednak iznosu sa računa.': 'The category amounts must add up to the receipt total.',
     'Rashod {0} dodat ({1} stavki)': 'Expense {0} added ({1} items)',

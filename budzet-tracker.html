@@ -1177,18 +1177,19 @@ td.paid-check input.row-select:checked::after{ left: 4.5px; top: 1.5px; width: 4
 thead input[type="checkbox"], .ob-cat-check, .goal-add-input + input{ accent-color: var(--accent); }
 
 /* ---------- Dugmad ---------- */
-.submit-btn, .submit-btn.expense, .submit-btn.income, .submit-btn.neutral, .modal-actions .save-btn, .add-cat-row button, .goal-contribute .add, .ahead-row button{
+.submit-btn, .submit-btn.expense, .submit-btn.income, .submit-btn.neutral, .modal-actions .save-btn, .add-cat-row button, .goal-contribute .add, .ahead-row button, .shop-footer .save-btn{
   background: var(--accent); color: #fff; border: none; border-radius: 9px;
   font: 600 14.5px/1.2 var(--font); letter-spacing: -0.005em; box-shadow: none; cursor: default;
   transition: background-color var(--dur-fast) ease, transform var(--dur-fast) ease, filter var(--dur-fast) ease;
 }
 .submit-btn{ padding: 10px 14px; margin-top: 20px; }
-.submit-btn:hover, .submit-btn.expense:hover, .submit-btn.income:hover, .submit-btn.neutral:hover, .modal-actions .save-btn:hover, .add-cat-row button:hover, .goal-contribute .add:hover, .ahead-row button:hover{
+.submit-btn:hover, .submit-btn.expense:hover, .submit-btn.income:hover, .submit-btn.neutral:hover, .modal-actions .save-btn:hover, .add-cat-row button:hover, .goal-contribute .add:hover, .ahead-row button:hover, .shop-footer .save-btn:hover{
   background: var(--accent-hover); transform: none; box-shadow: none; opacity: 1;
 }
-.submit-btn:active, .modal-actions .save-btn:active, .add-cat-row button:active, .goal-contribute .add:active, .ahead-row button:active, .btn-secondary:active, .modal-actions .cancel-btn:active{
+.submit-btn:active, .modal-actions .save-btn:active, .add-cat-row button:active, .goal-contribute .add:active, .ahead-row button:active, .btn-secondary:active, .modal-actions .cancel-btn:active, .shop-footer .save-btn:active{
   transform: scale(0.97); filter: brightness(0.94);
 }
+.shop-footer .save-btn:disabled{ opacity: .45; pointer-events: none; }
 .btn-secondary, .modal-actions .cancel-btn, .ahead-row .skip-month-btn, .dup-warning-remove{
   background: var(--fill); color: var(--ink); border: none; border-radius: 8px;
   padding: 7px 14px; font: 500 13.5px/1.25 var(--font); box-shadow: none; cursor: default;
@@ -1638,7 +1639,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
 .shop-row.done .shop-name{ color:var(--ink-soft); text-decoration:line-through; }
 .shop-check-space{ width:20px; }
-.shop-check{ appearance:none; -webkit-appearance:none; width:20px; height:20px; margin:0; padding:0; border-radius:50%; border:1.5px solid var(--ink-tertiary); background:transparent; position:relative; cursor:default; transition:background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
+.shop-check{ appearance:none; -webkit-appearance:none; width:20px; height:20px; min-height:0; margin:0; padding:0; border-radius:50%; border:1.5px solid var(--ink-tertiary); background:transparent; position:relative; cursor:default; flex-shrink:0; align-self:center; transition:background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
 .shop-check:checked{ background:var(--accent); border-color:var(--accent); }
 .shop-check:checked::after{ content:''; position:absolute; left:6px; top:2.5px; width:5px; height:10px; border:solid #fff; border-width:0 2px 2px 0; transform:rotate(45deg); }
 .shop-check:active{ transform:scale(0.9); }
@@ -1647,6 +1648,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-foot-main{ display:flex; justify-content:space-between; align-items:center; gap:1em; flex-wrap:wrap; }
 .shop-estimate{ font-size:14.5px; }
 .shop-budget-row{ font-size:13px; color:var(--ink-soft); margin-top:0.35em; }
+.shop-budget-row .cat-tag{ margin-right:-8px; }
 .shop-budget-row.over{ color:var(--warn-text); font-weight:600; }
 .finish-split-row{ display:flex; align-items:center; justify-content:space-between; gap:0.8em; margin:0.35em 0; }
 .finish-split-row input{ max-width:9em; }
@@ -4601,7 +4603,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     panel.querySelectorAll('.shop-sec-name').forEach(inp=> inp.addEventListener('change', ()=>{
       const i = Number(inp.dataset.i), old = secs[i], name = inp.value.replace(/\s+/g, ' ').trim();
       if(!name || name === old) { inp.value = old; return; }
-      if(secs.some(s=> s.toLowerCase() === name.toLowerCase())){ appAlert(t('Deo sa tim imenom već postoji.')); inp.value = old; return; }
+      if(secs.some((s, si)=> si !== i && s.toLowerCase() === name.toLowerCase())){ appAlert(t('Deo sa tim imenom već postoji.')); inp.value = old; return; }
       secs[i] = name; shopping.items.forEach(it=>{ if(it.section === old) it.section = name; }); commit();
     }));
     panel.querySelectorAll('.shop-sec-up').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); if(secs[i] === C.SHOPPING_OTHER) return; [secs[i-1], secs[i]] = [secs[i], secs[i-1]]; commit(); }));
@@ -4631,7 +4633,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const catRows = Object.keys(est.byCategory).map(cat=>{
       const sum = est.byCategory[cat];
       const env = cat === C.NO_CATEGORY ? null : envelopeRemainingThisMonth(cat);
-      const name = cat === C.NO_CATEGORY ? escapeHtml(cat) : catTagHtml(cat);
+      const name = cat === C.NO_CATEGORY ? escapeHtml(t(C.NO_CATEGORY)) : catTagHtml(cat);
       if(!env) return `<div class="shop-budget-row">${t('{0}: nabavka ~{1}', name, fmt(sum))}</div>`;
       const over = sum > env.remaining;
       return `<div class="shop-budget-row${over ? ' over' : ''}">${t('{0}: ostalo {1} od {2} · nabavka ~{3}', name, fmt(env.remaining), fmt(env.allocated + env.rollover), fmt(sum))}</div>`;
@@ -4643,20 +4645,27 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     document.getElementById('shopFinishBtn').addEventListener('click', openFinishPurchase);
   }
   let finishSplitEdited = false;
+  let finishShopLastFocus = null;
   function finishSplitRows(total){
     return C.splitPurchase(shopChecked().map(i=> Object.assign({}, i, { category: shopPurchaseCat(i) })), total);
   }
   function renderFinishSplit(){
     const box = document.getElementById('finishShopSplit');
     const total = parseFloat(document.getElementById('finishShopTotal').value) || 0;
-    const cats = new Set(shopChecked().map(shopPurchaseCat));
-    if(cats.size < 2){ box.innerHTML = ''; return; }
+    const checked = shopChecked();
+    const cats = new Set(checked.map(shopPurchaseCat));
+    if(cats.size < 2){
+      const onlyCat = [...cats][0];
+      const hasMissing = onlyCat != null && checked.some(i=> !shopCategoryOf(i));
+      box.innerHTML = hasMissing ? `<div class="hint">${t('Stavke bez kategorije idu u: {0}', catTagHtml(onlyCat))}</div>` : '';
+      return;
+    }
     if(!finishSplitEdited || !box.querySelector('.finish-split-amt')){
       const rows = finishSplitRows(total);
       box.innerHTML = `<div class="modal-field"><label>${t('Raspodela po kategorijama')}</label>${rows.map(r=>{
-        const missing = r.items.some(i=> !shopCategoryOf(i));
+        const missing = shopChecked().filter(i=> shopPurchaseCat(i) === r.category).some(i=> !shopCategoryOf(i));
         return `<div class="finish-split-row">${catTagHtml(r.category)}${missing ? ` <span class="muted">${t('(bez kategorije → {0})', escapeHtml(r.category))}</span>` : ''}
-          <input type="number" class="finish-split-amt" data-cat="${escapeHtml(r.category)}" value="${r.amount}" min="0" step="1"></div>`;
+          <input type="number" class="finish-split-amt" data-cat="${escapeHtml(r.category)}" value="${r.amount}" min="0" step="1" aria-label="${escapeHtml(r.category)}"></div>`;
       }).join('')}<div class="hint" id="finishSplitLeft"></div></div>`;
       box.querySelectorAll('.finish-split-amt').forEach(inp=> inp.addEventListener('input', ()=>{ finishSplitEdited = true; updateFinishLeft(); }));
     }
@@ -4674,6 +4683,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   function openFinishPurchase(){
     const checked = shopChecked(); if(!checked.length) return;
+    finishShopLastFocus = document.activeElement;
     finishSplitEdited = false;
     document.getElementById('finishShopTotal').value = '';
     document.getElementById('finishShopDate').value = toISODateLocal(new Date());
@@ -4687,7 +4697,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     document.getElementById('finishShopOverlay').classList.add('show');
     setTimeout(()=> document.getElementById('finishShopTotal').focus(), 0);
   }
-  function closeFinishPurchase(){ document.getElementById('finishShopOverlay').classList.remove('show'); }
+  function closeFinishPurchase(){
+    document.getElementById('finishShopOverlay').classList.remove('show');
+    if(finishShopLastFocus && typeof finishShopLastFocus.focus === 'function') finishShopLastFocus.focus();
+    finishShopLastFocus = null;
+  }
   // Pravi rashod(e) od stikliranih stavki. opts (za smoke) moze da zada total/rows bez modala.
   function confirmFinishPurchase(opts){
     opts = opts || {};
@@ -4723,6 +4737,16 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   window.__finishPurchase = opts => confirmFinishPurchase(opts);
   document.getElementById('finishShopTotal').addEventListener('input', renderFinishSplit);
+  document.getElementById('finishShopTotal').addEventListener('keydown', e=>{
+    if(e.isComposing || e.key !== 'Enter') return;
+    e.preventDefault();
+    confirmFinishPurchase();
+  });
+  document.getElementById('finishShopSplit').addEventListener('keydown', e=>{
+    if(e.isComposing || e.key !== 'Enter' || !e.target.classList.contains('finish-split-amt')) return;
+    e.preventDefault();
+    confirmFinishPurchase();
+  });
   document.getElementById('finishShopCancel').addEventListener('click', closeFinishPurchase);
   document.getElementById('finishShopSave').addEventListener('click', ()=> confirmFinishPurchase());
   document.getElementById('finishShopOverlay').addEventListener('click', e=>{ if(e.target.id === 'finishShopOverlay') closeFinishPurchase(); });
@@ -5827,6 +5851,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
   function duplicateEntry(entry){
     const copy = Object.assign({}, entry, { id: newId(), date: toISODateLocal(new Date()) });
+    if(Array.isArray(copy.items)) copy.items = copy.items.slice();
     entries.push(copy);
     newEntryId = copy.id;
     saveEntries(); renderAll();
@@ -7202,9 +7227,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       catRules: Array.isArray(data.catRules) ? data.catRules.filter(r=> isPlainObject(r) && typeof r.keyword === 'string' && typeof r.category === 'string') : [],
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
       fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
-      shopping: C.normalizeShopping(data.shopping, newId),
+      shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
     };
   }
+  window.__sanitizeImportedBackup = sanitizeImportedBackup;
 
   document.getElementById('backupImportInput').addEventListener('change', function(e){
     const file = e.target.files[0];
@@ -7242,7 +7268,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         catRules = data.catRules;
         savedScenarios = data.savedScenarios;
         fixedCategories = data.fixedCategories;
-        shopping = data.shopping;
+        if(data.shopping) shopping = data.shopping;
         saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';

@@ -64,6 +64,11 @@
       window.__deleteExpenseCategory('Smoke nabavka 2');
       check('nabavka: test stavka uklonjena', !JSON.parse(localStorage.getItem(shopKey)).items.some(i => i.id === 'smoke-shop-1'));
     }
+    // Uvoz stare rezervne kopije (bez "shopping" ključa) ne sme da obriše spisak za nabavku
+    check('nabavka: sanitizeImportedBackup dostupan', typeof window.__sanitizeImportedBackup === 'function');
+    if (typeof window.__sanitizeImportedBackup === 'function') {
+      check('nabavka: uvoz stare kopije bez shopping ključa ne pravi praznu listu', window.__sanitizeImportedBackup({ entries: [] }).shopping === null);
+    }
     // Rashod sa spiskom kupljenih stvari: prikaz u Rashodima i Excel kolona
     if (window.__desktopBridge) {
       const r = window.__desktopBridge.addEntry({ type: 'expense', desc: 'Smoke kupovina', amount: 321, currency: 'RSD', category: window.__desktopBridge.getQuickAddData().expenseCats[0] });
@@ -119,6 +124,32 @@
     // ciscenje
     window.__deleteEntriesById(made.map(e => e.id));
     window.__shopping().items = window.__shopping().items.filter(i => !/^Smoke (jogurt|sapun)$/.test(i.name));
+    window.__saveShopping();
+
+    // Zavrsi kupovinu kroz PRAVI modal DOM: stavka bez postojece kategorije + stavka u postojecoj
+    // kategoriji -> oznaka/hint u modalu, Enter u iznosu potvrdjuje, zbir rashoda = uneti iznos.
+    go('nabavka'); await sleep(60);
+    const shF = window.__shopping();
+    shF.items.push({ id: 'smoke-finish-1', name: 'Smoke finish A', section: 'Ostalo', store: '', category: 'Nepostojeca kat', price: 200, qty: '', needed: true, checked: true });
+    shF.items.push({ id: 'smoke-finish-2', name: 'Smoke finish B', section: 'Ostalo', store: '', category: catsQ[0], price: 300, qty: '', needed: true, checked: true });
+    window.__saveShopping(); await sleep(60);
+    const checkCircle = document.querySelector('.shop-check');
+    check('nabavka: krugovi za štikliranje su okrugli (20px)', !!checkCircle && getComputedStyle(checkCircle).height === '20px', checkCircle && getComputedStyle(checkCircle).height);
+    $('shopFinishBtn').click(); await sleep(80);
+    check('nabavka: modal za završetak kupovine se otvara', $('finishShopOverlay').classList.contains('show'));
+    setVal('finishShopTotal', '1000'); await sleep(60);
+    const splitTxt = $('finishShopSplit').textContent;
+    check('nabavka: modal pokazuje oznaku za stavke bez kategorije', /bez kategorije/.test(splitTxt), splitTxt);
+    const nE2 = entries().length;
+    $('finishShopTotal').dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await sleep(100);
+    check('nabavka: Enter u iznosu zatvara modal i pravi rashod(e)', !$('finishShopOverlay').classList.contains('show'));
+    const made2 = entries().filter(e => (e.tags || []).includes('nabavka') && e.items && e.items.some(x => /^Smoke finish/.test(x)));
+    check('nabavka: rashod(i) iz modala nose oznaku nabavka', entries().length === nE2 + made2.length && made2.length >= 1, JSON.stringify(made2));
+    check('nabavka: zbir rashoda iz modala = uneti iznos', made2.reduce((s, e) => s + e.amount, 0) === 1000, JSON.stringify(made2));
+    // ciscenje
+    window.__deleteEntriesById(made2.map(e => e.id));
+    window.__shopping().items = window.__shopping().items.filter(i => !/^Smoke finish/.test(i.name));
     window.__saveShopping();
 
     // Analiza: prva podkartica u Izvestajima, izbor perioda
