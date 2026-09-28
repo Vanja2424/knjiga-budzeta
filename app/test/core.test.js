@@ -370,3 +370,64 @@ test('savingsSummary: isti rezultat za Pregled i Analizu', () => {
   assert.deepEqual([s.small, s.smallMonthly, s.subscriptions], [[], 0, []]);
   assert.equal(s.breakdown.rows.length, 1);
 });
+
+// ---------- Nabavka ----------
+test('parseShoppingInput: naziv, kolicina sa jedinicom, cena na kraju', () => {
+  assert.deepEqual(C.parseShoppingInput('Mleko 2 kom 150'), { name: 'Mleko', qty: '2 kom', price: 150 });
+  assert.deepEqual(C.parseShoppingInput('Jaja 10 kom'), { name: 'Jaja', qty: '10 kom', price: null });
+  assert.deepEqual(C.parseShoppingInput('Hleb'), { name: 'Hleb', qty: '', price: null });
+  assert.deepEqual(C.parseShoppingInput('Jaja 10'), { name: 'Jaja', qty: '', price: 10 });
+  assert.deepEqual(C.parseShoppingInput('Jabuke 1,5 kg 200'), { name: 'Jabuke', qty: '1,5 kg', price: 200 });
+  assert.deepEqual(C.parseShoppingInput('Sir  1.250'), { name: 'Sir', qty: '', price: 1250 });
+  assert.deepEqual(C.parseShoppingInput('Mleko 2,8% 150'), { name: 'Mleko 2,8%', qty: '', price: 150 });
+  assert.deepEqual(C.parseShoppingInput('Voda 6KOM'), { name: 'Voda', qty: '6 kom', price: null });
+  assert.deepEqual(C.parseShoppingInput('150'), { name: '', qty: '', price: 150 });
+  assert.deepEqual(C.parseShoppingInput('   '), { name: '', qty: '', price: null });
+  assert.deepEqual(C.parseShoppingInput(undefined), { name: '', qty: '', price: null });
+});
+
+test('findShoppingItem: bez obzira na velika/mala slova i razmake', () => {
+  const items = [{ id: 'a', name: 'Mleko 2,8%' }, { id: 'b', name: 'Hleb' }];
+  assert.equal(C.findShoppingItem(items, '  mleko   2,8% ').id, 'a');
+  assert.equal(C.findShoppingItem(items, 'HLEB').id, 'b');
+  assert.equal(C.findShoppingItem(items, 'Jaja'), undefined);
+  assert.equal(C.normShoppingName('  Mleko   X '), 'mleko x');
+});
+
+test('purchaseItemLabel i mostCommonStore', () => {
+  assert.equal(C.purchaseItemLabel({ name: 'Mleko', qty: '2 kom' }), 'Mleko (2 kom)');
+  assert.equal(C.purchaseItemLabel({ name: 'Hleb', qty: '' }), 'Hleb');
+  assert.equal(C.mostCommonStore([{ store: 'Maxi' }, { store: 'Lidl' }, { store: 'Maxi' }, { store: '' }]), 'Maxi');
+  assert.equal(C.mostCommonStore([{ store: 'Maxi' }, { store: 'Lidl' }]), 'Lidl'); // nereseno -> prva po abecedi
+  assert.equal(C.mostCommonStore([{ store: '' }, {}]), '');
+});
+
+test('itemsToCell / cellToItems', () => {
+  assert.equal(C.itemsToCell(['Mleko (2 kom)', 'Hleb']), 'Mleko (2 kom), Hleb');
+  assert.equal(C.itemsToCell(undefined), '');
+  assert.deepEqual(C.cellToItems('Mleko (2 kom), Hleb ,, '), ['Mleko (2 kom)', 'Hleb']);
+  assert.deepEqual(C.cellToItems(''), []);
+  assert.deepEqual(C.cellToItems(undefined), []);
+});
+
+test('normalizeShopping: podrazumevano, neispravni podaci, Ostalo uvek postoji', () => {
+  let n = 0; const makeId = () => 'id' + (++n);
+  const empty = C.normalizeShopping(null, makeId);
+  assert.deepEqual(empty.items, []);
+  assert.deepEqual(empty.sections, C.SHOPPING_SECTIONS);
+  assert.equal(C.SHOPPING_SECTIONS[C.SHOPPING_SECTIONS.length - 1], 'Ostalo');
+  assert.deepEqual(C.normalizeShopping('smece', makeId).items, []);
+  const r = C.normalizeShopping({
+    sections: ['Mlečni', 'Mlečni', '', 5, 'Pekara'],
+    items: [
+      { id: 'x', name: ' Mleko ', section: 'Mlečni', store: ' Maxi ', category: 'Hrana', price: '150', qty: 2, needed: 1, checked: 0 },
+      { name: 'Hleb', section: 'Nepostojeci', price: -5 },
+      { name: '   ' }, null, 'x',
+      { id: 'y', name: 'mleko' } // duplikat naziva -> izbacuje se
+    ]
+  }, makeId);
+  assert.deepEqual(r.sections, ['Mlečni', 'Pekara', 'Ostalo']);
+  assert.equal(r.items.length, 2);
+  assert.deepEqual(r.items[0], { id: 'x', name: 'Mleko', section: 'Mlečni', store: 'Maxi', category: 'Hrana', price: 150, qty: '2', needed: true, checked: false });
+  assert.deepEqual(r.items[1], { id: 'id1', name: 'Hleb', section: 'Ostalo', store: '', category: '', price: null, qty: '', needed: false, checked: false });
+});

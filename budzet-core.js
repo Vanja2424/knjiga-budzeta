@@ -502,6 +502,71 @@
       small, smallMonthly: small.reduce((s, g) => s + g.monthly, 0), subscriptions: subscriptionsYearly(recurring, entries) };
   }
 
+  // ---------- Nabavka ----------
+  const SHOPPING_OTHER = 'Ostalo';
+  const SHOPPING_SECTIONS = ['Voće i povrće', 'Pekara', 'Mlečni', 'Meso', 'Suvi program', 'Piće', 'Smrznuto', 'Higijena', 'Kućna hemija', SHOPPING_OTHER];
+  const QTY_UNITS = ['kom', 'kg', 'g', 'l', 'ml', 'pak'];
+  const QTY_RE = new RegExp('(?:^|\\s)(\\d+(?:[.,]\\d+)?)\\s?(' + QTY_UNITS.join('|') + ')\\.?$', 'i');
+  // "Mleko 2 kom 150" -> naziv, kolicina (broj + jedinica), cena (poslednji broj bez jedinice)
+  function parseShoppingInput(text){
+    let s = String(text == null ? '' : text).replace(/\s+/g, ' ').trim();
+    let price = null, qty = '';
+    const pm = s.match(/(?:^|\s)(\d[\d.,]*)$/);
+    if(pm){
+      const v = parseAmount(pm[1]);
+      if(isFinite(v) && v > 0){ price = v; s = s.slice(0, s.length - pm[0].length).trim(); }
+    }
+    const qm = s.match(QTY_RE);
+    if(qm){ qty = qm[1] + ' ' + qm[2].toLowerCase(); s = s.slice(0, s.length - qm[0].length).trim(); }
+    return { name: s, qty, price };
+  }
+  const normShoppingName = name => String(name == null ? '' : name).replace(/\s+/g, ' ').trim().toLowerCase();
+  function findShoppingItem(items, name){
+    const key = normShoppingName(name);
+    return (items || []).find(i => normShoppingName(i.name) === key);
+  }
+  const purchaseItemLabel = item => item.qty ? item.name + ' (' + item.qty + ')' : item.name;
+  // Najcesca prodavnica medju stavkama; nereseno -> prva po abecedi; bez prodavnica -> ''.
+  function mostCommonStore(items){
+    const counts = new Map();
+    (items || []).forEach(i => { const s = String(i.store || '').trim(); if(s) counts.set(s, (counts.get(s) || 0) + 1); });
+    let best = '', bestN = 0;
+    [...counts.keys()].sort((a, b) => a.localeCompare(b)).forEach(s => { if(counts.get(s) > bestN){ best = s; bestN = counts.get(s); } });
+    return best;
+  }
+  const itemsToCell = items => Array.isArray(items) ? items.join(', ') : '';
+  const cellToItems = cell => String(cell == null ? '' : cell).split(',').map(x => x.trim()).filter(Boolean);
+  // Proverava i dopunjuje sacuvanu listu: nepoznat deo -> Ostalo, duplikat naziva se izbacuje, Ostalo uvek postoji.
+  function normalizeShopping(raw, makeId){
+    const src = (raw && typeof raw === 'object' && !Array.isArray(raw)) ? raw : {};
+    let sections = Array.isArray(src.sections)
+      ? [...new Set(src.sections.filter(s => typeof s === 'string').map(s => s.trim()).filter(Boolean))]
+      : SHOPPING_SECTIONS.slice();
+    sections = sections.filter(s => s !== SHOPPING_OTHER).concat([SHOPPING_OTHER]);
+    const seen = new Set();
+    const items = [];
+    (Array.isArray(src.items) ? src.items : []).forEach(i => {
+      if(!i || typeof i !== 'object') return;
+      const name = String(i.name == null ? '' : i.name).replace(/\s+/g, ' ').trim();
+      const key = name.toLowerCase();
+      if(!name || seen.has(key)) return;
+      seen.add(key);
+      const price = Number(i.price);
+      items.push({
+        id: (typeof i.id === 'string' && i.id) ? i.id : makeId(),
+        name,
+        section: sections.includes(i.section) ? i.section : SHOPPING_OTHER,
+        store: String(i.store == null ? '' : i.store).trim(),
+        category: typeof i.category === 'string' ? i.category : '',
+        price: isFinite(price) && price > 0 ? price : null,
+        qty: String(i.qty == null ? '' : i.qty).trim(),
+        needed: !!i.needed,
+        checked: !!i.checked
+      });
+    });
+    return { items, sections };
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -514,6 +579,8 @@
     linearRegressionForecast, debtPayoffPlan,
     NO_DESC, isPaidExp, cleanDesc, normalizeDesc, analysisPeriod, firstExpenseMonth, sumPaid, periodStats,
     isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent,
-    splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary
+    splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary,
+    SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
+    purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping
   };
 });
