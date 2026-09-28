@@ -1614,6 +1614,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .analiza-whatif input[type="range"]{ width:100%; margin:0.6em 0; }
 .analiza-goal{ margin-top:0.3em; color:var(--pos-text); font-weight:600; }
 @media (max-width: 600px){ .analiza-save-row{ grid-template-columns:1fr auto; } .analiza-save-row .muted{ grid-column:1 / -1; order:3; } }
+.analiza-link{ display:block; width:100%; margin-top:0.8em; padding:0.6em 0.8em; border:none; border-radius:8px; background:var(--fill); color:var(--ledger); font:600 13.5px/1.3 var(--font); text-align:left; cursor:default; }
+.analiza-link:hover{ background:var(--fill-strong); }
 </style>
 </head>
 <body>
@@ -1778,6 +1780,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       <h2>Obrasci i anomalije</h2>
       <div id="patternsForecast" style="margin-bottom:1em;"></div>
       <div id="patternsList"></div>
+      <button class="analiza-link" id="patternsAnalizaLink" style="display:none;"></button>
     </div>
   </div>
 
@@ -4187,23 +4190,6 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     });
     return results;
   }
-  // Anomalija: ova mesec u kategoriji je znatno iznad njenog sopstvenog proseka poslednja 3 meseca
-  // (pre ovog) — hvata "ovaj mesec trosim 3x vise na Hranu" po kategoriji, ne samo najvecu kategoriju.
-  function detectSpendingAnomalies(){
-    const mKey = currentMonthKey();
-    const results = [];
-    const cats = [...new Set(entries.filter(e=>e.type==='expense').map(e=>e.category))];
-    cats.forEach(cat=>{
-      const thisMonth = categorySpentInMonth(cat, mKey);
-      if(thisMonth <= 0) return;
-      const priorMonths = [monthKeyPlus(-3), monthKeyPlus(-2), monthKeyPlus(-1)];
-      const priorAvg = priorMonths.reduce((s,m)=> s + categorySpentInMonth(cat, m), 0) / priorMonths.length;
-      if(priorAvg >= 500 && thisMonth > priorAvg * 1.5){
-        results.push({ cat, thisMonth, priorAvg, pct: Math.round((thisMonth-priorAvg)/priorAvg*100) });
-      }
-    });
-    return results.sort((a,b)=>b.pct-a.pct);
-  }
   // Isti tip+datum+iznos+opis (bez obzira na velika/mala slova/razmake) — cest slucaj kod
   // dvostrukog CSV/OFX/QIF uvoza ili slucajnog dva puta unetog rashoda. Vraca grupe od 2+ stavke.
   function detectDuplicateEntries(){
@@ -4224,11 +4210,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function renderPatterns(){
     const panel = document.getElementById('patternsPanel');
     const creep = detectSubscriptionCreep();
-    const anomalies = detectSpendingAnomalies();
+    const S = C.savingsSummary(entries, recurring, fixedCategories, currentMonthKey(), 6);
     const months = lastNMonths(6);
     const monthlyExpense = months.map(m => sumMonth(m, isPaidExpense));
     const forecast = linearRegressionForecast(monthlyExpense);
-    if(creep.length === 0 && anomalies.length === 0 && forecast == null){ panel.style.display = 'none'; return; }
+    if(creep.length === 0 && S.above.length === 0 && S.small.length === 0 && forecast == null){ panel.style.display = 'none'; return; }
     panel.style.display = 'block';
 
     const forecastEl = document.getElementById('patternsForecast');
@@ -4241,11 +4227,25 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     creep.forEach(({r,first,last,pct})=>{
       rows.push({level:'caution', icon:'📈', txt: t('<b>{0}</b> je poskupeo za {1}% od prve naplate ({2} → {3}) — vredi proveriti da li je i dalje isplativ.', escapeHtml(r.desc), pct, fmt(first), fmt(last))});
     });
-    anomalies.forEach(({cat,thisMonth,priorAvg,pct})=>{
-      rows.push({level:'caution', icon:'⚠', txt: t('Kategorija <b>{0}</b> je ovog meseca {1}% iznad proseka poslednja 3 meseca ({2} naspram proseka {3}).', escapeHtml(cat), pct, fmt(thisMonth), fmt(Math.round(priorAvg)))});
+    S.above.forEach(({cat,total,avg,pct})=>{
+      rows.push({level:'caution', icon:'⚠', txt: t('Kategorija <b>{0}</b> je ovog meseca {1}% iznad proseka poslednjih 6 meseci ({2} naspram proseka {3}).', escapeHtml(cat), pct, fmt(total), fmt(Math.round(avg)))});
     });
     document.getElementById('patternsList').innerHTML = rows.map(w=>`<div class="warning-item caution"><span class="icon">${w.icon}</span><span class="txt">${w.txt}</span></div>`).join('');
+
+    const link = document.getElementById('patternsAnalizaLink');
+    if(S.above.length){
+      link.dataset.kind = 'above'; link.dataset.total = String(Math.round(S.aboveTotal));
+      link.textContent = (S.above.length === 1 ? t('1 kategorija iznad proseka') : t('Kategorija iznad proseka: {0}', S.above.length)) + ' · ' + t('moguća ušteda ~{0} →', fmt(S.aboveTotal));
+      link.style.display = '';
+    } else if(S.small.length){
+      link.dataset.kind = 'small'; link.dataset.total = String(Math.round(S.smallMonthly));
+      link.textContent = t('Sitni troškovi: ~{0} mesečno →', fmt(S.smallMonthly));
+      link.style.display = '';
+    } else {
+      link.style.display = 'none'; delete link.dataset.total;
+    }
   }
+  document.getElementById('patternsAnalizaLink').addEventListener('click', ()=> openAnaliza('save'));
 
   // ---- Analiza potrosnje (Izvestaji → Analiza) ----
   // Sva racunanja su u budzet-core.js (C.categoryBreakdown, C.savingsSummary...); ovde je samo crtanje.

@@ -75,6 +75,23 @@
     setVal('analizaWhatIf', '20'); await sleep(40);
     check('Analiza: klizač šta ako', /20%/.test($('analizaWhatIfLabel').textContent) && $('analizaWhatIfResult').textContent.trim().length > 0, $('analizaWhatIfResult').textContent);
 
+    // Pregled → Analiza: isti iznos na oba mesta
+    go('pregled'); await sleep(80);
+    const S = window.BudzetCore.savingsSummary(entries(), JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]'),
+      JSON.parse(localStorage.getItem('budzet-fiksne-kategorije-v1') || '[]'), monthKey(new Date()), 6);
+    // Dugme uvek postoji u HTML-u; "ima reda" = dugme i panel su vidljivi
+    const linkEl = $('patternsAnalizaLink');
+    const link = linkEl && linkEl.style.display !== 'none' && $('patternsPanel').style.display !== 'none' ? linkEl : null;
+    const expectLink = S.above.length > 0 || S.small.length > 0;
+    check('Pregled: red za Analizu kad ima uštede', !!link === expectLink, JSON.stringify({ above: S.above.length, small: S.small.length }));
+    if (link) {
+      const want = Math.round(S.above.length ? S.aboveTotal : S.smallMonthly);
+      check('Pregled i Analiza: isti iznos', Number(link.dataset.total) === want, link.dataset.total + ' vs ' + want);
+      link.click(); await sleep(120);
+      check('Pregled: red vodi na Analizu', $('screen-analiza').classList.contains('active') && $('analizaSummary').dataset.n === '6');
+      go('pregled');
+    }
+
     go('pregled');
 
     // Izbor meseca
