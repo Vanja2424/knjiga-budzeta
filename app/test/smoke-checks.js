@@ -96,6 +96,10 @@
     const jogBox = [...document.querySelectorAll('#shopList .shop-check')].find(c => c.dataset.id === window.__shopping().items.find(i => i.name === 'Smoke jogurt').id);
     jogBox.click(); await sleep(40);
     check('nabavka: štikliranje se čuva', JSON.parse(localStorage.getItem('budzet-nabavka-v1')).items.find(i => i.name === 'Smoke jogurt').checked === true);
+    $('shopSectionsBtn').click(); await sleep(40);
+    const ostaloRow = [...document.querySelectorAll('#shopSectionsPanel .shop-sec-row')].find(r => r.querySelector('.shop-sec-fixed'));
+    check('nabavka: Ostalo ostaje poslednji deo (dugme gore isključeno)', !!ostaloRow && ostaloRow.querySelector('.shop-sec-up').disabled);
+    $('shopSectionsBtn').click(); await sleep(40);
 
     // Analiza: prva podkartica u Izvestajima, izbor perioda
     document.querySelector('nav.tabs button[data-group="izvestaji"]').click(); await sleep(50);

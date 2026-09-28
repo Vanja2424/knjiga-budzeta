@@ -3245,7 +3245,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     indicator.style.left = btn.offsetLeft + 'px';
     indicator.style.width = btn.offsetWidth + 'px';
   }
-  // Grupe ekrana: glavni meni ima 7 stavki, a srodni ekrani su podmeni unutar grupe.
+  // Grupe ekrana: glavni meni ima 9 stavki, a srodni ekrani su podmeni unutar grupe.
   const SCREEN_GROUPS = {
     pregled: [['pregled', 'Pregled']],
     transakcije: [['rashodi', 'Rashodi'], ['prihodi', 'Prihodi'], ['racuni', 'Računi i prenosi'], ['pretraga', 'Pretraga']],
@@ -4569,7 +4569,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const secs = shopping.sections;
     panel.innerHTML = secs.map((s, i)=> `<div class="shop-sec-row">
         ${s === C.SHOPPING_OTHER ? `<span class="shop-sec-fixed">${shopSectionLabelHtml(s)}</span>` : `<input type="text" class="shop-sec-name" data-i="${i}" value="${escapeHtml(s)}" aria-label="${t('Naziv dela')}">`}
-        <button class="edit-btn shop-sec-up" data-i="${i}" title="${t('Gore')}" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="edit-btn shop-sec-up" data-i="${i}" title="${t('Gore')}" ${i === 0 || s === C.SHOPPING_OTHER ? 'disabled' : ''}>↑</button>
         <button class="edit-btn shop-sec-down" data-i="${i}" title="${t('Dole')}" ${i >= secs.length - 2 || s === C.SHOPPING_OTHER ? 'disabled' : ''}>↓</button>
         ${s === C.SHOPPING_OTHER ? '' : `<button class="del-btn shop-sec-del" data-i="${i}" title="${t('Obriši')}">✕</button>`}
       </div>`).join('') + `<div class="shop-sec-row"><input type="text" id="shopSecNew" placeholder="${t('Novi deo prodavnice')}" aria-label="${t('Novi deo prodavnice')}"><button class="btn-secondary" id="shopSecAdd">${t('Dodaj')}</button></div>`;
@@ -4580,8 +4580,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       if(secs.some(s=> s.toLowerCase() === name.toLowerCase())){ appAlert(t('Deo sa tim imenom već postoji.')); inp.value = old; return; }
       secs[i] = name; shopping.items.forEach(it=>{ if(it.section === old) it.section = name; }); commit();
     }));
-    panel.querySelectorAll('.shop-sec-up').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); [secs[i-1], secs[i]] = [secs[i], secs[i-1]]; commit(); }));
-    panel.querySelectorAll('.shop-sec-down').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); [secs[i+1], secs[i]] = [secs[i], secs[i+1]]; commit(); }));
+    panel.querySelectorAll('.shop-sec-up').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); if(secs[i] === C.SHOPPING_OTHER) return; [secs[i-1], secs[i]] = [secs[i], secs[i-1]]; commit(); }));
+    panel.querySelectorAll('.shop-sec-down').forEach(b=> b.addEventListener('click', ()=>{ const i = Number(b.dataset.i); if(secs[i] === C.SHOPPING_OTHER || secs[i+1] === C.SHOPPING_OTHER) return; [secs[i+1], secs[i]] = [secs[i], secs[i+1]]; commit(); }));
     panel.querySelectorAll('.shop-sec-del').forEach(b=> b.addEventListener('click', ()=>{
       const i = Number(b.dataset.i), old = secs[i];
       secs.splice(i, 1); shopping.items.forEach(it=>{ if(it.section === old) it.section = C.SHOPPING_OTHER; }); commit();
@@ -4598,6 +4598,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Popunjava zadatak 5.
   function renderShoppingFooter(){}
   document.getElementById('shopQuickInput').addEventListener('keydown', e=>{
+    if(e.isComposing) return;
     if(e.key !== 'Enter') return;
     e.preventDefault();
     const res = addShoppingFromInput(e.target.value);
