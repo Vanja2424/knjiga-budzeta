@@ -5691,11 +5691,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
   // Mesecni "ekvivalent" cene bez obzira na ucestalost — omogucava fer poredjenje/sabiranje
   // godisnjih i kvartalnih pretplata sa mesecnim.
-  function monthlyEquivalent(r){
-    if(r.frequency === 'yearly') return r.amount / 12;
-    if(r.frequency === 'quarterly') return r.amount / 3;
-    return r.amount;
-  }
+  const monthlyEquivalent = C.monthlyEquivalent;
   function renderSubscriptionsPanel(){
     const panel = document.getElementById('subscriptionsPanel');
     const subs = recurring.filter(r => r.isSubscription && r.type === 'expense');

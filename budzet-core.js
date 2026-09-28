@@ -361,6 +361,48 @@
     return { balances, months, payoffMonth };
   }
 
+  // ---------- Analiza potrosnje ----------
+  // Racuna se samo placen rashod; raspodeljena stavka ulazi mesecnim delom (shareInMonth).
+  const NO_DESC = '(bez opisa)';
+  const isPaidExp = e => e.type === 'expense' && e.paid !== false;
+  // "Maxi 123", "MAXI." i "maxi" su ista grupa: bez brojeva/interpunkcije na kraju, bez obzira na velika/mala slova.
+  function cleanDesc(desc){
+    return String(desc == null ? '' : desc).replace(/\s+/g, ' ').replace(/[\s\d.,;:!?#*+\-–—_/\\()'"]+$/u, '').trim();
+  }
+  function normalizeDesc(desc){ return cleanDesc(desc).toLowerCase() || NO_DESC; }
+  // n punih meseci PRE mKey, rastuce ('2026-03', 3 -> ['2025-12','2026-01','2026-02']).
+  function analysisPeriod(mKey, n){
+    const out = [];
+    for(let i = n; i >= 1; i--) out.push(addMonths(mKey, -i));
+    return out;
+  }
+  function firstExpenseMonth(entries){
+    let first = null;
+    entries.forEach(e => { if(!isPaidExp(e)) return; const s = spreadOf(e).start; if(first === null || s < first) first = s; });
+    return first;
+  }
+  function sumPaid(entries, mKey, pred){
+    return entries.reduce((s, e) => (isPaidExp(e) && (!pred || pred(e))) ? s + shareInMonth(e, mKey) : s, 0);
+  }
+  // Mesecni zbirovi za period; prosek samo od prvog meseca sa podacima (raniji meseci nisu nula).
+  function periodStats(entries, months, pred){
+    const first = firstExpenseMonth(entries);
+    const perMonth = months.map(m => sumPaid(entries, m, pred));
+    const counted = first === null ? [] : months.filter(m => m >= first);
+    const sum = months.reduce((s, m, i) => (first !== null && m >= first) ? s + perMonth[i] : s, 0);
+    return { perMonth, counted, monthsWithData: counted.length, avg: counted.length ? sum / counted.length : 0, enough: counted.length >= 2 };
+  }
+  // Fiksno = generisano iz ponavljajuce stavke (id "rec-<id>-<YYYY-MM>") ili kategorija oznacena kao fiksna.
+  function isFixedEntry(e, fixedCategories){
+    return /^rec-/.test(e.id || '') || (fixedCategories || []).includes(e.category);
+  }
+  // Mesecni "ekvivalent" cene bez obzira na ucestalost (godisnja/12, kvartalna/3).
+  function monthlyEquivalent(r){
+    if(r.frequency === 'yearly') return r.amount / 12;
+    if(r.frequency === 'quarterly') return r.amount / 3;
+    return r.amount;
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -370,6 +412,8 @@
     dupKey, splitDuplicates, categoryFromRules,
     spreadOf, shareInMonth, shareInMonths,
     accountBalances, convertToRsd,
-    linearRegressionForecast, debtPayoffPlan
+    linearRegressionForecast, debtPayoffPlan,
+    NO_DESC, isPaidExp, cleanDesc, normalizeDesc, analysisPeriod, firstExpenseMonth, sumPaid, periodStats,
+    isFixedEntry, monthlyEquivalent
   };
 });

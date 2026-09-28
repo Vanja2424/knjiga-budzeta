@@ -166,3 +166,72 @@ test('valute i plan otplate', () => {
   assert.deepEqual(plan.payoffMonth, { y: 1, x: 3 });
   assert.equal(C.linearRegressionForecast([100, 200, 300]), 400);
 });
+
+// ---------- Analiza potrosnje ----------
+const ex = (id, date, amount, category, desc, extra = {}) => ({ id, type: 'expense', date, amount, category, desc, ...extra });
+
+test('normalizeDesc: velika/mala slova, brojevi i interpunkcija na kraju', () => {
+  assert.equal(C.normalizeDesc('Maxi 123'), 'maxi');
+  assert.equal(C.normalizeDesc('MAXI.'), 'maxi');
+  assert.equal(C.normalizeDesc('  maxi  '), 'maxi');
+  assert.equal(C.normalizeDesc('Kafa (2)'), 'kafa');
+  assert.equal(C.normalizeDesc('Lidl  Novi   Sad 45/2'), 'lidl novi sad');
+  assert.equal(C.normalizeDesc('123'), '(bez opisa)');
+  assert.equal(C.normalizeDesc('--'), '(bez opisa)');
+  assert.equal(C.normalizeDesc(''), '(bez opisa)');
+  assert.equal(C.normalizeDesc(undefined), '(bez opisa)');
+  assert.equal(C.cleanDesc('Maxi 123'), 'Maxi');
+});
+
+test('analysisPeriod: n meseci pre izabranog, rastuce', () => {
+  assert.deepEqual(C.analysisPeriod('2026-03', 3), ['2025-12', '2026-01', '2026-02']);
+  assert.equal(C.analysisPeriod('2026-09', 12).length, 12);
+  assert.equal(C.analysisPeriod('2026-09', 12)[11], '2026-08');
+});
+
+test('firstExpenseMonth: najraniji placeni trosak (i pocetak raspodele)', () => {
+  assert.equal(C.firstExpenseMonth([]), null);
+  assert.equal(C.firstExpenseMonth([ex('a', '2026-05-10', 100, 'Hrana', 'x'), ex('b', '2026-03-02', 100, 'Hrana', 'y')]), '2026-03');
+  assert.equal(C.firstExpenseMonth([ex('a', '2026-05-10', 100, 'Hrana', 'x', { spreadMonths: 3, spreadStart: '2026-01' })]), '2026-01');
+  assert.equal(C.firstExpenseMonth([ex('a', '2026-01-10', 100, 'Hrana', 'x', { paid: false }), ex('b', '2026-04-02', 100, 'Hrana', 'y')]), '2026-04');
+  assert.equal(C.firstExpenseMonth([{ id: 'i', type: 'income', date: '2025-01-01', amount: 5, category: 'Plata', desc: 'p' }]), null);
+});
+
+test('periodStats: prosek samo od prvog meseca sa podacima, neplaceno se ne racuna', () => {
+  const entries = [
+    ex('a', '2026-04-05', 3000, 'Hrana', 'Maxi'),
+    ex('b', '2026-05-05', 5000, 'Hrana', 'Maxi'),
+    ex('c', '2026-05-06', 9999, 'Hrana', 'Maxi', { paid: false }),
+    // jun bez troskova -> ulazi kao 0
+  ];
+  const st = C.periodStats(entries, ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']);
+  assert.deepEqual(st.perMonth, [0, 0, 0, 3000, 5000, 0]);
+  assert.deepEqual(st.counted, ['2026-04', '2026-05', '2026-06']);
+  assert.equal(st.monthsWithData, 3);
+  assert.equal(st.avg, 8000 / 3);
+  assert.equal(st.enough, true);
+  const onlyOne = C.periodStats(entries, ['2026-03', '2026-04']);
+  assert.equal(onlyOne.monthsWithData, 1);
+  assert.equal(onlyOne.enough, false);
+  const none = C.periodStats([], ['2026-03', '2026-04']);
+  assert.deepEqual(none, { perMonth: [0, 0], counted: [], monthsWithData: 0, avg: 0, enough: false });
+  const hrana = C.periodStats(entries.concat([ex('d', '2026-05-07', 700, 'Prevoz', 'Bus')]), ['2026-04', '2026-05'], e => e.category === 'Prevoz');
+  assert.deepEqual(hrana.perMonth, [0, 700]);
+  assert.equal(hrana.avg, 350);
+});
+
+test('sumPaid i isFixedEntry', () => {
+  const entries = [ex('a', '2026-05-05', 1000, 'Hrana', 'x'), ex('b', '2026-05-06', 400, 'Hrana', 'y', { paid: false }), ex('c', '2026-04-06', 200, 'Hrana', 'z')];
+  assert.equal(C.sumPaid(entries, '2026-05'), 1000);
+  assert.equal(C.sumPaid(entries, '2026-05', e => e.category === 'Prevoz'), 0);
+  assert.equal(C.isFixedEntry(ex('rec-abc-2026-05', '2026-05-01', 1, 'Zabava', 'Netflix'), []), true);
+  assert.equal(C.isFixedEntry(ex('x1', '2026-05-01', 1, 'Stanovanje', 'Kirija'), ['Stanovanje']), true);
+  assert.equal(C.isFixedEntry(ex('x2', '2026-05-01', 1, 'Hrana', 'Maxi'), ['Stanovanje']), false);
+});
+
+test('monthlyEquivalent', () => {
+  assert.equal(C.monthlyEquivalent({ amount: 1200, frequency: 'yearly' }), 100);
+  assert.equal(C.monthlyEquivalent({ amount: 300, frequency: 'quarterly' }), 100);
+  assert.equal(C.monthlyEquivalent({ amount: 100, frequency: 'monthly' }), 100);
+  assert.equal(C.monthlyEquivalent({ amount: 100 }), 100);
+});
