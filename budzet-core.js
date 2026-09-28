@@ -402,6 +402,50 @@
     if(r.frequency === 'quarterly') return r.amount / 3;
     return r.amount;
   }
+  const ABOVE_PCT = 0.2, ABOVE_MIN = 1000, SMALL_MAX = 1500, SMALL_PER_MONTH = 4;
+  // Grupe po opisu u datim mesecima: ukupno (mesecnim delom), broj kupovina, prosecna kupovina.
+  function groupByDesc(entries, months, pred){
+    const map = new Map();
+    entries.forEach(e => {
+      if(!isPaidExp(e) || (pred && !pred(e))) return;
+      const amt = shareInMonths(e, months);
+      if(amt <= 0) return;
+      const key = normalizeDesc(e.desc);
+      if(!map.has(key)) map.set(key, { key, label: cleanDesc(e.desc) || NO_DESC, total: 0, count: 0 });
+      const g = map.get(key);
+      g.total += amt; g.count++;
+    });
+    return [...map.values()].map(g => Object.assign(g, { avgPurchase: g.total / g.count })).sort((a, b) => b.total - a.total);
+  }
+  // Kategorije izabranog meseca naspram proseka perioda (n meseci pre njega).
+  function categoryBreakdown(entries, mKey, n){
+    const months = analysisPeriod(mKey, n);
+    const overall = periodStats(entries, months);
+    const enough = overall.enough;
+    const cats = [...new Set(entries.filter(isPaidExp).map(e => e.category))];
+    const rows = cats.map(cat => {
+      const pred = e => e.category === cat;
+      const total = sumPaid(entries, mKey, pred);
+      if(!enough) return { cat, total, avg: null, diff: null, pct: null };
+      const avg = periodStats(entries, months, pred).avg;
+      return { cat, total, avg, diff: total - avg, pct: avg > 0 ? Math.round((total - avg) / avg * 100) : null };
+    }).filter(r => r.total > 0).sort((a, b) => b.total - a.total);
+    return { month: mKey, months, total: rows.reduce((s, r) => s + r.total, 0), avg: overall.avg, enough, rows };
+  }
+  // Iznad proseka: bar 20% I bar 1.000 RSD (vrednost tacno na pragu se racuna); nova kategorija (prosek 0) ne.
+  function aboveAverage(breakdown){
+    if(!breakdown.enough) return [];
+    return breakdown.rows.filter(r => r.avg > 0 && r.diff >= ABOVE_MIN && r.total >= r.avg * (1 + ABOVE_PCT)).sort((a, b) => b.diff - a.diff);
+  }
+  // Sitni cesti promenljivi troskovi u periodu: prosecna kupovina <= 1.500 i >= 4 kupovine mesecno.
+  function smallFrequent(entries, mKey, n, fixedCategories){
+    const st = periodStats(entries, analysisPeriod(mKey, n));
+    if(!st.enough) return [];
+    const k = st.counted.length;
+    return groupByDesc(entries, st.counted, e => !isFixedEntry(e, fixedCategories))
+      .filter(g => g.avgPurchase <= SMALL_MAX && g.count / k >= SMALL_PER_MONTH)
+      .map(g => Object.assign(g, { perMonth: g.count / k, monthly: g.total / k, yearly: g.total / k * 12 }));
+  }
 
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
@@ -414,6 +458,6 @@
     accountBalances, convertToRsd,
     linearRegressionForecast, debtPayoffPlan,
     NO_DESC, isPaidExp, cleanDesc, normalizeDesc, analysisPeriod, firstExpenseMonth, sumPaid, periodStats,
-    isFixedEntry, monthlyEquivalent
+    isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent
   };
 });

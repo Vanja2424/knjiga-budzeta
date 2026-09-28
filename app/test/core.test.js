@@ -235,3 +235,73 @@ test('monthlyEquivalent', () => {
   assert.equal(C.monthlyEquivalent({ amount: 100, frequency: 'monthly' }), 100);
   assert.equal(C.monthlyEquivalent({ amount: 100 }), 100);
 });
+
+test('groupByDesc: grupe po opisu, raspodeljeni trosak ulazi mesecnim delom', () => {
+  const entries = [
+    ex('a', '2026-05-02', 1000, 'Hrana', 'Maxi 12'),
+    ex('b', '2026-05-09', 3000, 'Hrana', 'maxi.'),
+    ex('c', '2026-05-10', 500, 'Hrana', 'Pekara'),
+    ex('d', '2026-05-11', 700, 'Prevoz', 'Bus'),
+    ex('e', '2026-04-11', 6000, 'Hrana', 'Nabavka', { spreadMonths: 3, spreadStart: '2026-04' }), // 2000/mes: apr, maj, jun
+    ex('f', '2026-05-12', 9999, 'Hrana', 'Maxi', { paid: false })
+  ];
+  const g = C.groupByDesc(entries, ['2026-05'], e => e.category === 'Hrana');
+  assert.deepEqual(g.map(x => [x.key, x.label, x.total, x.count]), [
+    ['maxi', 'Maxi', 4000, 2], ['nabavka', 'Nabavka', 2000, 1], ['pekara', 'Pekara', 500, 1]
+  ]);
+  assert.equal(g[0].avgPurchase, 2000);
+  const all = C.groupByDesc(entries, ['2026-05']);
+  assert.equal(all.length, 4);
+  const noDesc = C.groupByDesc([ex('z', '2026-05-01', 50, 'Hrana', '123')], ['2026-05']);
+  assert.equal(noDesc[0].label, '(bez opisa)');
+});
+
+test('categoryBreakdown i aboveAverage: pragovi 20% i 1.000 RSD, tacno na pragu ulazi', () => {
+  const entries = [];
+  // Hrana: prosek 5000 (mar, apr), maj 6000 -> +1000 i +20% -> ulazi (tacno na pragu)
+  entries.push(ex('h1', '2026-03-05', 5000, 'Hrana', 'x'), ex('h2', '2026-04-05', 5000, 'Hrana', 'x'), ex('h3', '2026-05-05', 6000, 'Hrana', 'x'));
+  // Zabava: prosek 2000, maj 2900 -> +45% ali samo +900 -> ne ulazi
+  entries.push(ex('z1', '2026-03-05', 2000, 'Zabava', 'y'), ex('z2', '2026-04-05', 2000, 'Zabava', 'y'), ex('z3', '2026-05-05', 2900, 'Zabava', 'y'));
+  // Stanovanje: prosek 40000, maj 45000 -> +5000 ali +12,5% -> ne ulazi
+  entries.push(ex('s1', '2026-03-05', 40000, 'Stanovanje', 'k'), ex('s2', '2026-04-05', 40000, 'Stanovanje', 'k'), ex('s3', '2026-05-05', 45000, 'Stanovanje', 'k'));
+  // Pokloni: nova kategorija (prosek 0), maj 3000 -> ne ulazi u "iznad proseka"
+  entries.push(ex('p1', '2026-05-05', 3000, 'Pokloni', 'p'));
+  // Prevoz: prosek 3000, maj 5000 -> +2000, +66% -> ulazi, prvi po diff
+  entries.push(ex('v1', '2026-03-05', 3000, 'Prevoz', 'b'), ex('v2', '2026-04-05', 3000, 'Prevoz', 'b'), ex('v3', '2026-05-05', 5000, 'Prevoz', 'b'));
+  const b = C.categoryBreakdown(entries, '2026-05', 6);
+  assert.equal(b.enough, true);
+  assert.deepEqual(b.months, C.analysisPeriod('2026-05', 6));
+  assert.deepEqual(b.rows.map(r => r.cat), ['Stanovanje', 'Hrana', 'Prevoz', 'Pokloni', 'Zabava']);
+  assert.equal(b.total, 45000 + 6000 + 5000 + 3000 + 2900);
+  const hrana = b.rows.find(r => r.cat === 'Hrana');
+  assert.deepEqual([hrana.total, hrana.avg, hrana.diff, hrana.pct], [6000, 5000, 1000, 20]);
+  assert.equal(b.rows.find(r => r.cat === 'Pokloni').pct, null);
+  assert.deepEqual(C.aboveAverage(b).map(r => r.cat), ['Prevoz', 'Hrana']);
+});
+
+test('categoryBreakdown: premalo istorije -> bez poredjenja', () => {
+  const entries = [ex('a', '2026-04-05', 5000, 'Hrana', 'x'), ex('b', '2026-05-05', 9000, 'Hrana', 'x')];
+  const b = C.categoryBreakdown(entries, '2026-05', 6); // samo april pre maja
+  assert.equal(b.enough, false);
+  assert.deepEqual(b.rows.map(r => [r.cat, r.total, r.avg, r.diff, r.pct]), [['Hrana', 9000, null, null, null]]);
+  assert.deepEqual(C.aboveAverage(b), []);
+  const empty = C.categoryBreakdown([], '2026-05', 6);
+  assert.deepEqual([empty.rows, empty.total, empty.enough], [[], 0, false]);
+});
+
+test('smallFrequent: <=1.500 prosecno i >=4 kupovine mesecno, samo promenljivo', () => {
+  const entries = [];
+  const months = ['2026-03', '2026-04'];
+  months.forEach(m => {
+    for(let i = 1; i <= 4; i++) entries.push(ex('k' + m + i, m + '-0' + i, 300, 'Hrana', 'Kafa ' + i)); // 4x/mes, 300
+    for(let i = 1; i <= 3; i++) entries.push(ex('p' + m + i, m + '-1' + i, 200, 'Hrana', 'Pekara'));   // 3x/mes -> ne
+    for(let i = 1; i <= 5; i++) entries.push(ex('t' + m + i, m + '-2' + i, 1600, 'Hrana', 'Taxi'));    // 1600 > 1500 -> ne
+    for(let i = 1; i <= 4; i++) entries.push(ex('b' + m + i, m + '-0' + i, 1500, 'Prevoz', 'Bus'));    // tacno 1500 -> da
+    for(let i = 1; i <= 5; i++) entries.push(ex('s' + m + i, m + '-0' + i, 100, 'Stanovanje', 'Voda'));// fiksna kat. -> ne
+  });
+  const res = C.smallFrequent(entries, '2026-05', 6, ['Stanovanje']);
+  assert.deepEqual(res.map(g => g.key), ['bus', 'kafa']);
+  const kafa = res.find(g => g.key === 'kafa');
+  assert.deepEqual([kafa.count, kafa.perMonth, kafa.monthly, kafa.yearly], [8, 4, 1200, 14400]);
+  assert.deepEqual(C.smallFrequent(entries.filter(e => e.date < '2026-04'), '2026-05', 6, []), []); // samo 1 mesec podataka
+});
