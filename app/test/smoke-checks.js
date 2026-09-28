@@ -364,7 +364,7 @@
     $('periodNext').click(); await sleep(800);
     check('sledeći mesec dobija trećinu', Number($('totalIncome').textContent.replace(/\D/g, '')) === nextBefore + 80000, $('totalIncome').textContent);
     $('periodToday').click();
-    check('račun dobija ceo iznos odmah', totalBal() - balBeforeQ === 240000, `${balBeforeQ} → ${totalBal()}`);
+    check('račun dobija ceo iznos odmah', Math.round((totalBal() - balBeforeQ) * 100) === 24000000, `${balBeforeQ} → ${totalBal()}`);
 
     // Novi unos kroz prozor za unos: dugme u zaglavlju, forme sakrivene u desktop aplikaciji
     go('rashodi'); await sleep(50);
