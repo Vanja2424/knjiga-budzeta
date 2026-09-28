@@ -114,6 +114,7 @@
     sh2.items.push({ id: 'smoke-shop-2', name: 'Smoke sapun', section: 'Higijena', store: 'dm', category: catsQ[1], price: 360, qty: '', needed: true, checked: true });
     window.__saveShopping(); await sleep(40);
     check('nabavka: procena u donjoj traci', /480/.test($('shopFooter').textContent.replace(/\D/g, '')) || /480/.test($('shopFooter').textContent), $('shopFooter').textContent);
+    check('nabavka: dugme Završi kupovinu je iste visine kao primarno dugme (34px)', getComputedStyle($('shopFinishBtn')).height === '34px', getComputedStyle($('shopFinishBtn')).height);
     const nE = entries().length;
     const fin = window.__finishPurchase({ total: 1001 });
     const made = entries().filter(e => (e.tags || []).includes('nabavka') && e.items && e.items.some(x => /^Smoke (jogurt|sapun)/.test(x)));
