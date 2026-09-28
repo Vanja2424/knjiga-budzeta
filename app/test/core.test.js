@@ -434,3 +434,56 @@ test('normalizeShopping: podrazumevano, neispravni podaci, Ostalo uvek postoji',
   assert.deepEqual(r.items[0], { id: 'x', name: 'Mleko', section: 'Mlečni', store: 'Maxi', category: 'Hrana', price: 150, qty: '2', needed: true, checked: false });
   assert.deepEqual(r.items[1], { id: 'id1', name: 'Hleb', section: 'Ostalo', store: '', category: '', price: null, qty: '', needed: false, checked: false });
 });
+
+test('groupShoppingItems: redosled delova, abecedno, grupe "Bez ..."', () => {
+  const items = [
+    { name: 'Sir', section: 'Mlečni', store: 'Maxi', category: 'Hrana' },
+    { name: 'Hleb', section: 'Pekara', store: '', category: 'Hrana' },
+    { name: 'Mleko', section: 'Mlečni', store: 'Lidl', category: 'Hrana' },
+    { name: 'Šampon', section: 'Higijena', store: 'dm', category: 'Kozmetika' },
+    { name: 'Baterije', section: 'Ostalo', store: 'Maxi', category: 'Obrisana' }
+  ];
+  const opts = { sections: ['Pekara', 'Mlečni', 'Higijena', 'Ostalo'], categories: ['Hrana', 'Kozmetika'] };
+  const bySec = C.groupShoppingItems(items, 'section', opts);
+  assert.deepEqual(bySec.map(g => g.label), ['Pekara', 'Mlečni', 'Higijena', 'Ostalo']);
+  assert.deepEqual(bySec[1].items.map(i => i.name), ['Mleko', 'Sir']);
+  const byStore = C.groupShoppingItems(items, 'store', opts);
+  assert.deepEqual(byStore.map(g => [g.key, g.label]), [['dm', 'dm'], ['Lidl', 'Lidl'], ['Maxi', 'Maxi'], ['', 'Bez prodavnice']]);
+  const byCat = C.groupShoppingItems(items, 'category', opts);
+  assert.deepEqual(byCat.map(g => [g.key, g.label, g.items.length]), [['Hrana', 'Hrana', 3], ['Kozmetika', 'Kozmetika', 1], ['', 'Bez kategorije', 1]]);
+  assert.deepEqual(C.groupShoppingItems([], 'section', opts), []);
+});
+
+test('shoppingEstimate: samo "treba", stavke bez cene, zbir po kategoriji', () => {
+  const items = [
+    { name: 'A', needed: true, price: 150, category: 'Hrana' },
+    { name: 'B', needed: true, price: null, category: 'Hrana' },
+    { name: 'C', needed: true, price: 400, category: 'Kozmetika' },
+    { name: 'D', needed: false, price: 999, category: 'Hrana' }
+  ];
+  assert.deepEqual(C.shoppingEstimate(items), { count: 3, total: 550, unpriced: 1, byCategory: { Hrana: 150, Kozmetika: 400 } });
+  assert.deepEqual(C.shoppingEstimate([]), { count: 0, total: 0, unpriced: 0, byCategory: {} });
+});
+
+test('splitPurchase: jedna kategorija, srazmerno, bez cene, zaokruzivanje', () => {
+  const one = C.splitPurchase([{ name: 'A', category: 'Hrana', price: 100 }, { name: 'B', category: 'Hrana', price: null }], 1234);
+  assert.deepEqual(one.map(r => [r.category, r.amount, r.items.length]), [['Hrana', 1234, 2]]);
+  // Hrana 300+100 = 400, Kozmetika 200 -> 666,67 -> 667 / ostatak 333
+  const prop = C.splitPurchase([
+    { name: 'A', category: 'Hrana', price: 300 }, { name: 'B', category: 'Hrana', price: 100 }, { name: 'C', category: 'Kozmetika', price: 200 }
+  ], 1000);
+  assert.deepEqual(prop.map(r => [r.category, r.amount]), [['Hrana', 667], ['Kozmetika', 333]]);
+  // bez cene -> prosek cena (300): 300 / 300
+  const avg = C.splitPurchase([{ name: 'A', category: 'Hrana', price: 300 }, { name: 'B', category: 'Kozmetika', price: null }], 1000);
+  assert.deepEqual(avg.map(r => [r.category, r.amount]), [['Hrana', 500], ['Kozmetika', 500]]);
+  // nijedna cena -> po broju stavki: 3:1
+  const cnt = C.splitPurchase([
+    { name: 'A', category: 'Hrana' }, { name: 'B', category: 'Hrana' }, { name: 'C', category: 'Hrana' }, { name: 'D', category: 'Kozmetika' }
+  ], 1000);
+  assert.deepEqual(cnt.map(r => [r.category, r.amount]), [['Hrana', 750], ['Kozmetika', 250]]);
+  // 100 na tri jednake -> 33, 33, 34 (zbir tacan); jednake tezine -> abecedno
+  const three = C.splitPurchase([{ name: 'A', category: 'C' }, { name: 'B', category: 'A' }, { name: 'D', category: 'B' }], 100);
+  assert.deepEqual(three.map(r => [r.category, r.amount]), [['A', 33], ['B', 33], ['C', 34]]);
+  assert.equal(three.reduce((s, r) => s + r.amount, 0), 100);
+  assert.deepEqual(C.splitPurchase([], 500), []);
+});

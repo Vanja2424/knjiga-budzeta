@@ -567,6 +567,53 @@
     return { items, sections };
   }
 
+  const NO_STORE = 'Bez prodavnice', NO_CATEGORY = 'Bez kategorije';
+  const byName = (a, b) => a.name.localeCompare(b.name);
+  // Grupe za prikaz: deo prodavnice (redom iz sections), prodavnica ili kategorija (abecedno, "Bez ..." na kraju).
+  function groupShoppingItems(items, by, opts){
+    const sections = (opts && opts.sections) || SHOPPING_SECTIONS;
+    const categories = (opts && opts.categories) || [];
+    const keyOf = i => by === 'store' ? String(i.store || '').trim()
+      : by === 'category' ? (categories.includes(i.category) ? i.category : '')
+      : (sections.includes(i.section) ? i.section : SHOPPING_OTHER);
+    const map = new Map();
+    (items || []).forEach(i => { const k = keyOf(i); if(!map.has(k)) map.set(k, []); map.get(k).push(i); });
+    let keys = [...map.keys()];
+    if(by === 'section') keys.sort((a, b) => sections.indexOf(a) - sections.indexOf(b));
+    else keys.sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
+    const emptyLabel = by === 'store' ? NO_STORE : NO_CATEGORY;
+    return keys.map(k => ({ key: k, label: k === '' ? emptyLabel : k, items: map.get(k).slice().sort(byName) }));
+  }
+  function shoppingEstimate(items){
+    const res = { count: 0, total: 0, unpriced: 0, byCategory: {} };
+    (items || []).forEach(i => {
+      if(!i.needed) return;
+      res.count++;
+      if(!(res.byCategory[i.category] >= 0)) res.byCategory[i.category] = 0;
+      if(i.price > 0){ res.total += i.price; res.byCategory[i.category] += i.price; } else res.unpriced++;
+    });
+    return res;
+  }
+  // Ukupan iznos sa racuna -> po kategoriji, srazmerno ceni (bez cene = prosek; bez ijedne cene = broj stavki).
+  // Zaokruzeno na dinar; poslednji red dobija ostatak da zbir bude tacan.
+  function splitPurchase(items, total){
+    if(!items || !items.length) return [];
+    const priced = items.filter(i => i.price > 0);
+    const avg = priced.length ? priced.reduce((s, i) => s + i.price, 0) / priced.length : 0;
+    const weightOf = i => priced.length ? (i.price > 0 ? i.price : avg) : 1;
+    const groups = new Map();
+    items.forEach(i => { if(!groups.has(i.category)) groups.set(i.category, []); groups.get(i.category).push(i); });
+    const rows = [...groups.entries()].map(([category, its]) => ({ category, items: its, weight: its.reduce((s, i) => s + weightOf(i), 0) }))
+      .sort((a, b) => b.weight - a.weight || a.category.localeCompare(b.category));
+    const W = rows.reduce((s, r) => s + r.weight, 0);
+    let allocated = 0;
+    return rows.map((r, idx) => {
+      const amount = idx === rows.length - 1 ? Math.round((total - allocated) * 100) / 100 : Math.round(total * r.weight / W);
+      allocated += amount;
+      return { category: r.category, amount, items: r.items };
+    });
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -581,6 +628,7 @@
     isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent,
     splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary,
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
-    purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping
+    purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
+    NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase
   };
 });
