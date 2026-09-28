@@ -61,6 +61,20 @@
     }
     check('Analiza: grafikon kroz vreme', $('analizaTrendChart').querySelectorAll('rect').length > 0 || $('analizaTrendNote').textContent.length > 0);
 
+    // Analiza: fiksno/promenljivo i usteda
+    check('Analiza: traka fiksno/promenljivo', $('analizaFixedBar').textContent.trim().length > 0);
+    const fixedBox = document.querySelector('#analizaFixedCats input[type="checkbox"]');
+    check('Analiza: prekidači fiksno po kategoriji', !!fixedBox);
+    if (fixedBox) {
+      const cat = fixedBox.dataset.cat, was = fixedBox.checked;
+      fixedBox.click(); await sleep(60);
+      check('Analiza: prekidač fiksno se čuva', JSON.parse(localStorage.getItem('budzet-fiksne-kategorije-v1') || '[]').includes(cat) === !was);
+      document.querySelector(`#analizaFixedCats input[data-cat="${CSS.escape(cat)}"]`).click(); await sleep(60);
+      check('Analiza: prekidač fiksno vraćen', JSON.parse(localStorage.getItem('budzet-fiksne-kategorije-v1') || '[]').includes(cat) === was);
+    }
+    setVal('analizaWhatIf', '20'); await sleep(40);
+    check('Analiza: klizač šta ako', /20%/.test($('analizaWhatIfLabel').textContent) && $('analizaWhatIfResult').textContent.trim().length > 0, $('analizaWhatIfResult').textContent);
+
     go('pregled');
 
     // Izbor meseca

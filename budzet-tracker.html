@@ -1600,6 +1600,20 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 #screen-analiza .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0; text-align:left; }
 #screen-analiza .btn-link:hover{ text-decoration:underline; }
 @media (max-width: 600px){ .analiza-cat-head{ grid-template-columns:1fr auto; } .analiza-cat-head .analiza-bar{ grid-column:1 / -1; order:3; } }
+.analiza-split{ display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--fill); }
+.analiza-split .fixed, .swatch.fixed{ background:var(--ledger); }
+.analiza-split .variable, .swatch.variable{ background:var(--warn); }
+.analiza-split-legend{ display:flex; gap:1.4em; flex-wrap:wrap; margin:0.6em 0; font-size:13px; }
+.analiza-fixed-cats{ display:flex; flex-wrap:wrap; gap:0.4em 1.4em; margin-top:0.6em; }
+#screen-analiza h3{ font:600 13px/1.3 var(--font); color:var(--ink-soft); text-transform:none; margin:1em 0 0.3em; }
+.analiza-save-row{ display:grid; grid-template-columns:minmax(7em,1fr) 1.4fr auto; gap:0.8em; align-items:baseline; padding:0.45em 0; border-bottom:1px solid var(--paper-line); font-size:13.5px; }
+.analiza-save-row .muted{ color:var(--ink-soft); }
+.analiza-save-row b{ font-variant-numeric:tabular-nums; text-align:right; }
+.analiza-creep{ color:var(--warn-text); font-weight:600; }
+.analiza-whatif{ margin-top:1.2em; padding-top:1em; border-top:1px solid var(--paper-line); }
+.analiza-whatif input[type="range"]{ width:100%; margin:0.6em 0; }
+.analiza-goal{ margin-top:0.3em; color:var(--pos-text); font-weight:600; }
+@media (max-width: 600px){ .analiza-save-row{ grid-template-columns:1fr auto; } .analiza-save-row .muted{ grid-column:1 / -1; order:3; } }
 </style>
 </head>
 <body>
@@ -4328,9 +4342,48 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     svg.innerHTML = bars + avgLine;
     note.textContent = st.enough ? t('Isprekidana linija: prosek {0} ({1})', fmt(st.avg), analizaPeriodTxt(analizaState.n)) : t('Za poređenje su potrebna bar 2 meseca podataka');
   }
-  // Popunjava zadatak 6.
-  function renderAnalizaFixed(month){}
-  function renderAnalizaSave(month){}
+  function renderAnalizaFixed(month){
+    const s = C.splitFixedVariable(entries, month, fixedCategories);
+    const bar = document.getElementById('analizaFixedBar');
+    bar.innerHTML = s.total <= 0 ? `<div class="empty">${t('Nema plaćenih troškova u ovom mesecu')}</div>` : `
+      <div class="analiza-split"><i class="fixed" style="width:${s.fixedPct}%"></i><i class="variable" style="width:${100 - s.fixedPct}%"></i></div>
+      <div class="analiza-split-legend">
+        <span><i class="swatch fixed"></i>${t('Fiksno: {0} ({1}%)', fmt(s.fixed), s.fixedPct)}</span>
+        <span><i class="swatch variable"></i>${t('Promenljivo: {0} ({1}%)', fmt(s.variable), 100 - s.fixedPct)}</span>
+      </div>`;
+    document.getElementById('analizaFixedCats').innerHTML = expenseCats.map(c=> `<label class="paid-checkbox-label">
+        <input type="checkbox" data-cat="${escapeHtml(c)}"${fixedCategories.includes(c) ? ' checked' : ''}> ${catTagHtml(c)}</label>`).join('');
+    document.querySelectorAll('#analizaFixedCats input[type="checkbox"]').forEach(box=> box.addEventListener('change', ()=>{
+      setCategoryFixed(box.dataset.cat, box.checked);
+      renderAnaliza();
+    }));
+  }
+  function renderAnalizaSave(month){
+    const s = C.savingsSummary(entries, recurring, fixedCategories, month, analizaState.n);
+    const parts = [];
+    if(s.above.length) parts.push(`<div class="analiza-above"><h3>${t('Iznad proseka')}</h3>${s.above.map(r=> `<div class="analiza-save-row">
+        <span>${catTagHtml(r.cat)}</span><span class="muted">${t('{0} naspram proseka {1}', fmt(r.total), fmt(r.avg))}</span><b>+${fmt(r.diff)}</b></div>`).join('')}</div>`);
+    if(s.small.length) parts.push(`<div class="analiza-small"><h3>${t('Sitni česti troškovi')}</h3>${s.small.map(g=> `<div class="analiza-save-row">
+        <span${g.label === C.NO_DESC ? '' : ' translate="no"'}>${escapeHtml(g.label)}</span><span class="muted">${t('~{0}× mesečno · prosečno {1}', Math.round(g.perMonth), fmt(g.avgPurchase))}</span><b>${t('{0} mesečno · {1} godišnje', fmt(g.monthly), fmt(g.yearly))}</b></div>`).join('')}</div>`);
+    if(s.subscriptions.length) parts.push(`<div class="analiza-subs"><h3>${t('Pretplate i ponavljajuće')}</h3>${s.subscriptions.map(r=> `<div class="analiza-save-row">
+        <span translate="no">${escapeHtml(r.desc)}</span><span class="muted">${r.creep ? `<span class="analiza-creep">${t('↑ poskupelo {0}%', r.creepPct)}</span>` : ''}</span><b>${t('{0} godišnje', fmt(r.yearly))}</b></div>`).join('')}</div>`);
+    if(!s.enough && !s.subscriptions.length) parts.push(`<div class="empty">${t('Za poređenje su potrebna bar 2 meseca podataka')}</div>`);
+    else if(!parts.length) parts.push(`<div class="empty">${t('Nema ništa upadljivo — potrošnja je u okviru proseka.')}</div>`);
+    document.getElementById('analizaSaveBody').innerHTML = parts.join('');
+    renderAnalizaWhatIf(month);
+  }
+  function renderAnalizaWhatIf(month){
+    const slider = document.getElementById('analizaWhatIf');
+    slider.value = String(analizaState.whatIf);
+    document.getElementById('analizaWhatIfLabel').innerHTML = t('Šta ako smanjim promenljive troškove za {0}', `<b>${analizaState.whatIf}%</b>`);
+    const avg = C.variableAverage(entries, month, analizaState.n, fixedCategories);
+    const w = C.whatIf(avg, analizaState.whatIf, goals, new Date());
+    const res = document.getElementById('analizaWhatIfResult');
+    if(avg <= 0){ res.textContent = t('Za poređenje su potrebna bar 2 meseca podataka'); return; }
+    res.innerHTML = t('Ušteda: {0} mesečno · {1} godišnje', fmt(w.monthly), `<b>${fmt(w.yearly)}</b>`) +
+      (w.goal ? `<div class="analiza-goal">${t('Cilj „{0}“ stižeš {1} ranije', escapeHtml(w.goal.name), monthsTxt(w.goal.sooner))}</div>` : '');
+  }
+  document.getElementById('analizaWhatIf').addEventListener('input', e=>{ analizaState.whatIf = Number(e.target.value) || 0; renderAnalizaWhatIf(analizaState.month); });
   function openAnaliza(section){
     analizaState.month = currentMonthKey();
     analizaState.n = 6;
