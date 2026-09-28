@@ -1618,6 +1618,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 @media (max-width: 600px){ .analiza-save-row{ grid-template-columns:1fr auto; } .analiza-save-row .muted{ grid-column:1 / -1; order:3; } }
 .analiza-link{ display:block; width:100%; margin-top:0.8em; padding:0.6em 0.8em; border:none; border-radius:8px; background:var(--fill); color:var(--ledger); font:600 13.5px/1.3 var(--font); text-align:left; cursor:default; }
 .analiza-link:hover{ background:var(--fill-strong); }
+
+/* ---- Nabavka ---- */
+.entry-items{ font-size:12px; color:var(--ink-soft); margin-top:2px; max-width:32em; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 </style>
 </head>
 <body>
@@ -2629,6 +2632,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const CATRULES_KEY = 'budzet-pravila-kategorizacije-v1';
   const ROUNDUP_KEY = 'budzet-zaokruzivanje-v1';
   const FIXED_CATS_KEY = 'budzet-fiksne-kategorije-v1';
+  const SHOPPING_KEY = 'budzet-nabavka-v1';
   let roundUpGoalId = localStorage.getItem(ROUNDUP_KEY) || '';
   const DEFAULT_CATS = ['Hrana','Stanovanje','Prevoz','Zabava','Zdravlje','Ostalo'];
   const PALETTE = ['#6366F1','#F59E0B','#10B981','#EF4444','#8B5CF6','#06B6D4','#EC4899','#84CC16'];
@@ -2732,6 +2736,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const saveHealthHistory = () => localStorage.setItem(HEALTH_KEY, JSON.stringify(healthHistory));
   const saveEnvelopeState = () => localStorage.setItem(ENVELOPES_KEY, JSON.stringify(envelopeState));
   const saveFixedCategories = () => localStorage.setItem(FIXED_CATS_KEY, JSON.stringify(fixedCategories));
+  const saveShopping = () => localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
+  const shoppingCategoryInUse = cat => shopping.items.some(i => i.category === cat);
+  window.__shopping = () => shopping;
+  window.__saveShopping = () => { saveShopping(); invalidate(); };
   function catColorFor(cat, fallbackIndex){
     return sanitizeHexColor(catColors[cat]) || PALETTE[fallbackIndex % PALETTE.length];
   }
@@ -2741,6 +2749,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     return `<span class="cat-tag">${dot}${escapeHtml(cat)}</span>`;
   }
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+  // Lista za kupovinu (Nabavka): stalni spisak stavki + delovi prodavnice. Proverava se pri ucitavanju.
+  let shopping = C.normalizeShopping((()=>{ try{ return JSON.parse(localStorage.getItem(SHOPPING_KEY) || 'null'); } catch(e){ return null; } })(), newId);
   const monthKey = dateStr => dateStr.slice(0,7);
 
   function escapeHtml(str){
@@ -2795,6 +2805,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   function tagsHtml(tags){
     return (tags || []).map(t=>`<span class="tag-chip">#${escapeHtml(t)}</span>`).join('');
+  }
+  // "Mleko (2 kom), Hleb, Jaja +3" — ceo spisak u tooltip-u
+  function itemsSummaryHtml(items){
+    if(!Array.isArray(items) || !items.length) return '';
+    const shown = items.slice(0, 3).join(', ') + (items.length > 3 ? ' +' + (items.length - 3) : '');
+    return `<div class="entry-items" translate="no" title="${escapeHtml(items.join(', '))}">${escapeHtml(shown)}</div>`;
   }
 
   // Datumi se cuvaju kao "YYYY-MM-DD" stringovi. Kad ih parsiramo nazad u Date objekat
@@ -5521,7 +5537,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''} ${!paid?'expense-pending':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedExpenseIds.has(e.id)?'checked':''} title="Izaberi"></td>
           <td class="paid-check"><input type="checkbox" data-paid-id="${e.id}" ${paid?'checked':''} title="Plaćeno"></td>
-          <td>${d}</td><td>${escapeHtml(e.desc)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
+          <td>${d}</td><td>${escapeHtml(e.desc)}${itemsSummaryHtml(e.items)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
           <td class="row-actions"><button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
@@ -5737,8 +5753,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const usedInRecurring = new Set(recurring.filter(r=>r.type==='expense').map(r=>r.category));
     const list = document.getElementById('catList');
     list.innerHTML = expenseCats.map((c,i)=>{
-      const inUse = usedCats.has(c) || usedInRecurring.has(c);
-      const disabledAttr = inUse ? 'disabled title="Kategorija se koristi u postojećim rashodima ili ponavljajućim stavkama"' : 'title="Obriši kategoriju"';
+      const inUse = usedCats.has(c) || usedInRecurring.has(c) || shoppingCategoryInUse(c);
+      const disabledAttr = inUse ? 'disabled title="Kategorija se koristi u postojećim rashodima, ponavljajućim stavkama ili listi za nabavku"' : 'title="Obriši kategoriju"';
       const limitVal = limits[c] != null ? limits[c] : '';
       const colorVal = catColorFor(c, i);
       const suggestion = avgMonthlySpend3(c);
@@ -5868,6 +5884,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
   // Samo za automatske provere: uklanja stavke po id-u (npr. da bi se izbrisala test kategorija posle).
   window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); invalidate(); };
+  window.__setEntryItems = (id, items) => { const e = entries.find(x=> x.id === id); if(e){ e.items = items.slice(); saveEntries(); invalidate(); } };
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();
     if(!newName || newName === oldName) return;
@@ -5880,9 +5897,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(catColors[oldName] != null){ catColors[newName] = catColors[oldName]; delete catColors[oldName]; }
     if(envelopeState.rollover[oldName] != null){ envelopeState.rollover[newName] = envelopeState.rollover[oldName]; delete envelopeState.rollover[oldName]; }
     fixedCategories = fixedCategories.map(c => c === oldName ? newName : c);
+    shopping.items.forEach(i=>{ if(i.category === oldName) i.category = newName; });
     entries.forEach(e=>{ if(e.type==='expense' && e.category === oldName) e.category = newName; });
     recurring.forEach(r=>{ if(r.type==='expense' && r.category === oldName) r.category = newName; });
-    saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState(); saveEntries(); saveRecurring(); saveFixedCategories();
+    saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState(); saveEntries(); saveRecurring(); saveFixedCategories(); saveShopping();
     populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
     renderAll();
   }
@@ -6762,7 +6780,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, exportedAt: new Date().toISOString() };
   }
   document.getElementById('backupExportBtn').addEventListener('click', ()=>{
     const data = buildBackupData();
@@ -6788,7 +6806,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       (e.type === 'income' || e.type === 'expense' || (e.type === 'transfer' && typeof e.fromAccount === 'string' && typeof e.toAccount === 'string')) &&
       typeof e.amount === 'number' && isFinite(e.amount) &&
       typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
-    ).map(e => Object.assign({}, e, { desc: String(e.desc == null ? '' : e.desc), category: String(e.category || 'Ostalo'), tags: Array.isArray(e.tags) ? e.tags.map(String) : [] }));
+    ).map(e => { const o = Object.assign({}, e, { desc: String(e.desc == null ? '' : e.desc), category: String(e.category || 'Ostalo'), tags: Array.isArray(e.tags) ? e.tags.map(String) : [] });
+      if(Array.isArray(e.items)) o.items = e.items.map(String); else delete o.items;
+      return o; });
     // Isti tip/opseg koercija kao rucni unos (recurringForm submit) i Excel uvoz (parseWorkbook) —
     // JSON backup ne sme biti jedini put uvoza koji propusti npr. day:31 ili day:0 nekoercirano.
     const cleanRecurring = (Array.isArray(data.recurring) ? data.recurring.filter(isPlainObject) : []).map(r=>({
@@ -6863,6 +6883,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       catRules: Array.isArray(data.catRules) ? data.catRules.filter(r=> isPlainObject(r) && typeof r.keyword === 'string' && typeof r.category === 'string') : [],
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
       fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
+      shopping: C.normalizeShopping(data.shopping, newId),
     };
   }
 
@@ -6902,7 +6923,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         catRules = data.catRules;
         savedScenarios = data.savedScenarios;
         fixedCategories = data.fixedCategories;
-        saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories();
+        shopping = data.shopping;
+        saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';
         populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
@@ -7078,7 +7100,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : ''})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items)})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -7110,6 +7132,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     XLSX.utils.book_append_sheet(wb, wsPod, 'Podesavanja');
     return wb;
   }
+  window.__buildWorkbook = () => buildWorkbook(Date.now());
   // Cita samo timestamp izmene iz "Podesavanja" liste, bez ostalog parsiranja/mutiranja globalnog
   // stanja — koristi se za odlucivanje da li je fajl stvarno noviji od onoga sa cim smo sinhronizovani.
   function readFileDataTimestamp(wb){
@@ -7136,7 +7159,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         tags: String(r.Oznake || '').split(',').map(x=>x.trim().toLowerCase()).filter(Boolean),
         ...(r.Racun ? { accountName: String(r.Racun) } : {}),
         ...((parseInt(r.PokrivaMeseci, 10) || 1) > 1 ? { spreadMonths: parseInt(r.PokrivaMeseci, 10), ...(/^\d{4}-\d{2}$/.test(String(r.OdMeseca)) ? { spreadStart: String(r.OdMeseca) } : {}) } : {}),
-        ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {})
+        ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {}),
+        ...(C.cellToItems(r.Kupljeno).length ? { items: C.cellToItems(r.Kupljeno) } : {})
       };
     });
 

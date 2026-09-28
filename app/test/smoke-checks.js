@@ -45,6 +45,41 @@
       check('brisanje kategorije briše oznaku fiksno', !fixedList().includes('Smoke fiksna 2'), localStorage.getItem(fixedKey));
     }
 
+    // Nabavka: stanje, preimenovanje kategorije, kategorija u upotrebi
+    const shopKey = 'budzet-nabavka-v1';
+    check('nabavka: stanje postoji', typeof window.__shopping === 'function' && Array.isArray(window.__shopping().sections) && window.__shopping().sections.includes('Ostalo'));
+    if (typeof window.__shopping === 'function') {
+      window.__addExpenseCategory('Smoke nabavka');
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-shop-1', name: 'Smoke mleko', section: 'Mlečni', store: 'Maxi', category: 'Smoke nabavka', price: 150, qty: '2 kom', needed: true, checked: false });
+      window.__saveShopping();
+      check('nabavka: čuva se', JSON.parse(localStorage.getItem(shopKey)).items.some(i => i.id === 'smoke-shop-1'));
+      window.__renameCategory('Smoke nabavka', 'Smoke nabavka 2');
+      check('nabavka: preimenovanje kategorije', window.__shopping().items.find(i => i.id === 'smoke-shop-1').category === 'Smoke nabavka 2');
+      go('kategorije'); await sleep(60);
+      const delBtn = [...document.querySelectorAll('#catList .del-btn')].find(b => b.dataset.cat === 'Smoke nabavka 2');
+      check('nabavka: kategorija u upotrebi ne može da se obriše', !!delBtn && delBtn.disabled);
+      window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-shop-1');
+      window.__saveShopping();
+      window.__deleteExpenseCategory('Smoke nabavka 2');
+      check('nabavka: test stavka uklonjena', !JSON.parse(localStorage.getItem(shopKey)).items.some(i => i.id === 'smoke-shop-1'));
+    }
+    // Rashod sa spiskom kupljenih stvari: prikaz u Rashodima i Excel kolona
+    if (window.__desktopBridge) {
+      const r = window.__desktopBridge.addEntry({ type: 'expense', desc: 'Smoke kupovina', amount: 321, currency: 'RSD', category: window.__desktopBridge.getQuickAddData().expenseCats[0] });
+      const e = entries().find(x => x.desc === 'Smoke kupovina');
+      if (r.ok && e) {
+        window.__setEntryItems(e.id, ['Mleko (2 kom)', 'Hleb', 'Jaja', 'Sir']);
+        go('rashodi'); await sleep(80);
+        const row = document.querySelector(`#expenseBody tr[data-row-id="${e.id}"]`) || [...document.querySelectorAll('tr')].find(tr => tr.textContent.includes('Smoke kupovina'));
+        check('rashod prikazuje kupljene stvari', !!row && /Mleko \(2 kom\), Hleb, Jaja \+1/.test(row.textContent), row && row.textContent);
+        const wb = window.__buildWorkbook ? window.__buildWorkbook() : null;
+        const rowX = wb && XLSX.utils.sheet_to_json(wb.Sheets['Stavke']).find(x => x.ID === e.id);
+        check('Excel kolona Kupljeno', !!rowX && rowX.Kupljeno === 'Mleko (2 kom); Hleb; Jaja; Sir', JSON.stringify(rowX));
+        window.__deleteEntriesById([e.id]);
+      }
+    }
+
     // Analiza: prva podkartica u Izvestajima, izbor perioda
     document.querySelector('nav.tabs button[data-group="izvestaji"]').click(); await sleep(50);
     check('Analiza je prva podkartica Izveštaja', ($('subtabs').querySelector('button') || {}).dataset?.screen === 'analiza', $('subtabs').innerHTML.slice(0, 200));
