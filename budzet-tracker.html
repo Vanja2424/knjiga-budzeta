@@ -2608,7 +2608,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const t = I18N.t;
   const LOCALE = I18N.locale;
   const daysTxt = n => t(n === 1 ? '{0} dan' : '{0} dana', n);
-  const monthsTxt = n => t(n === 1 ? '{0} mesec' : '{0} meseci', n);
+  const monthsTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} mesec' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} meseca' : '{0} meseci', n);
   const ENTRIES_KEY = 'budzet-stavke-v2';
   const CATS_KEY = 'budzet-kategorije-v2';
   const LIMITS_KEY = 'budzet-limiti-v1';
