@@ -2541,6 +2541,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const ENVELOPES_KEY = 'budzet-koverte-v1';
   const CATRULES_KEY = 'budzet-pravila-kategorizacije-v1';
   const ROUNDUP_KEY = 'budzet-zaokruzivanje-v1';
+  const FIXED_CATS_KEY = 'budzet-fiksne-kategorije-v1';
   let roundUpGoalId = localStorage.getItem(ROUNDUP_KEY) || '';
   const DEFAULT_CATS = ['Hrana','Stanovanje','Prevoz','Zabava','Zdravlje','Ostalo'];
   const PALETTE = ['#6366F1','#F59E0B','#10B981','#EF4444','#8B5CF6','#06B6D4','#EC4899','#84CC16'];
@@ -2556,6 +2557,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   let skipped = JSON.parse(localStorage.getItem(SKIPPED_KEY) || '{}');
   let debts = JSON.parse(localStorage.getItem(DEBTS_KEY) || '[]');
   let healthHistory = JSON.parse(localStorage.getItem(HEALTH_KEY) || '[]');
+  // Kategorije koje korisnik oznaci kao fiksne (Analiza). Stavke iz ponavljajucih su fiksne i bez oznake.
+  let fixedCategories = (()=>{ try{ const v = JSON.parse(localStorage.getItem(FIXED_CATS_KEY) || '[]'); return Array.isArray(v) ? v.filter(c=> typeof c === 'string') : []; } catch(e){ return []; } })();
   // Envelope/zero-based budzetiranje — ADITIVNO uz postojece limits[cat] (koje ostaje kao prost
   // prag za upozorenje), ne zamena: limits se koristi na desetak mesta (renderPregled, renderWarnings,
   // computeHealthScore, Excel export/import, JSON backup) i puna zamena bi bila rizicna, invazivna
@@ -2641,6 +2644,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const saveDebts = () => localStorage.setItem(DEBTS_KEY, JSON.stringify(debts));
   const saveHealthHistory = () => localStorage.setItem(HEALTH_KEY, JSON.stringify(healthHistory));
   const saveEnvelopeState = () => localStorage.setItem(ENVELOPES_KEY, JSON.stringify(envelopeState));
+  const saveFixedCategories = () => localStorage.setItem(FIXED_CATS_KEY, JSON.stringify(fixedCategories));
   function catColorFor(cat, fallbackIndex){
     return sanitizeHexColor(catColors[cat]) || PALETTE[fallbackIndex % PALETTE.length];
   }
@@ -5513,15 +5517,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <button class="del-btn" data-cat="${escapeHtml(c)}" ${disabledAttr}>✕</button></li>`;
     }).join('');
     list.querySelectorAll('.del-btn:not([disabled])').forEach(b=>{
-      b.addEventListener('click', ()=>{
-        expenseCats = expenseCats.filter(c => c !== b.dataset.cat);
-        delete limits[b.dataset.cat];
-        delete catColors[b.dataset.cat];
-        delete envelopeState.rollover[b.dataset.cat];
-        saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState();
-        populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
-        renderAll();
-      });
+      b.addEventListener('click', ()=> deleteExpenseCategory(b.dataset.cat));
     });
     list.querySelectorAll('.edit-btn:not(.cat-color-reset)').forEach(b=>{
       b.addEventListener('click', ()=>{
@@ -5613,6 +5609,25 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   document.getElementById('addIncomeCatBtn').addEventListener('click', addIncomeCategory);
   document.getElementById('newIncomeCatInput').addEventListener('keydown', e=>{ if(e.key === 'Enter'){ e.preventDefault(); addIncomeCategory(); } });
 
+  function deleteExpenseCategory(cat){
+    expenseCats = expenseCats.filter(c => c !== cat);
+    delete limits[cat];
+    delete catColors[cat];
+    delete envelopeState.rollover[cat];
+    fixedCategories = fixedCategories.filter(c => c !== cat);
+    saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState(); saveFixedCategories();
+    populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
+    renderAll();
+  }
+  function setCategoryFixed(cat, on){
+    fixedCategories = fixedCategories.filter(c => c !== cat);
+    if(on) fixedCategories.push(cat);
+    saveFixedCategories();
+    invalidate();
+  }
+  window.__setCategoryFixed = setCategoryFixed;
+  window.__renameCategory = (a, b) => renameCategory(a, b);
+  window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();
     if(!newName || newName === oldName) return;
@@ -5624,9 +5639,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(limits[oldName] != null){ limits[newName] = limits[oldName]; delete limits[oldName]; }
     if(catColors[oldName] != null){ catColors[newName] = catColors[oldName]; delete catColors[oldName]; }
     if(envelopeState.rollover[oldName] != null){ envelopeState.rollover[newName] = envelopeState.rollover[oldName]; delete envelopeState.rollover[oldName]; }
+    fixedCategories = fixedCategories.map(c => c === oldName ? newName : c);
     entries.forEach(e=>{ if(e.type==='expense' && e.category === oldName) e.category = newName; });
     recurring.forEach(r=>{ if(r.type==='expense' && r.category === oldName) r.category = newName; });
-    saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState(); saveEntries(); saveRecurring();
+    saveCats(); saveLimits(); saveCatColors(); saveEnvelopeState(); saveEntries(); saveRecurring(); saveFixedCategories();
     populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
     renderAll();
   }
@@ -5644,6 +5660,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
     renderCategories();
   }
+  window.__addExpenseCategory = name => { document.getElementById('newCatInput').value = name; addCategory(); };
 
   // ---- Ponavljajuce ----
   document.getElementById('recTypeExpense').addEventListener('click', ()=>{
@@ -6505,7 +6522,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, exportedAt: new Date().toISOString() };
   }
   document.getElementById('backupExportBtn').addEventListener('click', ()=>{
     const data = buildBackupData();
@@ -6605,6 +6622,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       } : { allocations: {}, rollover: {}, lastRolloverMonth: null },
       catRules: Array.isArray(data.catRules) ? data.catRules.filter(r=> isPlainObject(r) && typeof r.keyword === 'string' && typeof r.category === 'string') : [],
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
+      fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
     };
   }
 
@@ -6643,7 +6661,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         migrateEnvelopes();
         catRules = data.catRules;
         savedScenarios = data.savedScenarios;
-        saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios();
+        fixedCategories = data.fixedCategories;
+        saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';
         populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();

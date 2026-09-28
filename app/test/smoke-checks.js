@@ -30,6 +30,20 @@
     }
     document.querySelector('nav.tabs button[data-group="ciljevi"]').click(); await sleep(50);
     check('podmeni za Ciljevi i dugovi', [...document.querySelectorAll('#subtabs button')].map(b => b.dataset.screen).join(',') === 'ciljevi,dugovi');
+
+    // Oznaka "fiksno" po kategoriji: cuva se i prati preimenovanje/brisanje
+    const fixedKey = 'budzet-fiksne-kategorije-v1';
+    const fixedList = () => JSON.parse(localStorage.getItem(fixedKey) || '[]');
+    check('oznaka fiksno postoji', typeof window.__setCategoryFixed === 'function');
+    if (typeof window.__setCategoryFixed === 'function') {
+      window.__addExpenseCategory('Smoke fiksna');
+      window.__setCategoryFixed('Smoke fiksna', true);
+      check('fiksna kategorija sačuvana', fixedList().includes('Smoke fiksna'), localStorage.getItem(fixedKey));
+      window.__renameCategory('Smoke fiksna', 'Smoke fiksna 2');
+      check('preimenovanje zadržava oznaku fiksno', fixedList().includes('Smoke fiksna 2') && !fixedList().includes('Smoke fiksna'), localStorage.getItem(fixedKey));
+      window.__deleteExpenseCategory('Smoke fiksna 2');
+      check('brisanje kategorije briše oznaku fiksno', !fixedList().includes('Smoke fiksna 2'), localStorage.getItem(fixedKey));
+    }
     go('pregled');
 
     // Izbor meseca
