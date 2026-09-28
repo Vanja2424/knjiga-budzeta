@@ -1591,6 +1591,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .analiza-bar{ height:6px; border-radius:3px; background:var(--fill); overflow:hidden; }
 .analiza-bar i{ display:block; height:100%; border-radius:3px; }
 .analiza-cat-head .amt{ font-variant-numeric:tabular-nums; font-weight:600; text-align:right; }
+.analiza-cat-head .name{ min-width:0; overflow-wrap:anywhere; }
 .analiza-diff{ font-size:12px; font-weight:600; text-align:right; }
 .analiza-diff.up{ color:var(--neg-text); } .analiza-diff.down{ color:var(--pos-text); }
 .analiza-groups{ width:100%; margin:0 0 0.7em; font-size:13px; }
@@ -1607,6 +1608,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .analiza-fixed-cats{ display:flex; flex-wrap:wrap; gap:0.4em 1.4em; margin-top:0.6em; }
 #screen-analiza h3{ font:600 13px/1.3 var(--font); color:var(--ink-soft); text-transform:none; margin:1em 0 0.3em; }
 .analiza-save-row{ display:grid; grid-template-columns:minmax(7em,1fr) 1.4fr auto; gap:0.8em; align-items:baseline; padding:0.45em 0; border-bottom:1px solid var(--paper-line); font-size:13.5px; }
+.analiza-save-row > span:first-child{ min-width:0; overflow-wrap:anywhere; }
 .analiza-save-row .muted{ color:var(--ink-soft); }
 .analiza-save-row b{ font-variant-numeric:tabular-nums; text-align:right; }
 .analiza-creep{ color:var(--warn-text); font-weight:600; }
@@ -2144,6 +2146,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       <h2>Fiksno / promenljivo</h2>
       <div id="analizaFixedBar"></div>
       <div class="hint">Troškovi iz ponavljajućih stavki su uvek fiksni.</div>
+      <div id="analizaFixedCurrentHint" class="hint" style="display:none;">Neplaćene ponavljajuće stavke još nisu uračunate.</div>
       <div id="analizaFixedCats" class="analiza-fixed-cats"></div>
     </div>
     <div class="panel" id="analizaSave" style="margin-top:1.5em;">
@@ -2609,6 +2612,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const LOCALE = I18N.locale;
   const daysTxt = n => t(n === 1 ? '{0} dan' : '{0} dana', n);
   const monthsTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} mesec' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} meseca' : '{0} meseci', n);
+  const categoriesTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} kategorija' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} kategorije' : '{0} kategorija', n);
   const ENTRIES_KEY = 'budzet-stavke-v2';
   const CATS_KEY = 'budzet-kategorije-v2';
   const LIMITS_KEY = 'budzet-limiti-v1';
@@ -4227,15 +4231,16 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     creep.forEach(({r,first,last,pct})=>{
       rows.push({level:'caution', icon:'📈', txt: t('<b>{0}</b> je poskupeo za {1}% od prve naplate ({2} → {3}) — vredi proveriti da li je i dalje isplativ.', escapeHtml(r.desc), pct, fmt(first), fmt(last))});
     });
+    const aboveMonthsN = C.periodStats(entries, S.breakdown.months).monthsWithData;
     S.above.forEach(({cat,total,avg,pct})=>{
-      rows.push({level:'caution', icon:'⚠', txt: t('Kategorija <b>{0}</b> je ovog meseca {1}% iznad proseka poslednjih 6 meseci ({2} naspram proseka {3}).', escapeHtml(cat), pct, fmt(total), fmt(Math.round(avg)))});
+      rows.push({level:'caution', icon:'⚠', txt: t('Kategorija <b>{0}</b> je ovog meseca {1}% iznad proseka ({2}: {3} naspram proseka {4}).', escapeHtml(cat), pct, monthsTxt(aboveMonthsN), fmt(total), fmt(Math.round(avg)))});
     });
     document.getElementById('patternsList').innerHTML = rows.map(w=>`<div class="warning-item caution"><span class="icon">${w.icon}</span><span class="txt">${w.txt}</span></div>`).join('');
 
     const link = document.getElementById('patternsAnalizaLink');
     if(S.above.length){
       link.dataset.kind = 'above'; link.dataset.total = String(Math.round(S.aboveTotal));
-      link.textContent = (S.above.length === 1 ? t('1 kategorija iznad proseka') : t('Kategorija iznad proseka: {0}', S.above.length)) + ' · ' + t('moguća ušteda ~{0} →', fmt(S.aboveTotal));
+      link.textContent = (S.above.length === 1 ? t('1 kategorija iznad proseka') : t('{0} iznad proseka', categoriesTxt(S.above.length))) + ' · ' + t('moguća ušteda ~{0} →', fmt(S.aboveTotal));
       link.style.display = '';
     } else if(S.small.length){
       link.dataset.kind = 'small'; link.dataset.total = String(Math.round(S.smallMonthly));
@@ -4266,12 +4271,13 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const b = C.categoryBreakdown(entries, month, analizaState.n);
     const sum = document.getElementById('analizaSummary');
     sum.dataset.n = String(analizaState.n);
-    if(b.total <= 0) sum.textContent = t('{0}: {1}', monthYearLabelSr(month), t('Nema plaćenih troškova u ovom mesecu'));
-    else if(!b.enough) sum.textContent = t('{0}: {1}', monthYearLabelSr(month), fmt(b.total)) + ' · ' + t('Za poređenje su potrebna bar 2 meseca podataka');
+    if(b.total <= 0) sum.textContent = t('{0} — {1}', monthYearLabelSr(month), t('Nema plaćenih troškova u ovom mesecu'));
+    else if(!b.enough) sum.textContent = t('{0} — {1}', monthYearLabelSr(month), fmt(b.total)) + ' · ' + t('Za poređenje su potrebna bar 2 meseca podataka');
     else {
       const pct = b.avg > 0 ? Math.round((b.total - b.avg) / b.avg * 100) : 0;
-      sum.textContent = t('{0}: {1} · prosek ({2}) {3} · {4}', monthYearLabelSr(month), fmt(b.total), analizaPeriodTxt(analizaState.n), fmt(b.avg), (pct > 0 ? '+' : '') + pct + '%');
+      sum.textContent = t('{0} — {1} · prosek ({2}) {3} · {4}', monthYearLabelSr(month), fmt(b.total), analizaPeriodTxt(analizaState.n), fmt(b.avg), (pct > 0 ? '+' : '') + pct + '%');
     }
+    if(month === currentMonthKey()) sum.textContent += t(' · mesec još traje (dan {0} od {1})', new Date().getDate(), C.daysInMonth(month));
     renderAnalizaWhere(b);
     renderAnalizaTrend(b);
     renderAnalizaFixed(month);
@@ -4280,10 +4286,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function renderAnalizaWhere(b){
     const el = document.getElementById('analizaWhereList');
     if(!b.rows.length){ el.innerHTML = `<div class="empty">${t('Nema plaćenih troškova u ovom mesecu')}</div>`; return; }
+    const curMonth = b.month === currentMonthKey();
     el.innerHTML = b.rows.map(r=>{
       const share = b.total > 0 ? Math.round(r.total / b.total * 100) : 0;
       const color = catColorFor(r.cat, Math.max(0, expenseCats.indexOf(r.cat)));
-      const diff = r.pct == null ? '' : `<span class="analiza-diff ${r.diff > 0 ? 'up' : 'down'}">${r.diff > 0 ? '▲' : '▼'} ${Math.abs(r.pct)}%</span>`;
+      const hideBadge = r.pct == null || r.pct === 0 || (curMonth && r.diff < 0);
+      const diff = hideBadge ? '' : `<span class="analiza-diff ${r.diff > 0 ? 'up' : 'down'}">${r.diff > 0 ? '▲' : '▼'} ${Math.abs(r.pct)}%</span>`;
       const open = analizaState.open.has(r.cat);
       let groups = '';
       if(open){
@@ -4344,6 +4352,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   function renderAnalizaFixed(month){
     const s = C.splitFixedVariable(entries, month, fixedCategories);
+    document.getElementById('analizaFixedCurrentHint').style.display = month === currentMonthKey() ? '' : 'none';
     const bar = document.getElementById('analizaFixedBar');
     bar.innerHTML = s.total <= 0 ? `<div class="empty">${t('Nema plaćenih troškova u ovom mesecu')}</div>` : `
       <div class="analiza-split"><i class="fixed" style="width:${s.fixedPct}%"></i><i class="variable" style="width:${100 - s.fixedPct}%"></i></div>
@@ -4361,7 +4370,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function renderAnalizaSave(month){
     const s = C.savingsSummary(entries, recurring, fixedCategories, month, analizaState.n);
     const parts = [];
-    if(s.above.length) parts.push(`<div class="analiza-above"><h3>${t('Iznad proseka')}</h3>${s.above.map(r=> `<div class="analiza-save-row">
+    if(s.above.length) parts.push(`<div class="analiza-above"><h3>${t('Iznad proseka · ~{0}', fmt(s.aboveTotal))}</h3>${s.above.map(r=> `<div class="analiza-save-row">
         <span>${catTagHtml(r.cat)}</span><span class="muted">${t('{0} naspram proseka {1}', fmt(r.total), fmt(r.avg))}</span><b>+${fmt(r.diff)}</b></div>`).join('')}</div>`);
     if(s.small.length) parts.push(`<div class="analiza-small"><h3>${t('Sitni česti troškovi')}</h3>${s.small.map(g=> `<div class="analiza-save-row">
         <span${g.label === C.NO_DESC ? '' : ' translate="no"'}>${escapeHtml(g.label)}</span><span class="muted">${t('~{0}× mesečno · prosečno {1}', Math.round(g.perMonth), fmt(g.avgPurchase))}</span><b>${t('{0} mesečno · {1} godišnje', fmt(g.monthly), fmt(g.yearly))}</b></div>`).join('')}</div>`);
@@ -7136,6 +7145,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     limits = {};
     katRows.forEach(r=>{ if(r.Limit !== '' && r.Limit != null) limits[String(r.Naziv)] = Number(r.Limit); });
     if(expenseCats.length === 0) expenseCats = DEFAULT_CATS.slice();
+    fixedCategories = fixedCategories.filter(c => expenseCats.includes(c)); saveFixedCategories();
 
     const recRows = sheetRows('Ponavljajuce');
     recurring = recRows.filter(r=>r.Opis).map(r=>({

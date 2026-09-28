@@ -54,6 +54,7 @@
     document.querySelector('.analiza-period-btn[data-n="6"]').click(); await sleep(50);
     check('Analiza: period 6 meseci', $('analizaSummary').dataset.n === '6');
     check('Analiza: sažetak i kategorije', $('analizaSummary').textContent.trim().length > 0 && !!$('analizaWhereList'));
+    check('Analiza: napomena da tekući mesec još traje', $('analizaSummary').textContent.includes('mesec još traje'), $('analizaSummary').textContent);
     const firstCat = document.querySelector('#analizaWhereList .analiza-cat-head');
     if (firstCat) {
       firstCat.click(); await sleep(50);
@@ -98,6 +99,7 @@
     const link = $('patternsAnalizaLink');
     const linkVisible = link.style.display !== 'none' && $('patternsPanel').style.display !== 'none';
     check('Pregled: red za Analizu kad ima uštede', linkVisible, JSON.stringify({ above: S.above.length, small: S.small.length }));
+    check('Pregled: tekst za 1 kategoriju iznad proseka', S.above.length === 1 && link.textContent.indexOf('1 kategorija iznad proseka') === 0, link.textContent);
     const want = Math.round(S.above.length ? S.aboveTotal : S.smallMonthly);
     check('Pregled i Analiza: isti iznos', linkVisible && Number(link.dataset.total) === want, link.dataset.total + ' vs ' + want);
     link.click(); await sleep(120);
