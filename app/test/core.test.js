@@ -486,4 +486,15 @@ test('splitPurchase: jedna kategorija, srazmerno, bez cene, zaokruzivanje', () =
   assert.deepEqual(three.map(r => [r.category, r.amount]), [['A', 33], ['B', 33], ['C', 34]]);
   assert.equal(three.reduce((s, r) => s + r.amount, 0), 100);
   assert.deepEqual(C.splitPurchase([], 500), []);
+  // nikad negativno: 2 RSD na 4 jednake kategorije -> 0, 0, 1, 1
+  const tiny = C.splitPurchase([{ name: 'A', category: 'A' }, { name: 'B', category: 'B' }, { name: 'C', category: 'C' }, { name: 'D', category: 'D' }], 2);
+  assert.deepEqual(tiny.map(r => r.amount), [0, 0, 1, 1]);
+  for(let n = 2; n <= 6; n++) for(let tot = 1; tot <= 60; tot++){
+    const rs = C.splitPurchase(Array.from({ length: n }, (_, k) => ({ name: 'x' + k, category: 'c' + k })), tot);
+    assert.ok(rs.every(r => r.amount >= 0), `n=${n} tot=${tot}`);
+    assert.equal(rs.reduce((s, r) => s + r.amount, 0), tot);
+  }
+  // decimale sa racuna idu na poslednji red, ostali su celi dinari
+  const dec = C.splitPurchase([{ name: 'A', category: 'A' }, { name: 'B', category: 'B' }, { name: 'C', category: 'C' }], 1000.5);
+  assert.deepEqual(dec.map(r => r.amount), [333, 333, 334.5]);
 });

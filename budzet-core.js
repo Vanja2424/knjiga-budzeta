@@ -578,7 +578,7 @@
       : (sections.includes(i.section) ? i.section : SHOPPING_OTHER);
     const map = new Map();
     (items || []).forEach(i => { const k = keyOf(i); if(!map.has(k)) map.set(k, []); map.get(k).push(i); });
-    let keys = [...map.keys()];
+    const keys = [...map.keys()];
     if(by === 'section') keys.sort((a, b) => sections.indexOf(a) - sections.indexOf(b));
     else keys.sort((a, b) => (a === '') - (b === '') || a.localeCompare(b));
     const emptyLabel = by === 'store' ? NO_STORE : NO_CATEGORY;
@@ -595,7 +595,7 @@
     return res;
   }
   // Ukupan iznos sa racuna -> po kategoriji, srazmerno ceni (bez cene = prosek; bez ijedne cene = broj stavki).
-  // Zaokruzeno na dinar; poslednji red dobija ostatak da zbir bude tacan.
+  // Celi dinari raspodeljeni najvecim ostatkom; nikad negativno; decimale racuna (ako ih ima) idu na poslednji red.
   function splitPurchase(items, total){
     if(!items || !items.length) return [];
     const priced = items.filter(i => i.price > 0);
@@ -606,12 +606,16 @@
     const rows = [...groups.entries()].map(([category, its]) => ({ category, items: its, weight: its.reduce((s, i) => s + weightOf(i), 0) }))
       .sort((a, b) => b.weight - a.weight || a.category.localeCompare(b.category));
     const W = rows.reduce((s, r) => s + r.weight, 0);
-    let allocated = 0;
-    return rows.map((r, idx) => {
-      const amount = idx === rows.length - 1 ? Math.round((total - allocated) * 100) / 100 : Math.round(total * r.weight / W);
-      allocated += amount;
-      return { category: r.category, amount, items: r.items };
-    });
+    const whole = Math.floor(total);
+    const frac = Math.round((total - whole) * 100) / 100;
+    const shares = rows.map(r => whole * r.weight / W);
+    const amounts = shares.map(Math.floor);
+    let left = whole - amounts.reduce((s, a) => s + a, 0);
+    // preostale dinare dobijaju redovi sa najvecim ostatkom; nereseno -> kasniji red (100/3 -> 33, 33, 34)
+    const order = shares.map((s, i) => ({ i, rem: s - Math.floor(s) })).sort((a, b) => b.rem - a.rem || b.i - a.i);
+    for(let k = 0; left > 0; k++, left--) amounts[order[k % order.length].i]++;
+    amounts[amounts.length - 1] = Math.round((amounts[amounts.length - 1] + frac) * 100) / 100;
+    return rows.map((r, idx) => ({ category: r.category, amount: amounts[idx], items: r.items }));
   }
 
   return {
