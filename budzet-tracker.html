@@ -1682,6 +1682,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 @keyframes rowFlash{ 0%{ background: color-mix(in srgb, var(--accent) 28%, transparent); } 100%{ background: transparent; } }
 .row-flash{ animation: rowFlash 1.6s ease-out; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce){ .row-flash{ animation: none; background: color-mix(in srgb, var(--accent) 18%, transparent); } }
+.debt-fx{ align-items:center; gap:0.6em; } .debt-fx .btn-secondary{ padding:3px 10px; font-size:12.5px; }
 </style>
 </head>
 <body>
@@ -6842,6 +6843,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const dirLabel = d.direction === 'owed_to_me' ? 'Duguje mi' : 'Dugujem';
       const dueTxt = d.due ? parseLocalDate(d.due).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
       const overdue = d.due && !settled && d.due < todayStr;
+      const fxNow = (d.currency && d.currency !== 'RSD' && d.origAmount && fx.rates[d.currency]) ? C.round2(d.origAmount * fx.rates[d.currency]) : null;
+      const fxDiff = fxNow != null ? C.round2(fxNow - d.amount) : 0;
+      const fxHtml = (fxNow != null && Math.abs(fxDiff) >= 1)
+        ? `<div class="goal-meta debt-fx"><span>${t('Danas ≈ {0} ({1} od unosa)', fmt(fxNow), (fxDiff > 0 ? '+' : '−') + fmt(Math.abs(fxDiff)))}</span><button class="btn-secondary debt-revalue" data-id="${d.id}">${t('Preračunaj')}</button></div>` : '';
       return `<div class="goal-card" data-debt-id="${d.id}" data-row-id="${d.id}">
         <div class="goal-head">
           <span class="goal-name">${escapeHtml(d.person)} <span class="rtype ${d.direction==='owed_to_me'?'income':'expense'}" data-toggle-dir="${d.id}" title="Klikni da promeniš smer" style="margin-left:0.5em; cursor:pointer;">${dirLabel}</span></span>
@@ -6851,6 +6856,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
           </span>
         </div>
         <div class="goal-amounts">${fmt(d.paidAmount||0)} / ${fmt(d.amount)}${origTag(d)}${settled?' — izmireno ✓':''}</div>
+        ${fxHtml}
         <div class="bar-track"><div class="bar-fill ${settled?'ok':''}" data-target="${Math.min(100,((d.paidAmount||0)/d.amount*100)).toFixed(1)}%"></div></div>
         <div class="goal-meta">
           <span>${d.note ? escapeHtml(d.note) : ''}</span>
@@ -6863,6 +6869,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       </div>`;
     }).join('');
     growBars(list);
+    list.querySelectorAll('.debt-revalue').forEach(b=> b.addEventListener('click', ()=> revalueDebt(b.dataset.id)));
     list.querySelectorAll('[data-toggle-dir]').forEach(el=>{
       el.addEventListener('click', ()=>{
         const d = debts.find(x=>x.id === el.dataset.toggleDir);
@@ -6905,6 +6912,15 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       renderDebts(); renderSummary();
     });
   }
+  function revalueDebt(id){
+    const d = debts.find(x=> x.id === id); if(!d || !d.origAmount || !fx.rates[d.currency]) return;
+    const prev = { amount: d.amount, rate: d.rate };
+    d.amount = C.round2(d.origAmount * fx.rates[d.currency]); d.rate = fx.rates[d.currency];
+    saveDebts(); renderAll();
+    showUndoToast(t('Dug preračunat po današnjem kursu: {0}', fmt(d.amount)), ()=>{ d.amount = prev.amount; d.rate = prev.rate; saveDebts(); renderAll(); });
+  }
+  window.__revalueDebt = revalueDebt;
+  window.__setDebtAmount = (id, amt) => { const d = debts.find(x=> x.id === id); if(d){ d.amount = amt; saveDebts(); renderAll(); } };
 
   // ---- Uporedi ----
   function populateCompareSelects(){

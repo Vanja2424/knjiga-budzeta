@@ -326,6 +326,7 @@
     '⏸ Pauziraj mesec': '⏸ Pause month', '⏸ Pauziraj ovaj termin': '⏸ Pause this time', '⏸ Pauzirano za ovaj mesec — ': '⏸ Paused for this month — ', 'vrati': 'undo',
     'rashodi {0} · prihodi {1}': 'expenses {0} · income {1}', 'Predlog: uplaćuj ~{0}/mesečno da stigneš do roka ({1} mes.).': 'Tip: contribute ~{0}/month to reach it by the deadline ({1} mo.).',
     'Rok: {0}': 'Deadline: {0}', ' · račun: {0}': ' · account: {0}', '{0} preostalo': '{0} to go', 'otplaćeno za {0}. mesec': 'paid off in month {0}',
+    'Danas ≈ {0} ({1} od unosa)': 'Today ≈ {0} ({1} since entry)', 'Preračunaj': 'Recalculate', 'Dug preračunat po današnjem kursu: {0}': 'Debt recalculated at today\'s rate: {0}',
     'Uz {0}/mesečno, svi dugovi su otplaćeni za <b>{1}</b>.': 'At {0}/month, all debts are paid off in <b>{1}</b>.', '{0} mesec': '{0} month', '{0} meseci': '{0} months',
     '{0} · {1}, dan {2}.': '{0} · {1}, day {2}',
     'Najveća kategorija rashoda — {0}% svih rashoda ({1}).': 'Largest expense category — {0}% of all expenses ({1}).',

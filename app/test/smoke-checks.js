@@ -400,6 +400,16 @@
       check('dug u EUR sačuvan u RSD sa originalom', !!dbt && dbt.currency === 'EUR' && dbt.origAmount === 100 && Math.abs(dbt.amount - 100 * eurRate) < 0.01, JSON.stringify(dbt));
       const card = document.querySelector(`[data-debt-id="${dbt && dbt.id}"]`);
       check('dug prikazuje originalni iznos', !!card && /€/.test(card.textContent), card && card.textContent);
+
+      if (typeof window.__revalueDebt === 'function') {
+        const before = JSON.parse(localStorage.getItem('budzet-dugovi-v1')).find(d => d.person === 'Smoke evro dug');
+        // simuliraj stari kurs: iznos kao da je unet po kursu 1% nizem
+        window.__setDebtAmount(before.id, Math.round(before.origAmount * eurRate * 0.99 * 100) / 100); await sleep(40);
+        check('dug EUR: prikaz današnje vrednosti', /≈/.test(document.querySelector(`[data-debt-id="${before.id}"]`).textContent));
+        window.__revalueDebt(before.id); await sleep(40);
+        const after = JSON.parse(localStorage.getItem('budzet-dugovi-v1')).find(d => d.id === before.id);
+        check('dug EUR: preračun po današnjem kursu', Math.abs(after.amount - before.origAmount * eurRate) < 0.01);
+      } else check('dug EUR: preračun postoji', false);
     }
     // Promena meseca: liste rashoda i prihoda prikazuju samo izabrani mesec
     const curM = monthKey(new Date()), prevM = window.BudzetCore.addMonths(curM, -1);
