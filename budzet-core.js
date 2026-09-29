@@ -660,6 +660,30 @@
       && (dayLimit == null || effectiveDay(r.day, mKey) <= dayLimit));
   }
 
+  // ---------- Provera Excel fajla i fajla kopije ----------
+  // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
+  const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
+  const STAVKE_COLUMNS = ['Datum', 'Opis', 'Iznos', 'Tip'];
+  function checkWorkbookShape(sheetNames, stavkeHeader){
+    const names = sheetNames || [];
+    const missing = WORKBOOK_SHEETS.filter(s => !names.includes(s));
+    const header = stavkeHeader || [];
+    if(!missing.length && header.length) STAVKE_COLUMNS.forEach(c => { if(!header.includes(c)) missing.push('Stavke: ' + c); });
+    return { ok: !missing.length, missing };
+  }
+  // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
+  const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1'];
+  const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
+  function checkDataFileShape(data){
+    if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
+    if(!Object.keys(data).some(k => k.startsWith('budzet-'))) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
+    const parse = v => { if(typeof v !== 'string') return v; try { return JSON.parse(v); } catch(e) { return undefined; } };
+    const problems = [];
+    DATA_ARRAY_KEYS.forEach(k => { if(k in data && !Array.isArray(parse(data[k]))) problems.push(k); });
+    DATA_OBJECT_KEYS.forEach(k => { if(!(k in data)) return; const v = parse(data[k]); if(!v || typeof v !== 'object' || Array.isArray(v)) problems.push(k); });
+    return { ok: !problems.length, problems };
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -676,6 +700,7 @@
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
-    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue
+    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue,
+    checkWorkbookShape, checkDataFileShape
   };
 });

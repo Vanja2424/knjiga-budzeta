@@ -567,3 +567,24 @@ test('autoPayDue: samo autoPay, dospelo, nije placeno/preskoceno/iskljuceno, dan
   assert.deepEqual(C.autoPayDue([], state, '2026-10', 31), []);
   assert.deepEqual(C.autoPayDue(recurring, undefined, '2026-08', null).map(r => r.id), ['a', 'b', 'd', 'e', 'f']);
 });
+
+test('checkWorkbookShape: listovi i kolone, prazan list Stavke prolazi', () => {
+  const full = ['ID', 'Datum', 'Opis', 'Kategorija', 'Tip', 'Iznos', 'Placeno'];
+  assert.deepEqual(C.checkWorkbookShape(['Stavke', 'Kategorije', 'Ciljevi'], full), { ok: true, missing: [] });
+  assert.deepEqual(C.checkWorkbookShape(['Stavke', 'Kategorije'], []), { ok: true, missing: [] });   // izvoz bez ijedne stavke
+  assert.deepEqual(C.checkWorkbookShape(['Sheet1'], ['Datum', 'Opis', 'Iznos']), { ok: false, missing: ['Stavke', 'Kategorije'] });
+  assert.deepEqual(C.checkWorkbookShape(['Stavke', 'Kategorije'], ['Datum', 'Opis', 'Iznos']), { ok: false, missing: ['Stavke: Tip'] });
+  assert.equal(C.checkWorkbookShape(undefined, undefined).ok, false);
+});
+
+test('checkDataFileShape: poznati kljucevi ispravnog tipa, JSON string ili vrednost', () => {
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-limiti-v1': {} }), { ok: true, problems: [] });
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': '[{"id":"a"}]', 'budzet-primenjeno-v1': '{}' }), { ok: true, problems: [] });
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-tema-v1': 'dark' }), { ok: true, problems: [] }); // bez stavki, ali nas fajl
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': '{"x":1}' }), { ok: false, problems: ['budzet-stavke-v2'] });
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-limiti-v1': [] }), { ok: false, problems: ['budzet-limiti-v1'] });
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-dugovi-v1': 'nije json' }), { ok: false, problems: ['budzet-dugovi-v1'] });
+  assert.deepEqual(C.checkDataFileShape({ nesto: 1 }), { ok: false, problems: ['nema podataka Knjige budžeta'] });
+  assert.equal(C.checkDataFileShape(null).ok, false);
+  assert.equal(C.checkDataFileShape([]).ok, false);
+});
