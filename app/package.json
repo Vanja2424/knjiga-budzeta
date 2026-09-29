@@ -1,6 +1,6 @@
 {
   "name": "knjiga-budzeta",
-  "version": "1.19.0",
+  "version": "1.19.1",
   "description": "Knjiga budžeta — desktop aplikacija",
   "author": "Vanja Cernjakovski",
   "main": "main.js",
@@ -84,7 +84,8 @@
       ],
       "extendInfo": {
         "NSHumanReadableCopyright": "Knjiga budžeta"
-      }
+      },
+      "minimumSystemVersion": "12.0"
     },
     "dmg": {
       "artifactName": "Knjiga-budzeta-${version}-mac-${arch}.${ext}",

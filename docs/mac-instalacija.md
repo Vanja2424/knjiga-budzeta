@@ -1,6 +1,6 @@
 # Knjiga budžeta na Mac-u — instalacija
 
-Knjiga budžeta je aplikacija za vođenje kućnog budžeta. Sve tvoje stavke se čuvaju samo na tvom Mac-u, a vidiš ih samo ti.
+Knjiga budžeta je aplikacija za vođenje kućnog budžeta. Sve tvoje stavke se čuvaju samo na tvom Mac-u, a vidiš ih samo ti. Radi na macOS 12 (Monterey) i novijim.
 
 ## 1. Koji fajl da preuzmeš
 

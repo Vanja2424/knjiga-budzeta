@@ -37,6 +37,14 @@ jobs:
         working-directory: app
         run: npm ci
 
+      # Electron 44+ radi samo na macOS 13+; 43 je poslednji koji radi i na macOS 12 (Monterey).
+      # Windows verzija ostaje na novijem Electron-u iz package.json.
+      - name: Electron 43 za Mac (macOS 12+)
+        working-directory: app
+        run: |
+          npm install --no-save electron@43
+          node -p "'Electron za Mac: ' + require('electron/package.json').version"
+
       - name: Testovi jezgra
         working-directory: app
         run: npm test
@@ -49,13 +57,17 @@ jobs:
         working-directory: app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --publish never -c.electronVersion=$(node -p "require('electron/package.json').version")
 
       - name: Provera paketa
         working-directory: app
         run: |
           ls -la dist/*.dmg
-          for app in dist/mac*/*.app; do codesign --verify --deep --strict "$app" && echo "OK $app"; done
+          for app in dist/mac*/*.app; do
+            codesign --verify --deep --strict "$app" && echo "OK $app"
+            echo "LSMinimumSystemVersion: $(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$app/Contents/Info.plist")"
+            echo "Electron: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Contents/Frameworks/Electron Framework.framework/Resources/Info.plist")"
+          done
 
       - name: Postavi na izdanje
         if: env.TAG != ''
