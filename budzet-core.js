@@ -277,6 +277,51 @@
     return { fresh, dups };
   }
 
+  // Verovatni duplikati koje tacno poredjenje ne hvata (banka pise "TRAJNI NALOG", u knjizi "Kirija"):
+  // isti tip, iznos na dinar, datum najvise `days` dana razlike, a postojeca stavka se upari samo jednom.
+  function findNearDuplicates(rows, existing, days){
+    const maxDays = days == null ? 3 : days;
+    const dayNum = iso => Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000;
+    const used = new Set();
+    const clean = [], near = [];
+    (rows || []).forEach(r => {
+      const d = dayNum(r.date);
+      const match = (existing || []).filter(e => !used.has(e) && e.type === r.type && Math.round(e.amount) === Math.round(r.amount)
+          && typeof e.date === 'string' && Math.abs(dayNum(e.date) - d) <= maxDays)
+        .sort((a, b) => Math.abs(dayNum(a.date) - d) - Math.abs(dayNum(b.date) - d))[0];
+      if(match){ used.add(match); near.push({ row: r, match }); } else clean.push(r);
+    });
+    return { clean, near };
+  }
+  // Vise izvoda odjednom: ako se periodi preklapaju, ista stavka (tip, datum, iznos, opis) je u oba fajla.
+  // Po kljucu se uzima najveci broj ponavljanja u jednom fajlu (dve iste kafe u istom izvodu ostaju dve).
+  function mergeImportBatches(batches){
+    const out = [], taken = new Map();
+    (batches || []).forEach(rows => {
+      const inFile = new Map();
+      (rows || []).forEach(r => {
+        const k = dupKey(r);
+        const n = (inFile.get(k) || 0) + 1;
+        inFile.set(k, n);
+        if(n > (taken.get(k) || 0)){ taken.set(k, n); out.push(r); }
+      });
+    });
+    return out;
+  }
+  // Pregled uvoza po mesecima: koliko stavki i koliki prihodi/rashodi po mesecu.
+  function monthCoverage(rows){
+    const map = new Map();
+    (rows || []).forEach(r => {
+      const m = r.date.slice(0, 7);
+      if(!map.has(m)) map.set(m, { month: m, count: 0, income: 0, expense: 0 });
+      const g = map.get(m);
+      g.count++;
+      if(r.type === 'income') g.income = Math.round((g.income + r.amount) * 100) / 100;
+      else g.expense = Math.round((g.expense + r.amount) * 100) / 100;
+    });
+    return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }
+
   // ---------- Pravila kategorizacije ----------
   function categoryFromRules(rules, desc){
     const lower = String(desc || '').toLowerCase();
@@ -832,7 +877,7 @@
     parseAmount, parseQuickAmount, parseFlexibleDate, validDate,
     detectDelimiter, parseCsv, findHeaderIndex, mapColumns, tableToImportRows,
     parseOFX, parseQIF, parseQifDate,
-    dupKey, splitDuplicates, categoryFromRules,
+    dupKey, splitDuplicates, findNearDuplicates, monthCoverage, mergeImportBatches, categoryFromRules,
     spreadOf, shareInMonth, shareInMonths,
     accountBalances, convertToRsd,
     linearRegressionForecast, debtPayoffPlan,

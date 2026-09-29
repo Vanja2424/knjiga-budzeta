@@ -23,6 +23,15 @@ contextBridge.exposeInMainWorld('desktop', {
   backupList: () => ipcRenderer.invoke('backup:list'),
   backupRead: (name) => ipcRenderer.invoke('backup:read', name),
   openBackups: () => ipcRenderer.invoke('backup:open'),
+  // Dodatna kopija van racunara (USB / drugi folder)
+  extraBackup: {
+    info: () => ipcRenderer.invoke('backup:extra-info'),
+    now: () => ipcRenderer.invoke('backup:extra-now'),
+    choose: () => ipcRenderer.invoke('backup:extra-choose'),
+    clear: () => ipcRenderer.invoke('backup:extra-clear'),
+    open: () => ipcRenderer.invoke('backup:extra-open'),
+    onChange: (cb) => ipcRenderer.on('desktop:extra-backup', (_e, info) => cb(info))
+  },
 
   // Prozor i Windows integracija
   choosePdfPath: (name) => ipcRenderer.invoke('pdf:choose', name),

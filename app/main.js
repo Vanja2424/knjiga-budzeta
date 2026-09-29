@@ -33,7 +33,7 @@ const EN = {
   'Odštampaj izveštaj…': 'Print report…', 'Sačuvaj izveštaj kao PDF…': 'Save report as PDF…', 'Napravi rezervnu kopiju sada': 'Back up now',
   'Otvori folder sa rezervnim kopijama': 'Open backups folder', 'Prikaži fajl sa podacima': 'Show data file', 'Zatvori prozor': 'Close window', 'Izađi': 'Quit',
   'Prikaz': 'View', 'Pretraži stavke': 'Search items', 'Promeni temu (svetla/tamna)': 'Toggle theme (light/dark)', 'Skupi / proširi bočni meni': 'Collapse / expand sidebar',
-  'Uvećaj': 'Zoom in', 'Umanji': 'Zoom out', 'Stvarna veličina': 'Actual size', 'Ceo ekran': 'Full screen', 'Alatke za programere': 'Developer tools',
+  'Izaberi folder za dodatnu kopiju (npr. USB disk)': 'Choose a folder for the extra backup (e.g. a USB drive)', 'Uvećaj': 'Zoom in', 'Umanji': 'Zoom out', 'Stvarna veličina': 'Actual size', 'Ceo ekran': 'Full screen', 'Alatke za programere': 'Developer tools',
   'Pomoć': 'Help', 'Prečice na tastaturi': 'Keyboard shortcuts', 'Proveri ažuriranja…': 'Check for updates…', 'O aplikaciji': 'About',
   'Verzija {0}\nElectron {1}\n\nPodaci: {2}\nRezervne kopije: {3}': 'Version {0}\nElectron {1}\n\nData: {2}\nBackups: {3}',
   'Otvori Knjigu budžeta': 'Open Budget Book', 'Brzi unos rashoda': 'Quick expense', 'Brzi unos prihoda': 'Quick income', 'Pokreni sa Windows-om': 'Start with Windows',
@@ -81,7 +81,8 @@ let appTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 const SETTINGS_FILE = () => path.join(app.getPath('userData'), 'settings.json');
 const DEFAULT_SETTINGS = {
   closeToTray: true, trayHintShown: false, quickAddShortcut: 'CommandOrControl+Alt+Shift+B', windowState: null,
-  lastVersion: null, restartHidden: false, releaseNotes: null, lang: 'sr'
+  lastVersion: null, restartHidden: false, releaseNotes: null, lang: 'sr',
+  extraBackupDir: '', extraBackupLast: null
 };
 let settings = { ...DEFAULT_SETTINGS };
 function loadSettings() {
@@ -260,6 +261,57 @@ ipcMain.handle('backup:read', (_e, name) => {
   return { savedAt: raw.savedAt || null, data: raw.data };
 });
 ipcMain.handle('backup:open', () => { fs.mkdirSync(backupDir(), { recursive: true }); shell.openPath(backupDir()); });
+
+// ---------- Dodatna kopija van racunara (USB disk, drugi cloud folder) ----------
+// Jednom dnevno, cim je izabrani folder dostupan (USB se proverava na svakih 15 minuta), kopira se
+// podaci.json u <folder>\Knjiga budzeta kopije\Podaci-YYYY-MM-DD.json; cuva se poslednjih 60.
+const EXTRA_BACKUP_KEEP = 60;
+const EXTRA_SUBDIR = 'Knjiga budzeta kopije';
+const extraBackupTarget = () => settings.extraBackupDir ? path.join(settings.extraBackupDir, EXTRA_SUBDIR) : null;
+function extraBackupInfo() {
+  const dir = settings.extraBackupDir || '';
+  let available = false;
+  try { available = !!dir && fs.statSync(dir).isDirectory(); } catch { available = false; }
+  return { dir, last: settings.extraBackupLast || null, available };
+}
+function runExtraBackup(force) {
+  const info = extraBackupInfo();
+  if (!info.dir) return { ok: false, reason: 'none' };
+  if (!info.available) return { ok: false, reason: 'unavailable' };
+  if (!fs.existsSync(dataFile())) return { ok: false, reason: 'nodata' };
+  const today = todayStr();
+  if (!force && settings.extraBackupLast && settings.extraBackupLast.slice(0, 10) === today) return { ok: true, skipped: true };
+  try {
+    const target = extraBackupTarget();
+    fs.mkdirSync(target, { recursive: true });
+    withRetry(() => fs.copyFileSync(dataFile(), path.join(target, `Podaci-${today}.json`)));
+    const old = fs.readdirSync(target).filter(f => /^Podaci-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
+    old.slice(0, Math.max(0, old.length - EXTRA_BACKUP_KEEP)).forEach(f => { try { fs.unlinkSync(path.join(target, f)); } catch { /* ignorisano */ } });
+    settings.extraBackupLast = new Date().toISOString();
+    saveSettingsNow();
+    sendToMain('desktop:extra-backup', extraBackupInfo());
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, reason: 'error', error: String(err && err.message || err) };
+  }
+}
+ipcMain.handle('backup:extra-info', () => extraBackupInfo());
+ipcMain.handle('backup:extra-now', () => runExtraBackup(true));
+ipcMain.handle('backup:extra-choose', async () => {
+  const r = await dialog.showOpenDialog(mainWindow, { title: T('Izaberi folder za dodatnu kopiju (npr. USB disk)'), properties: ['openDirectory', 'createDirectory'] });
+  if (r.canceled || !r.filePaths[0]) return extraBackupInfo();
+  settings.extraBackupDir = r.filePaths[0];
+  settings.extraBackupLast = null;
+  saveSettingsNow();
+  runExtraBackup(true);
+  return extraBackupInfo();
+});
+ipcMain.handle('backup:extra-clear', () => {
+  settings.extraBackupDir = ''; settings.extraBackupLast = null;
+  saveSettingsNow();
+  return extraBackupInfo();
+});
+ipcMain.handle('backup:extra-open', () => { const t = extraBackupTarget(); if (t && fs.existsSync(t)) shell.openPath(t); else if (settings.extraBackupDir) shell.openPath(settings.extraBackupDir); });
 
 // ---------- Automatska azuriranja (GitHub Releases) ----------
 // Nova verzija se preuzima u pozadini i instalira SAMA:
@@ -604,7 +656,7 @@ function setAutostart(on) {
 
 // ---------- Meni i precice ----------
 const SCREENS = [
-  ['pregled', 'Pregled'], ['rashodi', 'Transakcije'], ['kategorije', 'Budžet'], ['ponavljajuce', 'Ponavljajuće'],
+  ['pregled', 'Pregled'], ['rashodi', 'Transakcije'], ['kategorije', 'Budžet'],
   ['ciljevi', 'Ciljevi i dugovi'], ['izvestaj', 'Izveštaji'], ['kursevi', 'Kursevi'], ['nabavka', 'Nabavka'], ['podesavanja', 'Podešavanja']
 ];
 function menuTemplate() {
@@ -910,6 +962,8 @@ function init() {
   createTray();
   registerQuickAddShortcut();
   ensureDailyBackup();
+  setTimeout(() => runExtraBackup(false), 20000);
+  setInterval(() => runExtraBackup(false), 15 * 60 * 1000);
   setupUpdater();
   mainWindow.webContents.once('did-finish-load', () => handleArgs(process.argv));
 }

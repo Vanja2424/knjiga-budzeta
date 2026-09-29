@@ -18,7 +18,7 @@
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
-    check('glavni meni ima 9 stavki', document.querySelectorAll('nav.tabs button[data-group]').length === 9);
+    check('glavni meni ima 8 stavki (Ponavljajuće je u Transakcijama)', document.querySelectorAll('nav.tabs button[data-group]').length === 8);
     // Kursevi: omiljena valuta se pojavljuje u izboru valute pri unosu
     go('kursevi'); await sleep(60);
     const favBtn = document.querySelector('.fx-star[data-cur="BAM"]');
@@ -706,7 +706,7 @@
       check('? otvara prečice na tastaturi', $('dialogOverlay').classList.contains('show') && /Ctrl/.test($('dialogBody').textContent) && /Ctrl \+ Z|CtrlZ|Ctrl\s*\+\s*Z/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 120));
       key('Escape'); await sleep(80);
       check('Esc zatvara prečice', !$('dialogOverlay').classList.contains('show'));
-      check('spisak prečica: Ctrl+1…8', /8/.test(document.querySelector('#desktopShortcuts .shortcut-grid').textContent));
+      check('spisak prečica: Ctrl+1…7', /1\s*…\s*7/.test(document.querySelector('#desktopShortcuts .shortcut-grid').textContent));
       go('rashodi'); await sleep(80);
       const noLabel = [...document.querySelectorAll('button[title]')].filter(b => b.textContent.trim().length <= 2 && !b.getAttribute('aria-label'));
       check('dugmad sa ikonicom imaju aria-label', noLabel.length === 0, noLabel.slice(0, 3).map(b => b.outerHTML.slice(0, 80)).join(' | '));
@@ -717,6 +717,35 @@
       go('pregled'); await sleep(60);
       check('Pregled: "Počni ovde" skriven kad ima podataka', $('pregledStart').style.display === 'none' && !$('screen-pregled').classList.contains('pregled-empty'));
       check('Excel: status oblika fajla postoji', typeof window.__excelShapeStatus === 'function');
+    }
+
+    // Paket 6: Ponavljajuce u Transakcijama, uvoz vise izvoda, kopija van racunara
+    {
+      go('ponavljajuce'); await sleep(60);
+      check('Ponavljajuće: podkartica u Transakcijama', !document.querySelector('nav.tabs button[data-group="ponavljajuce"]')
+        && document.querySelector('nav.tabs button.active').dataset.group === 'transakcije'
+        && !!$('subtabs').querySelector('button[data-screen="ponavljajuce"].active'));
+      const cur = monthKey(new Date());
+      const m1 = window.BudzetCore.addMonths(cur, -30), m2 = window.BudzetCore.addMonths(cur, -29);
+      const csvA = 'Datum;Opis;Iznos\n' + m1 + '-05;P6 kafa;-250,00\n' + m1 + '-28;P6 market;-1.500,00\n';
+      const csvB = 'Datum;Opis;Iznos\n' + m1 + '-28;P6 market;-1.500,00\n' + m2 + '-03;P6 plata;50.000,00\n';
+      const before = entries().length;
+      const p = window.__runImportText([{ name: 'a.csv', text: csvA }, { name: 'b.csv', text: csvB }]);
+      await sleep(400);
+      check('uvoz: pregled više izvoda', $('dialogOverlay').classList.contains('show') && /2 fajlova/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 200));
+      $('dialogOk').click(); await p; await sleep(100);
+      const added = entries().filter(e => /^P6 /.test(e.desc));
+      check('uvoz: preklopljeni izvodi ne dupliraju stavku', added.length === 3 && entries().length === before + 3, added.map(e => e.desc).join(','));
+      // slicna stavka: isti iznos, dan kasnije, drugi opis -> podrazumevano se ne uvozi
+      const p2 = window.__runImportText([{ name: 'c.csv', text: 'Datum;Opis;Iznos\n' + m1 + '-06;KAFIC 123;-250,00\n' + m1 + '-20;P6 novo;-99,00\n' }]);
+      await sleep(400);
+      const nearBox = document.querySelector('#dialogBody [data-near]');
+      check('uvoz: slična stavka je ponuđena, nečekirana', !!nearBox && !nearBox.checked, $('dialogBody').textContent.slice(0, 200));
+      $('dialogOk').click(); await p2; await sleep(100);
+      check('uvoz: slična se ne uvozi bez čekiranja', !entries().some(e => e.desc === 'KAFIC 123') && entries().some(e => e.desc === 'P6 novo'));
+      window.__deleteEntriesById(entries().filter(e => /^P6 /.test(e.desc)).map(e => e.id)); await sleep(40);
+      go('podesavanja'); await sleep(80);
+      check('kopija van računara: podešavanje postoji', !!$('extraBackupGroup') && $('extraBackupGroup').style.display !== 'none' && /Isključeno/.test($('extraBackupStatus').textContent), $('extraBackupStatus').textContent);
     }
 
     // Cuvanje u fajl

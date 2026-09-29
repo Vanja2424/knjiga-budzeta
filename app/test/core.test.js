@@ -775,3 +775,44 @@ test('monthReview: zbirovi, stopa, iznad proseka, pad, limiti, neplaceno', () =>
   assert.deepEqual([lone.savingsRate, lone.enough, lone.avgExpense, lone.expensePct, lone.down], [null, false, null, null, null]);
   assert.deepEqual(lone.up, []);
 });
+
+// ---------- Paket 6: uvoz istorije ----------
+test('findNearDuplicates: isti iznos i tip, datum +-3 dana, drugaciji opis; svaki postojeci jednom', () => {
+  const existing = [
+    { id: 'e1', type: 'expense', date: '2026-03-05', amount: 30000, desc: 'Kirija' },
+    { id: 'e2', type: 'expense', date: '2026-03-10', amount: 1200, desc: 'Netflix' },
+    { id: 'e3', type: 'income', date: '2026-03-01', amount: 100000, desc: 'Plata' }
+  ];
+  const rows = [
+    { type: 'expense', date: '2026-03-06', amount: 30000, desc: 'TRAJNI NALOG 123' },   // ~ e1
+    { type: 'expense', date: '2026-03-07', amount: 30000, desc: 'TRAJNI NALOG 124' },   // e1 vec uparen -> cist
+    { type: 'expense', date: '2026-03-14', amount: 1200, desc: 'NETFLIX.COM' },        // 4 dana -> cist
+    { type: 'expense', date: '2026-03-01', amount: 100000, desc: 'x' },                // drugi tip -> cist
+    { type: 'income', date: '2026-02-27', amount: 100000.4, desc: 'ZARADA' }           // ~ e3 (preko meseca, iznos zaokruzen)
+  ];
+  const r = C.findNearDuplicates(rows, existing, 3);
+  assert.deepEqual(r.near.map(n => [n.row.desc, n.match.id]), [['TRAJNI NALOG 123', 'e1'], ['ZARADA', 'e3']]);
+  assert.deepEqual(r.clean.map(x => x.desc), ['TRAJNI NALOG 124', 'NETFLIX.COM', 'x']);
+  assert.deepEqual(C.findNearDuplicates([], existing).near, []);
+});
+
+test('monthCoverage: po mesecu broj, prihodi, rashodi', () => {
+  const rows = [
+    { type: 'expense', date: '2026-02-03', amount: 100 }, { type: 'income', date: '2026-02-01', amount: 1000 },
+    { type: 'expense', date: '2025-12-31', amount: 50.25 }, { type: 'expense', date: '2026-02-20', amount: 0.75 }
+  ];
+  assert.deepEqual(C.monthCoverage(rows), [
+    { month: '2025-12', count: 1, income: 0, expense: 50.25 },
+    { month: '2026-02', count: 3, income: 1000, expense: 100.75 }
+  ]);
+});
+
+test('mergeImportBatches: preklopljeni izvodi ne dupliraju, ponavljanje u jednom fajlu ostaje', () => {
+  const kafa = { type: 'expense', date: '2026-03-31', amount: 200, desc: 'Kafa' };
+  const a = [kafa, { ...kafa }, { type: 'expense', date: '2026-03-02', amount: 50, desc: 'x' }];
+  const b = [{ ...kafa }, { type: 'expense', date: '2026-04-01', amount: 70, desc: 'y' }];
+  const m = C.mergeImportBatches([a, b]);
+  assert.equal(m.filter(r => r.desc === 'Kafa').length, 2);
+  assert.deepEqual(m.map(r => r.desc).sort(), ['Kafa', 'Kafa', 'x', 'y']);
+  assert.deepEqual(C.mergeImportBatches([]), []);
+});
