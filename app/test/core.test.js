@@ -816,3 +816,43 @@ test('mergeImportBatches: preklopljeni izvodi ne dupliraju, ponavljanje u jednom
   assert.deepEqual(m.map(r => r.desc).sort(), ['Kafa', 'Kafa', 'x', 'y']);
   assert.deepEqual(C.mergeImportBatches([]), []);
 });
+
+// ---------- IPS QR ----------
+test('racun primaoca: skraceni zapis, 18 cifara, kontrolni broj', () => {
+  assert.equal(C.normalizeAccount('845-4048-49'), '845000000000404849');
+  assert.equal(C.normalizeAccount('845000000040484987'), '845000000040484987');
+  assert.equal(C.normalizeAccount('845 0000000404849 87'), '845000000040484987');
+  assert.equal(C.normalizeAccount('12345'), '');
+  assert.equal(C.normalizeAccount('abc-1-22'), '');
+  assert.equal(C.validAccount('845000000040484987'), true);   // primer iz NBS dokumentacije
+  assert.equal(C.validAccount('845000000040484988'), false);
+  assert.equal(C.formatAccount('845000000040484987'), '845-0000000404849-87');
+});
+test('poziv na broj model 97', () => {
+  assert.equal(C.validReference97('163220000111111111000'), true); // NBS primer
+  assert.equal(C.validReference97('163220000111111111001'), false);
+  assert.equal(C.validReference97('16-3220000-111111111000'), true);
+  assert.equal(C.validReference97(''), false);
+});
+test('ipsQrString: NBS primer se dobija tacno', () => {
+  const s = C.ipsQrString({ account: '845-0000000404849-87', name: 'JP EPS BEOGRAD', amount: 3596.13, code: '189', purpose: 'Uplata po racunu', model: '97', reference: '163220000111111111000' });
+  assert.equal(s, 'K:PR|V:01|C:1|R:845000000040484987|N:JP EPS BEOGRAD|I:RSD3596,13|SF:189|S:Uplata po racunu|RO:97163220000111111111000');
+  // bez svrhe i poziva; uspravna crta iz teksta se uklanja; iznos uvek sa dve decimale
+  assert.equal(C.ipsQrString({ account: '845000000040484987', name: 'A|B', amount: 1500.5 }), 'K:PR|V:01|C:1|R:845000000040484987|N:A B|I:RSD1500,50|SF:189');
+  assert.equal(C.ipsQrString({ account: '845000000040484987', name: 'A', amount: 10, reference: '123' }).endsWith('|RO:00123'), true);
+});
+test('parseIpsQr i ipsProblems', () => {
+  const p = C.parseIpsQr('K:PR|V:01|C:1|R:845000000040484987|N:JP EPS BEOGRAD\nBalkanska 13|I:RSD3596,13|SF:189|S:Uplata po racunu|RO:97163220000111111111000');
+  assert.deepEqual(p, { account: '845000000040484987', name: 'JP EPS BEOGRAD, Balkanska 13', amount: 3596.13, currency: 'RSD', code: '189', purpose: 'Uplata po racunu', model: '97', reference: '163220000111111111000' });
+  assert.equal(C.parseIpsQr('K:PT|V:01|R:1'), null);
+  assert.equal(C.parseIpsQr('nesto drugo'), null);
+  assert.deepEqual(C.ipsProblems(p), []);
+  assert.equal(C.ipsProblems({ ...p, account: '845000000040484988' }).length, 1);
+  assert.equal(C.ipsProblems({ ...p, code: '389', amount: 0, name: '' }).length, 3);
+  assert.equal(C.ipsProblems({ ...p, reference: '163220000111111111001' }).length, 1);
+});
+
+test('ipsQrString: cirilica u latinicu, nedozvoljeni znakovi se menjaju', () => {
+  const s = C.ipsQrString({ account: '845000000040484987', name: 'Инфостан Београд — Љубе Ђ.', amount: 1, purpose: 'Račun é№€ za struju' });
+  assert.equal(s, 'K:PR|V:01|C:1|R:845000000040484987|N:Infostan Beograd - Ljube Đ.|I:RSD1,00|SF:189|S:Račun e za struju');
+});

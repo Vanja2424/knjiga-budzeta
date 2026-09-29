@@ -13,6 +13,8 @@ app/budzet-tracker.html
 app/budzet-core.js
 app/i18n.js
 app/xlsx.core.min.js
+app/qrcode-generator.js
+app/jsQR.js
 
 # Lokalne kopije verzija
 verzije/

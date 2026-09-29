@@ -748,6 +748,52 @@
       check('kopija van računara: podešavanje postoji', !!$('extraBackupGroup') && $('extraBackupGroup').style.display !== 'none' && /Isključeno/.test($('extraBackupStatus').textContent), $('extraBackupStatus').textContent);
     }
 
+    // IPS QR: uplatnica -> nova ponavljajuca stavka -> QR kod (citanje nazad) -> Placeno
+    {
+      go('ponavljajuce'); await sleep(60);
+      const slip = 'K:PR|V:01|C:1|R:845000000040484987|N:JP EPS BEOGRAD|I:RSD3596,13|SF:189|S:Uplata po racunu|RO:97163220000111111111000';
+      check('IPS: uplatnica popunjava formu', window.__fillRecFromSlipText(slip) && $('recDesc').value === 'JP EPS BEOGRAD' && $('recAmount').value === '3596.13');
+      setVal('recDesc', 'P7 struja'); setVal('recDay', String(new Date().getDate()));
+      $('recurringForm').requestSubmit(); await sleep(120);
+      const rec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'P7 struja');
+      check('IPS: stavka čuva podatke za plaćanje', !!rec && rec.payee && rec.payee.account === '845000000040484987' && rec.payee.reference === '163220000111111111000', JSON.stringify(rec && rec.payee));
+      const btn = rec && document.querySelector(`[data-ips="${CSS.escape(rec.id)}"]`);
+      check('IPS: dugme QR u redu', !!btn && btn.classList.contains('has'));
+      if (btn) {
+        btn.click(); await sleep(120);
+        const text = $('ipsQr').dataset.text;
+        check('IPS: prozor sa kodom', $('ipsOverlay').classList.contains('show') && !!$('ipsQr').querySelector('svg') && text === 'K:PR|V:01|C:1|R:845000000040484987|N:JP EPS BEOGRAD|I:RSD3596,00|SF:189|S:Uplata po racunu|RO:97163220000111111111000', text);
+        // Nacrtani kod se cita nazad (jsQR) — isti tekst
+        const svg = $('ipsQr').querySelector('svg').outerHTML;
+        const img = new Image();
+        const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+        await new Promise(r => { img.onload = r; img.onerror = r; img.src = url; });
+        const cv = document.createElement('canvas'); cv.width = 400; cv.height = 400;
+        const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, 400, 400); ctx.drawImage(img, 0, 0, 400, 400);
+        const back = jsQR(ctx.getImageData(0, 0, 400, 400).data, 400, 400);
+        check('IPS: nacrtan QR se čita nazad isto', !!back && back.data === text, back && back.data);
+        setVal('ipsAmount', '1234.5'); await sleep(40);
+        check('IPS: promena iznosa menja kod', /I:RSD1234,50/.test($('ipsQr').dataset.text));
+        $('ipsEditBtn').click(); await sleep(40);
+        setVal('ipsAccount', '845000000040484988');
+        $('ipsPrimary').click(); await sleep(40);
+        check('IPS: pogrešan račun se ne čuva', /Kontrolni broj/.test($('ipsProblems').textContent) && JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === rec.id).payee.account === '845000000040484987');
+        setVal('ipsAccount', '845-0000000404849-87');
+        $('ipsPrimary').click(); await sleep(60);
+        check('IPS: posle čuvanja nazad na kod', $('ipsPay').style.display !== 'none' && !!$('ipsQr').querySelector('svg'));
+        setVal('ipsAmount', '3600');
+        $('ipsPrimary').click(); await sleep(150);
+        const paidEntry = entries().find(e => e.id === 'rec-' + rec.id + '-' + monthKey(new Date()));
+        check('IPS: Plaćeno upisuje rashod sa iznosom', !$('ipsOverlay').classList.contains('show') && !!paidEntry && paidEntry.amount === 3600, JSON.stringify(paidEntry));
+        if (paidEntry) window.__deleteEntriesById([paidEntry.id]);
+      }
+      if (rec) {
+        const del = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(rec.id)}"] .del-btn`);
+        del && del.click(); await sleep(400);
+        if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); }
+      }
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

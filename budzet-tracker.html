@@ -1702,6 +1702,26 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .footer-keys kbd, .shortcut-grid kbd{ font:600 11px/1 var(--font); padding:2px 5px; border-radius:4px; background:var(--fill); border:1px solid var(--paper-line); }
 #dialogBody .shortcut-grid{ max-height:60vh; overflow:auto; text-align:left; }
 .pregled-start{ text-align:left; }
+/* ---- IPS QR (v1.18) ---- */
+.ips-btn{ border:1px solid var(--paper-line); background:transparent; color:var(--ink-soft); font:600 10.5px/1 var(--font); letter-spacing:0.04em; border-radius:6px; padding:4px 6px; cursor:default; }
+.ips-btn.has{ color:var(--accent); border-color:color-mix(in srgb, var(--accent) 45%, transparent); }
+.ips-btn:hover{ background:var(--accent-soft); color:var(--accent); }
+.ips-card{ max-width:620px; }
+.ips-pay{ display:grid; grid-template-columns:230px minmax(0,1fr); gap:1.2em; align-items:start; }
+.ips-qr{ background:#fff; border-radius:10px; padding:6px; width:230px; min-height:230px; display:flex; align-items:center; justify-content:center; }
+.ips-qr svg{ width:100%; height:auto; display:block; }
+.ips-qr .ips-problems{ color:#C93400; padding:0.6em; }
+.ips-info{ display:flex; flex-direction:column; gap:0.5em; font-size:13px; }
+.ips-info span{ display:block; color:var(--ink-soft); font-size:11.5px; }
+.ips-info b{ font-weight:600; overflow-wrap:anywhere; }
+.ips-amount-row{ margin-top:0.9em; display:flex; align-items:center; gap:0.8em; }
+.ips-amount-row label{ margin:0; white-space:nowrap; }
+.ips-amount-row input{ max-width:12em; }
+.ips-row3{ display:grid; grid-template-columns:6em 5em minmax(0,1fr); gap:0.6em; }
+.ips-problems{ color:var(--warn-text); font-size:13px; margin-top:0.6em; }
+.ips-new-row{ display:flex; flex-wrap:wrap; align-items:center; gap:0.6em; margin:-0.3em 0 0.9em; }
+#ipsOverlay .btn-link{ border:none; background:none; color:var(--neg-text); font:500 13px/1.3 var(--font); cursor:default; }
+@media (max-width: 600px){ .ips-pay{ grid-template-columns:1fr; } .ips-qr{ margin:0 auto; } }
 .import-months{ display:flex; flex-wrap:wrap; gap:0.3em 0.5em; margin-top:0.4em; font-size:12.5px; }
 .import-month{ padding:2px 7px; border-radius:6px; background:var(--fill); }
 .import-month.has{ text-decoration:underline; text-decoration-color:var(--warn); text-underline-offset:3px; }
@@ -2116,6 +2136,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     <div class="layout">
       <div class="panel">
         <h2>Nova ponavljajuća stavka</h2>
+        <div class="ips-new-row"><button type="button" class="btn-secondary" id="recFromSlipBtn">Sa uplatnice (QR)…</button><input type="file" id="recSlipInput" accept="image/*" hidden><span class="import-status" id="recSlipStatus"></span></div>
         <form id="recurringForm">
           <div style="display:flex; gap:0.5em;">
             <button type="button" data-rtype="expense" class="submit-btn expense" style="margin-top:0; flex:1;" id="recTypeExpense">Rashod</button>
@@ -2758,6 +2779,42 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 </div>
 
+<div class="modal-overlay" id="ipsOverlay">
+  <div class="modal-card ips-card" role="dialog" aria-modal="true" aria-labelledby="ipsTitle" tabindex="-1">
+    <h3 id="ipsTitle">Plati QR kodom</h3>
+    <div id="ipsPay">
+      <div class="ips-pay">
+        <div class="ips-qr" id="ipsQr"></div>
+        <div class="ips-info" id="ipsInfo"></div>
+      </div>
+      <div class="ips-amount-row"><label for="ipsAmount">Iznos (RSD)</label><input type="number" id="ipsAmount" step="0.01" min="0"></div>
+      <div class="hint" id="ipsPayHint">Otvori aplikaciju svoje banke, izaberi skeniranje IPS QR koda i usmeri telefon na ekran. Posle plaćanja klikni „Plaćeno“.</div>
+    </div>
+    <div id="ipsEdit">
+      <div class="file-row"><button type="button" class="btn-secondary" id="ipsFromImageBtn">Učitaj QR sa uplatnice…</button><input type="file" id="ipsImageInput" accept="image/*" hidden></div>
+      <div class="hint">Izaberi sliku uplatnice ili nalepi snimak ekrana sa Ctrl+V (za PDF: snimak ekrana dela sa QR kodom).</div>
+      <div class="import-status" id="ipsImageStatus"></div>
+      <div class="ips-fields">
+        <label for="ipsAccount">Račun primaoca</label><input type="text" id="ipsAccount" placeholder="npr. 160-0000000012345-67" autocomplete="off" translate="no">
+        <label for="ipsName">Naziv primaoca</label><input type="text" id="ipsName" maxlength="70" translate="no">
+        <div class="ips-row3">
+          <div><label for="ipsCode">Šifra plaćanja</label><input type="text" id="ipsCode" maxlength="3" value="189" inputmode="numeric"></div>
+          <div><label for="ipsModel">Model</label><input type="text" id="ipsModel" maxlength="2" placeholder="97" inputmode="numeric"></div>
+          <div><label for="ipsReference">Poziv na broj</label><input type="text" id="ipsReference" maxlength="33" translate="no"></div>
+        </div>
+        <label for="ipsPurpose">Svrha plaćanja</label><input type="text" id="ipsPurpose" maxlength="35" translate="no">
+      </div>
+      <div class="ips-problems" id="ipsProblems"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-link" id="ipsRemoveBtn" style="margin-right:auto;">Ukloni podatke</button>
+      <button class="cancel-btn" id="ipsClose">Zatvori</button>
+      <button class="btn-secondary" id="ipsEditBtn">Podaci za plaćanje</button>
+      <button class="save-btn" id="ipsPrimary">Plaćeno</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dialogOverlay" style="z-index:1150;">
   <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody" tabindex="-1">
     <h3 id="dialogTitle">Potvrda</h3>
@@ -2801,6 +2858,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 </div>
 
 <script src="xlsx.core.min.js"></script>
+<script src="qrcode-generator.js"></script>
+<script src="jsQR.js"></script>
 <script src="budzet-core.js"></script>
 <script src="i18n.js"></script>
 <script>
@@ -3209,6 +3268,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(document.getElementById('editModalOverlay').classList.contains('show')){ closeEditModal(); return; }
     if(document.getElementById('finishShopOverlay').classList.contains('show')){ closeFinishPurchase(); return; }
     if(document.getElementById('payOverdueOverlay').classList.contains('show')){ closePayOverdue(); return; }
+    if(document.getElementById('ipsOverlay').classList.contains('show')){ closeIps(); return; }
     if(document.getElementById('dayDetailOverlay').classList.contains('show')){ closeDayDetail(); return; }
     if(document.getElementById('undoToast').classList.contains('show')){ dismissTopUndo(); }
   });
@@ -3957,6 +4017,155 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveApplied(); saveEntries();
     renderAll();
   }
+
+  // ---- IPS QR: placanje racuna skeniranjem (NBS standard) ----
+  // Pravila (tekst koda, provere racuna i poziva na broj) su u budzet-core.js; ovde prozor, crtanje i citanje slike.
+  let ipsState = { r: null, mode: 'pay', lastFocus: null };
+  let pendingSlipPayee = null;
+  const ipsEl = id => document.getElementById(id);
+  function ipsFieldsToPayee(){
+    return { account: ipsEl('ipsAccount').value, name: ipsEl('ipsName').value, code: ipsEl('ipsCode').value.trim() || '189',
+      purpose: ipsEl('ipsPurpose').value, model: ipsEl('ipsModel').value.trim(), reference: ipsEl('ipsReference').value.trim() };
+  }
+  function ipsFillFields(p){
+    ipsEl('ipsAccount').value = p.account ? C.formatAccount(p.account) : '';
+    ipsEl('ipsName').value = p.name || ''; ipsEl('ipsCode').value = p.code || '189';
+    ipsEl('ipsPurpose').value = p.purpose || ''; ipsEl('ipsModel').value = p.model || ''; ipsEl('ipsReference').value = p.reference || '';
+  }
+  function ipsQrSvg(text){
+    const qr = qrcode(0, 'M');
+    qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+    qr.addData(text, 'Byte');
+    qr.make();
+    return qr.createSvgTag({ cellSize: 4, margin: 4, scalable: true });
+  }
+  function ipsDueNow(r){
+    const mKey = currentMonthKey();
+    return isDueThisMonth(r, mKey) && !isPaid(r, mKey);
+  }
+  function renderIpsPay(){
+    const r = ipsState.r;
+    const p = Object.assign({}, r.payee, { amount: parseFloat(ipsEl('ipsAmount').value) });
+    const problems = C.ipsProblems(p);
+    const text = problems.length ? '' : C.ipsQrString(p);
+    ipsEl('ipsQr').innerHTML = problems.length ? `<div class="ips-problems">${problems.map(x=> `<div>${escapeHtml(t(x))}</div>`).join('')}</div>` : ipsQrSvg(text);
+    ipsEl('ipsQr').dataset.text = text;
+    const row = (k, v) => v ? `<div><span>${k}</span><b translate="no">${escapeHtml(v)}</b></div>` : '';
+    ipsEl('ipsInfo').innerHTML = row(t('Primalac'), r.payee.name) + row(t('Račun'), C.formatAccount(r.payee.account)) + row(t('Iznos'), fmt(p.amount || 0))
+      + row(t('Šifra'), r.payee.code) + row(t('Svrha'), r.payee.purpose) + row(t('Poziv na broj'), r.payee.reference ? (r.payee.model ? r.payee.model + ' ' : '') + r.payee.reference : '');
+  }
+  function setIpsMode(mode){
+    ipsState.mode = mode;
+    const r = ipsState.r;
+    ipsEl('ipsPay').style.display = mode === 'pay' ? '' : 'none';
+    ipsEl('ipsEdit').style.display = mode === 'edit' ? '' : 'none';
+    ipsEl('ipsTitle').textContent = mode === 'pay' ? t('Plati QR kodom: {0}', r.desc) : t('Podaci za plaćanje: {0}', r.desc);
+    ipsEl('ipsEditBtn').style.display = mode === 'pay' ? '' : 'none';
+    ipsEl('ipsRemoveBtn').style.display = mode === 'edit' && r.payee ? '' : 'none';
+    const primary = ipsEl('ipsPrimary');
+    if(mode === 'edit'){ primary.style.display = ''; primary.textContent = t('Sačuvaj'); ipsEl('ipsProblems').innerHTML = ''; ipsEl('ipsImageStatus').textContent = ''; ipsFillFields(r.payee || {}); }
+    else {
+      const due = ipsDueNow(r);
+      primary.style.display = due ? '' : 'none';
+      primary.textContent = t('Plaćeno');
+      ipsEl('ipsPayHint').textContent = due ? t('Otvori aplikaciju svoje banke, izaberi skeniranje IPS QR koda i usmeri telefon na ekran. Posle plaćanja klikni „Plaćeno“.')
+        : t('Ova stavka je za ovaj mesec već plaćena ili nije na redu — kod možeš da iskoristiš ako plaćaš ranije.');
+      const amt = r.debtId ? suggestedPayAmount(r) : recurringAmountNow(r);
+      ipsEl('ipsAmount').value = String(Math.round(amt * 100) / 100);
+      renderIpsPay();
+    }
+  }
+  function openIps(r, mode){
+    ipsState = { r, mode, lastFocus: document.activeElement };
+    ipsEl('ipsOverlay').classList.add('show');
+    setIpsMode(mode);
+    setTimeout(()=> (mode === 'edit' ? ipsEl('ipsAccount') : ipsEl('ipsAmount')).focus(), 0);
+  }
+  function closeIps(){
+    ipsEl('ipsOverlay').classList.remove('show');
+    if(ipsState.lastFocus && ipsState.lastFocus.focus) ipsState.lastFocus.focus();
+  }
+  window.__openIps = (rid, mode) => { const r = recurring.find(x=> x.id === rid); if(r) openIps(r, mode || (r.payee ? 'pay' : 'edit')); };
+  ipsEl('ipsAmount').addEventListener('input', renderIpsPay);
+  ipsEl('ipsClose').addEventListener('click', closeIps);
+  ipsEl('ipsOverlay').addEventListener('click', e=>{ if(e.target.id === 'ipsOverlay') closeIps(); });
+  ipsEl('ipsEditBtn').addEventListener('click', ()=> setIpsMode('edit'));
+  ipsEl('ipsRemoveBtn').addEventListener('click', ()=>{
+    const r = ipsState.r, prev = r.payee;
+    delete r.payee; saveRecurring(); closeIps(); renderAll();
+    showUndoToast(t('Uklonjeni podaci za plaćanje: {0}', r.desc), ()=>{ r.payee = prev; saveRecurring(); renderAll(); });
+  });
+  ipsEl('ipsPrimary').addEventListener('click', ()=>{
+    const r = ipsState.r;
+    if(ipsState.mode === 'edit'){
+      const p = ipsFieldsToPayee();
+      const problems = C.ipsProblems(Object.assign({}, p, { amount: 1 }));
+      if(problems.length){ ipsEl('ipsProblems').innerHTML = problems.map(x=> `<div>${escapeHtml(t(x))}</div>`).join(''); return; }
+      r.payee = C.cleanPayee(p);
+      saveRecurring(); renderAll();
+      setIpsMode('pay');
+      return;
+    }
+    const amount = parseFloat(ipsEl('ipsAmount').value);
+    closeIps();
+    togglePaid(r, true, amount > 0 ? amount : undefined);
+  });
+  // Slika -> tekst QR koda (jsQR); veliki snimci se prvo smanje, pa se proba jos jednom manje
+  async function decodeQrImage(blob){
+    const bmp = await createImageBitmap(blob);
+    for(const max of [2000, 1000, 600]){
+      const scale = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const w = Math.max(1, Math.round(bmp.width * scale)), h = Math.max(1, Math.round(bmp.height * scale));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(bmp, 0, 0, w, h);
+      const res = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+      if(res && res.data) return res.data;
+    }
+    return null;
+  }
+  async function readSlip(blob, statusEl){
+    statusEl.textContent = t('Čitam QR kod…');
+    let text = null;
+    try{ text = await decodeQrImage(blob); } catch(e){ /* nije slika */ }
+    const p = text ? C.parseIpsQr(text) : null;
+    if(!p){ statusEl.textContent = text ? t('Ovo nije IPS QR kod uplatnice.') : t('QR kod nije pronađen na slici — probaj oštriji ili veći snimak.'); return null; }
+    statusEl.textContent = t('Pročitano: {0}{1}', p.name || C.formatAccount(p.account), p.amount ? ' · ' + fmt(p.amount) : '');
+    return p;
+  }
+  window.__readSlipText = text => C.parseIpsQr(text);
+  window.__readSlipBlob = blob => readSlip(blob, document.getElementById('recSlipStatus'));
+  async function applySlipToEdit(blob){
+    const p = await readSlip(blob, ipsEl('ipsImageStatus'));
+    if(p) ipsFillFields(p);
+  }
+  async function applySlipToNew(blob){
+    const p = await readSlip(blob, document.getElementById('recSlipStatus'));
+    if(!p) return;
+    fillRecFormFromSlip(p);
+  }
+  function fillRecFormFromSlip(p){
+    if(currentRecType !== 'expense') document.getElementById('recTypeExpense').click();
+    const desc = document.getElementById('recDesc');
+    if(!desc.value.trim()) desc.value = p.name.split(',')[0].trim();
+    if(p.amount) document.getElementById('recAmount').value = String(p.amount);
+    pendingSlipPayee = C.cleanPayee(p);
+    document.getElementById('recSlipStatus').textContent = t('Podaci za plaćanje sa uplatnice biće sačuvani uz stavku ({0}).', C.formatAccount(p.account));
+    desc.focus();
+  }
+  window.__fillRecFromSlipText = text => { const p = C.parseIpsQr(text); if(p) fillRecFormFromSlip(p); return !!p; };
+  ipsEl('ipsFromImageBtn').addEventListener('click', ()=> ipsEl('ipsImageInput').click());
+  ipsEl('ipsImageInput').addEventListener('change', e=>{ const f = e.target.files[0]; e.target.value = ''; if(f) applySlipToEdit(f); });
+  document.getElementById('recFromSlipBtn').addEventListener('click', ()=> document.getElementById('recSlipInput').click());
+  document.getElementById('recSlipInput').addEventListener('change', e=>{ const f = e.target.files[0]; e.target.value = ''; if(f) applySlipToNew(f); });
+  // Ctrl+V sa slikom: u prozoru za podatke o placanju, ili na ekranu Ponavljajuce (nova stavka)
+  document.addEventListener('paste', e=>{
+    const item = [...(e.clipboardData ? e.clipboardData.items : [])].find(i=> i.type && i.type.startsWith('image/'));
+    if(!item) return;
+    const blob = item.getAsFile();
+    if(ipsEl('ipsOverlay').classList.contains('show') && ipsState.mode === 'edit'){ e.preventDefault(); applySlipToEdit(blob); return; }
+    if(activeScreen === 'ponavljajuce' && !document.querySelector('.modal-overlay.show')){ e.preventDefault(); applySlipToNew(blob); }
+  });
 
   // ---- Plati sve zakasnele ----
   let payOverdueLastFocus = null;
@@ -6917,6 +7126,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(spreadPeriod) rec.spreadPeriod = true;
     if(fa.foreign && fa.amount === amount){ rec.currency = fa.foreign.currency; rec.origAmount = fa.foreign.origAmount; }
     if(accounts.length) rec.accountId = document.getElementById('recAccount').value || defaultAccountId();
+    if(pendingSlipPayee && currentRecType === 'expense') rec.payee = pendingSlipPayee;
+    pendingSlipPayee = null; document.getElementById('recSlipStatus').textContent = '';
     recurring.push(rec);
     saveRecurring();
     processAutoPay();
@@ -6983,6 +7194,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           <span style="font-family:var(--font);font-variant-numeric:tabular-nums;">${fmt(recurringAmountNow(r))}${(r.currency && r.currency !== 'RSD' && r.origAmount) ? `<span class="orig-amt">${fmtOrig(r.origAmount, r.currency)}</span>` : ''}</span>
           <span style="font-family:var(--font);font-variant-numeric:tabular-nums; color:var(--ink-soft);">${statusHtml}</span>
           <span style="display:flex; gap:0.3em;">
+            ${r.type === 'expense' ? `<button class="ips-btn${r.payee ? ' has' : ''}" data-ips="${r.id}" title="${r.payee ? t('Plati QR kodom') : t('Dodaj podatke za plaćanje (QR)')}">QR</button>` : ''}
             <button class="edit-btn" data-id="${r.id}" title="Uredi">✎</button>
             <button class="del-btn" data-id="${r.id}" title="Obriši">✕</button>
           </span>
@@ -7000,6 +7212,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       </div>`;
     }).join('');
     justPaidId = null;
+    list.querySelectorAll('[data-ips]').forEach(b=> b.addEventListener('click', ()=>{
+      const r = recurring.find(x=> x.id === b.dataset.ips);
+      if(r) openIps(r, r.payee ? 'pay' : 'edit');
+    }));
     list.querySelectorAll('.skip-month-btn').forEach(b=>{
       b.addEventListener('click', ()=>{
         const r = recurring.find(x=>x.id === b.dataset.id);
@@ -7911,6 +8127,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       origAmount: Number(r.origAmount) || undefined,
       debtId: (typeof r.debtId === 'string' && r.debtId) ? r.debtId : undefined,
       until: (typeof r.until === 'string' && /^\d{4}-\d{2}$/.test(r.until)) ? r.until : undefined,
+      payee: C.cleanPayee(r.payee),
     })).filter(r => r.desc);
     const cleanGoals = (Array.isArray(data.goals) ? data.goals.filter(isPlainObject) : []).map(g=>({
       id: (typeof g.id === 'string' && g.id) ? g.id : newId(),
@@ -8209,7 +8426,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     XLSX.utils.book_append_sheet(wb, wsKat, 'Kategorije');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeCats.map(c=>({Naziv:c}))), 'KategorijePrihoda');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
-    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||''})));
+    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||'', PrimalacRacun:r.payee?r.payee.account:'', PrimalacNaziv:r.payee?r.payee.name:'', SifraPlacanja:r.payee?r.payee.code:'', SvrhaPlacanja:r.payee?r.payee.purpose:'', Model:r.payee?r.payee.model:'', PozivNaBroj:r.payee?r.payee.reference:''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
@@ -8294,6 +8511,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       ...(/^(da|yes|true|1)$/i.test(String(r.RaspodelaNaPeriod||'').trim()) ? { spreadPeriod: true } : {}),
       ...(r.DugID ? { debtId: String(r.DugID) } : {}),
       ...(/^\d{4}-\d{2}$/.test(String(r.Do||'')) ? { until: String(r.Do) } : {}),
+      ...(r.PrimalacRacun ? { payee: C.cleanPayee({ account: r.PrimalacRacun, name: r.PrimalacNaziv, code: r.SifraPlacanja, purpose: r.SvrhaPlacanja, model: r.Model, reference: r.PozivNaBroj }) } : {}),
     }));
 
     const ciljRows = sheetRows('Ciljevi');

@@ -322,6 +322,99 @@
     return [...map.values()].sort((a, b) => a.month.localeCompare(b.month));
   }
 
+  // ---------- IPS QR (NBS standard, uplatnica "PR") ----------
+  // Broj racuna: "160-12345-78" ili 18 cifara -> 18 cifara (srednji deo dopunjen nulama do 13); inace ''.
+  function normalizeAccount(s){
+    const str = String(s == null ? '' : s).trim();
+    const parts = str.split(/[-\s]+/).filter(Boolean);
+    if(parts.length === 3 && parts.every(x => /^\d+$/.test(x)) && parts[0].length === 3 && parts[2].length === 2 && parts[1].length <= 13)
+      return parts[0] + parts[1].padStart(13, '0') + parts[2];
+    const digits = str.replace(/\D/g, '');
+    return digits.length === 18 && /^[\d\s-]+$/.test(str) ? digits : '';
+  }
+  // Ostatak deljenja velikog broja (niz cifara) sa 97
+  const mod97 = digits => { let r = 0; for(const ch of digits) r = (r * 10 + Number(ch)) % 97; return r; };
+  // Kontrolni broj ISO 7064 MOD 97-10: 98 - (broj * 100 mod 97)
+  const control97 = digits => String(98 - mod97(digits + '00')).padStart(2, '0');
+  function validAccount(s){
+    const a = normalizeAccount(s);
+    return !!a && control97(a.slice(0, 16)) === a.slice(16);
+  }
+  const formatAccount = a => { const n = normalizeAccount(a); return n ? n.slice(0, 3) + '-' + n.slice(3, 16) + '-' + n.slice(16) : String(a || ''); };
+  // Poziv na broj po modelu 97: prve dve cifre su kontrolni broj ostatka (slova: A=10 … Z=35, crtice se ignorisu).
+  function validReference97(ref){
+    const r = String(ref || '').replace(/[-\s]/g, '').toUpperCase();
+    if(!/^\d{2}[0-9A-Z]{1,20}$/.test(r)) return false;
+    const body = r.slice(2).replace(/[A-Z]/g, ch => String(ch.charCodeAt(0) - 55));
+    return control97(body) === r.slice(0, 2);
+  }
+  // NBS dozvoljava latinicu (sa čćžšđ), cifre i obicne znakove; cirilica se preslovljava, ostalo zamenjuje ili izbacuje.
+  const CYR = { 'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Ђ':'Đ','Е':'E','Ж':'Ž','З':'Z','И':'I','Ј':'J','К':'K','Л':'L','Љ':'Lj','М':'M','Н':'N','Њ':'Nj','О':'O','П':'P','Р':'R','С':'S','Т':'T','Ћ':'Ć','У':'U','Ф':'F','Х':'H','Ц':'C','Ч':'Č','Џ':'Dž','Ш':'Š' };
+  Object.keys(CYR).forEach(k => { CYR[k.toLowerCase()] = CYR[k].toLowerCase(); });
+  const IPS_OK = /[A-Za-z0-9 .,\/():;"'!?%&#+*_@=<>\[\]~\-ČĆŽŠĐčćžšđ„“]/;
+  function ipsSafe(s){
+    return [...String(s == null ? '' : s).replace(/[–—]/g, '-').replace(/[‘’]/g, "'").replace(/…/g, '...').replace(/[\r\n\t|]/g, ' ')]
+      .map(ch => CYR[ch] || ch)
+      .map(ch => IPS_OK.test(ch) ? ch : ch.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z0-9]/g, ''))
+      .join('');
+  }
+  const ipsText = (s, max) => ipsSafe(s).replace(/\s+/g, ' ').trim().slice(0, max);
+  const ipsAmount = amount => 'RSD' + (Math.round(Number(amount) * 100) / 100).toFixed(2).replace('.', ',');
+  // Podaci za placanje -> tekst za IPS QR. p: { account, name, amount, code, purpose, model, reference }
+  function ipsQrString(p){
+    const tags = ['K:PR', 'V:01', 'C:1', 'R:' + normalizeAccount(p.account), 'N:' + ipsText(p.name, 70), 'I:' + ipsAmount(p.amount || 0),
+      'SF:' + String(p.code || '189').trim()];
+    const purpose = ipsText(p.purpose, 35);
+    if(purpose) tags.push('S:' + purpose);
+    const ref = String(p.reference || '').replace(/\s/g, '');
+    if(ref) tags.push('RO:' + (String(p.model || '').trim() || '00') + ref);
+    return tags.join('|');
+  }
+  // IPS tekst sa uplatnice -> podaci za placanje (null ako nije NBS IPS QR za placanje racuna)
+  function parseIpsQr(text){
+    const map = {};
+    String(text || '').trim().split('|').forEach(part => {
+      const i = part.indexOf(':');
+      if(i > 0) map[part.slice(0, i).trim()] = part.slice(i + 1);
+    });
+    if(map.K !== 'PR' || !map.R) return null;
+    const amt = /^([A-Z]{3})(\d+(?:,\d{0,2})?)$/.exec(map.I || '');
+    const ro = String(map.RO || '');
+    return {
+      account: normalizeAccount(map.R) || map.R,
+      name: (map.N || '').replace(/\r?\n/g, ', ').trim(),
+      amount: amt ? parseFloat(amt[2].replace(',', '.')) : null,
+      currency: amt ? amt[1] : 'RSD',
+      code: map.SF || '',
+      purpose: map.S || '',
+      model: ro.length > 2 ? ro.slice(0, 2) : '',
+      reference: ro.length > 2 ? ro.slice(2) : ''
+    };
+  }
+  // Podaci za placanje sa ponavljajuce stavke (iz kopije/Excela): samo poznata polja, sve kao tekst; bez racuna -> undefined
+  function cleanPayee(p){
+    if(!p || typeof p !== 'object') return undefined;
+    const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+    const out = { account: normalizeAccount(p.account) || str(p.account, 40), name: str(p.name, 70), code: str(p.code, 3) || '189',
+      purpose: str(p.purpose, 35), model: str(p.model, 2), reference: str(p.reference, 33) };
+    return out.account ? out : undefined;
+  }
+  // Provera pre prikaza koda: spisak problema (prazan = u redu)
+  function ipsProblems(p){
+    const out = [];
+    if(!normalizeAccount(p.account)) out.push('Račun primaoca treba da ima 18 cifara (npr. 160-0000000012345-67).');
+    else if(!validAccount(p.account)) out.push('Kontrolni broj računa primaoca nije ispravan — proveri cifre.');
+    if(!ipsText(p.name, 70)) out.push('Upiši naziv primaoca.');
+    if(!/^[12]\d\d$/.test(String(p.code || '189').trim())) out.push('Šifra plaćanja ima 3 cifre i počinje sa 1 ili 2 (npr. 189).');
+    if(!(Number(p.amount) > 0)) out.push('Iznos mora biti veći od nule.');
+    const ref = String(p.reference || '').replace(/\s/g, '');
+    const model = String(p.model || '').trim();
+    if(ref && model && !/^\d\d$/.test(model)) out.push('Model ima dve cifre (97 ili 00).');
+    if(ref && model === '97' && !validReference97(ref)) out.push('Poziv na broj ne odgovara modelu 97 — proveri cifre.');
+    if(ref.length + 2 > 35) out.push('Poziv na broj je predugačak.');
+    return out;
+  }
+
   // ---------- Pravila kategorizacije ----------
   function categoryFromRules(rules, desc){
     const lower = String(desc || '').toLowerCase();
@@ -877,7 +970,8 @@
     parseAmount, parseQuickAmount, parseFlexibleDate, validDate,
     detectDelimiter, parseCsv, findHeaderIndex, mapColumns, tableToImportRows,
     parseOFX, parseQIF, parseQifDate,
-    dupKey, splitDuplicates, findNearDuplicates, monthCoverage, mergeImportBatches, categoryFromRules,
+    dupKey, splitDuplicates, findNearDuplicates, monthCoverage, mergeImportBatches,
+    normalizeAccount, validAccount, formatAccount, validReference97, ipsQrString, parseIpsQr, ipsProblems, cleanPayee, categoryFromRules,
     spreadOf, shareInMonth, shareInMonths,
     accountBalances, convertToRsd,
     linearRegressionForecast, debtPayoffPlan,
