@@ -366,6 +366,16 @@
     'Ukupno: {0} {1}': 'Total: {0} {1}', ' (iznos gore: {0})': ' (amount above: {0})', '≈ {0} · ': '≈ {0} · ',
     'Sačuvano {0}': 'Saved {0}', 'Prebaci višak ({0}) u cilj': 'Move surplus ({0}) to a goal', 'Predlog na osnovu proseka: {0}': 'Suggestion: {0}',
     'Uplata u cilj: {0}': 'Goal contribution: {0}', 'Pokreni automatski ': 'Start automatically',
+    // ---- v1.19: macOS ----
+    'Preuzmi {0}': 'Download {0}',
+    'Instalirana je {0}, a dostupna je {1} — klikni da preuzmeš.': '{0} is installed and {1} is available — click to download.',
+    'Dostupna je verzija {0}. Klikni „Preuzmi“, otvori preuzeti .dmg i prevuci aplikaciju u Applications (preko stare) — podaci ostaju.': 'Version {0} is available. Click “Download”, open the downloaded .dmg and drag the app into Applications (over the old one) — your data stays.',
+    'Imaš najnoviju verziju. Aplikacija sama proverava nove verzije i javi kad stigne nova.': 'You have the latest version. The app checks for new versions and tells you when one arrives.',
+    'Nove verzije se proveravaju automatski; kad stigne nova, aplikacija ponudi dugme „Preuzmi“.': 'New versions are checked automatically; when one arrives, the app offers a “Download” button.',
+    'Preuzmi': 'Download',
+    'Dostupna je verzija {0}': 'Version {0} is available',
+    'Pritisni prečicu bilo gde na Mac-u da otvoriš mali prozor za brzi unos rashoda.': 'Press the shortcut anywhere on the Mac to open the small quick-entry window.',
+    'Pokreni automatski pri prijavi na Mac (tiho, u pozadini)': 'Open automatically at Mac login (quietly, in the background)',
     // ---- v1.18: IPS QR ----
     'Plati QR kodom': 'Pay by QR code',
     'Dodaj podatke za plaćanje (QR)': 'Add payment details (QR)',

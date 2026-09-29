@@ -7,7 +7,10 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
 // Azuriranja postoje samo u instaliranoj verziji (portable i razvojno pokretanje ih nemaju).
-const autoUpdater = app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE ? require('electron-updater').autoUpdater : null;
+const IS_MAC = process.platform === 'darwin';
+// Na Mac-u aplikacija nije potpisana (nema Apple developer naloga), pa samo-azuriranje ne radi —
+// umesto toga se proverava GitHub i nudi dugme "Preuzmi" (checkMacUpdate).
+const autoUpdater = app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE && !IS_MAC ? require('electron-updater').autoUpdater : null;
 
 // Stabilan "origin" (app://budzet) da localStorage / IndexedDB ostanu isti bez obzira gde je
 // aplikacija instalirana ili odakle se portable .exe pokrece.
@@ -33,7 +36,9 @@ const EN = {
   'Odštampaj izveštaj…': 'Print report…', 'Sačuvaj izveštaj kao PDF…': 'Save report as PDF…', 'Napravi rezervnu kopiju sada': 'Back up now',
   'Otvori folder sa rezervnim kopijama': 'Open backups folder', 'Prikaži fajl sa podacima': 'Show data file', 'Zatvori prozor': 'Close window', 'Izađi': 'Quit',
   'Prikaz': 'View', 'Pretraži stavke': 'Search items', 'Promeni temu (svetla/tamna)': 'Toggle theme (light/dark)', 'Skupi / proširi bočni meni': 'Collapse / expand sidebar',
-  'Izaberi folder za dodatnu kopiju (npr. USB disk)': 'Choose a folder for the extra backup (e.g. a USB drive)', 'Uvećaj': 'Zoom in', 'Umanji': 'Zoom out', 'Stvarna veličina': 'Actual size', 'Ceo ekran': 'Full screen', 'Alatke za programere': 'Developer tools',
+  'Izaberi folder za dodatnu kopiju (npr. USB disk)': 'Choose a folder for the extra backup (e.g. a USB drive)',
+  'Podsetnici za plaćanja i dalje stižu. Aplikacija je u Dock-u i u traci menija gore desno.': 'Payment reminders still arrive. The app stays in the Dock and in the menu bar (top right).',
+  'Pokreni pri prijavi': 'Open at login', 'Uvećaj': 'Zoom in', 'Umanji': 'Zoom out', 'Stvarna veličina': 'Actual size', 'Ceo ekran': 'Full screen', 'Alatke za programere': 'Developer tools',
   'Pomoć': 'Help', 'Prečice na tastaturi': 'Keyboard shortcuts', 'Proveri ažuriranja…': 'Check for updates…', 'O aplikaciji': 'About',
   'Verzija {0}\nElectron {1}\n\nPodaci: {2}\nRezervne kopije: {3}': 'Version {0}\nElectron {1}\n\nData: {2}\nBackups: {3}',
   'Otvori Knjigu budžeta': 'Open Budget Book', 'Brzi unos rashoda': 'Quick expense', 'Brzi unos prihoda': 'Quick income', 'Pokreni sa Windows-om': 'Start with Windows',
@@ -345,7 +350,36 @@ function postponeUpdate() {
   clearTimeout(updateTimer);
   setUpdate({ installAt: null, postponed: true });
 }
+// ---------- Mac: provera nove verzije bez samo-azuriranja ----------
+const GH_REPO = (() => { try { const p = require('./package.json').build.publish[0]; return `${p.owner}/${p.repo}`; } catch { return 'Vanja2424/knjiga-budzeta'; } })();
+const verNum = v => String(v || '').replace(/^v/, '').split(/[.-]/).slice(0, 3).map(n => parseInt(n, 10) || 0);
+const isNewer = (a, b) => { const x = verNum(a), y = verNum(b); for (let i = 0; i < 3; i++) { if (x[i] !== y[i]) return x[i] > y[i]; } return false; };
+async function checkMacUpdate(manual) {
+  lastUpdateCheck = Date.now();
+  setUpdate({ status: 'checking', error: null });
+  try {
+    const res = await net.fetch(`https://api.github.com/repos/${GH_REPO}/releases/latest`, { headers: { Accept: 'application/vnd.github+json', 'User-Agent': 'Knjiga-budzeta' } });
+    if (!res.ok) throw new Error('GitHub ' + res.status);
+    const rel = await res.json();
+    const version = String(rel.tag_name || '').replace(/^v/, '');
+    // Nova verzija se nudi tek kad je Mac fajl za ovaj procesor stvarno postavljen (pravi se posle Windows verzije)
+    const dmg = (rel.assets || []).find(a => /\.dmg$/i.test(a.name) && a.name.includes(process.arch === 'arm64' ? 'arm64' : 'x64'));
+    if (isNewer(version, app.getVersion()) && dmg) {
+      setUpdate({ status: 'manual', version, url: rel.html_url });
+      if (manual) command('navigate', 'podesavanja-azuriranja');
+    } else {
+      setUpdate({ status: 'current' });
+      if (manual) dialog.showMessageBox(mainWindow, { type: 'info', title: T('Ažuriranja'), message: T('Imaš najnoviju verziju ({0}).', app.getVersion()) });
+    }
+  } catch (err) {
+    setUpdate({ status: 'error', error: String(err && err.message || err).split('\n')[0] });
+    if (manual) dialog.showMessageBox(mainWindow, { type: 'warning', title: T('Ažuriranja'), message: T('Provera ažuriranja nije uspela.'), detail: updateState.error });
+  }
+}
+ipcMain.on('update:open-download', () => { if (updateState.url) shell.openExternal(updateState.url); });
+
 function checkForUpdates(manual) {
+  if (IS_MAC && app.isPackaged) { checkMacUpdate(manual); return; }
   if (!autoUpdater) {
     if (manual) dialog.showMessageBox(mainWindow, { type: 'info', title: T('Ažuriranja'), message: T('Ažuriranja rade samo u instaliranoj verziji aplikacije.') });
     return;
@@ -367,6 +401,11 @@ function releaseNotesText(info) {
     .replace(/\n{3,}/g, '\n\n').trim();
 }
 function setupUpdater() {
+  if (IS_MAC && app.isPackaged) {
+    setTimeout(() => checkMacUpdate(false), 15000);
+    setInterval(() => checkMacUpdate(false), 6 * 60 * 60 * 1000);
+    return;
+  }
   if (!autoUpdater) return;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
@@ -509,7 +548,7 @@ ipcMain.handle('pdf:write', async (_e, filePath) => {
 // ---------- Prozor, tema, bedz ----------
 let updatedFrom = null; // verzija pre upravo instaliranog azuriranja (za poruku "Azurirano na …")
 ipcMain.on('desktop:info', (e) => {
-  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom, lang: LANG };
+  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom, lang: LANG, platform: process.platform };
 });
 ipcMain.on('desktop:theme', (_e, theme, explicit) => {
   appTheme = theme === 'dark' ? 'dark' : 'light';
@@ -518,6 +557,7 @@ ipcMain.on('desktop:theme', (_e, theme, explicit) => {
   applyTitlebarColors();
 });
 ipcMain.on('desktop:badge', (_e, count, dataUrl) => {
+  if (IS_MAC) { try { app.dock.setBadge(count > 0 ? String(count) : ''); } catch { /* ignorisano */ } return; }
   if (!mainWindow) return;
   if (count > 0 && dataUrl) {
     mainWindow.setOverlayIcon(nativeImage.createFromDataURL(dataUrl), T('{0} kasnih plaćanja', count));
@@ -556,6 +596,7 @@ ipcMain.handle('settings:set', (_e, key, value) => {
 function applyTitlebarColors() {
   if (!mainWindow) return;
   const c = THEME_COLORS[appTheme];
+  if (IS_MAC) return;
   try {
     mainWindow.setTitleBarOverlay({ color: SUPPORTS_MICA ? '#00000000' : c.bg, symbolColor: c.symbol, height: TITLEBAR_HEIGHT });
   } catch { /* ignorisano */ }
@@ -651,7 +692,8 @@ function getAutostart() {
   return app.getLoginItemSettings({ path: EXE_PATH, args: ['--hidden'] }).openAtLogin;
 }
 function setAutostart(on) {
-  app.setLoginItemSettings({ openAtLogin: on, path: EXE_PATH, args: ['--hidden'] });
+  if (IS_MAC) app.setLoginItemSettings({ openAtLogin: on });
+  else app.setLoginItemSettings({ openAtLogin: on, path: EXE_PATH, args: ['--hidden'] });
 }
 
 // ---------- Meni i precice ----------
@@ -701,6 +743,12 @@ function menuTemplate() {
   ];
 }
 function buildAppMenu() { return Menu.buildFromTemplate(menuTemplate()); }
+function buildMacMenu() {
+  const [file, view, help] = menuTemplate();
+  // "Izadji" je vec u meniju aplikacije (⌘Q); ostalo isto kao na Windows-u
+  file.submenu = file.submenu.filter(i => i.accelerator !== 'CmdOrCtrl+Q');
+  return Menu.buildFromTemplate([{ role: 'appMenu' }, file, { role: 'editMenu' }, view, { role: 'windowMenu' }, help]);
+}
 function zoom(step) {
   if (!mainWindow) return;
   const wc = mainWindow.webContents;
@@ -757,13 +805,13 @@ function rebuildTrayMenu() {
     { label: T('Brzi unos rashoda'), click: () => openQuickAdd('expense') },
     { label: T('Brzi unos prihoda'), click: () => openQuickAdd('income') },
     { type: 'separator' },
-    { label: T('Pokreni sa Windows-om'), type: 'checkbox', checked: getAutostart(), click: (i) => { setAutostart(i.checked); sendToMain('desktop:settings-changed'); } },
+    { label: IS_MAC ? T('Pokreni pri prijavi') : T('Pokreni sa Windows-om'), type: 'checkbox', checked: getAutostart(), click: (i) => { setAutostart(i.checked); sendToMain('desktop:settings-changed'); } },
     { type: 'separator' },
     { label: T('Izađi'), click: quitApp }
   ]));
 }
 function createTray() {
-  tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize({ width: 32, height: 32 }));
+  tray = new Tray(nativeImage.createFromPath(ICON_PATH).resize(IS_MAC ? { width: 18, height: 18 } : { width: 32, height: 32 }));
   tray.setToolTip(T('Knjiga budžeta'));
   tray.on('click', showMain);
   rebuildTrayMenu();
@@ -802,7 +850,8 @@ function createWindow(startHidden) {
     backgroundColor: SUPPORTS_MICA ? '#00000000' : c.bg,
     backgroundMaterial: SUPPORTS_MICA ? 'mica' : undefined,
     titleBarStyle: 'hidden',
-    titleBarOverlay: { color: SUPPORTS_MICA ? '#00000000' : c.bg, symbolColor: c.symbol, height: TITLEBAR_HEIGHT },
+    // Mac: semafor (zatvori/umanji/uvecaj) levo, vertikalno u sredini trake od 40 px; Windows: dugmad desno (overlay)
+    ...(IS_MAC ? { trafficLightPosition: { x: 14, y: 13 } } : { titleBarOverlay: { color: SUPPORTS_MICA ? '#00000000' : c.bg, symbolColor: c.symbol, height: TITLEBAR_HEIGHT } }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -810,10 +859,11 @@ function createWindow(startHidden) {
       sandbox: true
     }
   });
-  Menu.setApplicationMenu(null);
+  // Mac mora da ima meni aplikacije (bez Edit menija ne rade ⌘C/⌘V/⌘Z u poljima); precice idu kroz njega.
+  if (IS_MAC) Menu.setApplicationMenu(buildMacMenu()); else Menu.setApplicationMenu(null);
   if (settings.windowState && settings.windowState.maximized) mainWindow.maximize();
 
-  mainWindow.webContents.on('before-input-event', handleShortcut);
+  if (!IS_MAC) mainWindow.webContents.on('before-input-event', handleShortcut);
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) shell.openExternal(url);
     return { action: 'deny' };
@@ -840,7 +890,7 @@ function createWindow(startHidden) {
     if (!settings.trayHintShown && Notification.isSupported()) {
       new Notification({
         title: T('Knjiga budžeta radi u pozadini'),
-        body: T('Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).'),
+        body: IS_MAC ? T('Podsetnici za plaćanja i dalje stižu. Aplikacija je u Dock-u i u traci menija gore desno.') : T('Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).'),
         icon: ICON_PATH
       }).show();
       settings.trayHintShown = true;
@@ -917,7 +967,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function init() {
-  app.setAppUserModelId('com.vanja.knjigabudzeta'); // potrebno za Windows notifikacije
+  if (!IS_MAC) app.setAppUserModelId('com.vanja.knjigabudzeta'); // potrebno za Windows notifikacije
   loadSettings();
 
   protocol.handle('app', async (req) => {
@@ -941,7 +991,7 @@ function init() {
   session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => callback(allowed.has(permission)));
   session.defaultSession.setPermissionCheckHandler((_wc, permission) => allowed.has(permission));
 
-  app.setUserTasks([
+  if (!IS_MAC) app.setUserTasks([
     { program: EXE_PATH, arguments: '--quick-add=expense', iconPath: EXE_PATH, iconIndex: 0, title: T('Novi rashod'), description: T('Brzi unos rashoda') },
     { program: EXE_PATH, arguments: '--quick-add=income', iconPath: EXE_PATH, iconIndex: 0, title: T('Novi prihod'), description: T('Brzi unos prihoda') }
   ]);
@@ -957,7 +1007,9 @@ function init() {
   // try/catch je samo dodatna zastita ako platforma/verzija Electron-a ne podrzi dogadjaj.
   try { powerMonitor.on('shutdown', () => { systemShuttingDown = true; }); } catch (e) { /* ignorisano */ }
 
-  const startHidden = process.argv.includes('--hidden') || restartHidden;
+  // Mac: pokretanje pri prijavi nema argumente — prepoznaje se preko wasOpenedAtLogin
+  const openedAtLogin = IS_MAC && (() => { try { return app.getLoginItemSettings().wasOpenedAtLogin; } catch { return false; } })();
+  const startHidden = process.argv.includes('--hidden') || restartHidden || openedAtLogin;
   createWindow(startHidden || process.argv.some(a => a.startsWith('--quick-add')));
   createTray();
   registerQuickAddShortcut();
@@ -1025,3 +1077,5 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
   });
 }
 app.on('window-all-closed', () => { /* ostaje u tray-u */ });
+// Mac: klik na ikonicu u Dock-u vraca prozor
+app.on('activate', () => showMain());

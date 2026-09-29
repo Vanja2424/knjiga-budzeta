@@ -12,7 +12,8 @@
     "smoke": "npm run copy-web && node test/smoke.js",
     "dist": "npm test && npm run copy-web && electron-builder --win --publish never",
     "release": "npm run dist && node scripts/release.js",
-    "push-source": "node scripts/push-source.js"
+    "push-source": "node scripts/push-source.js",
+    "dist:mac": "npm test && npm run copy-web && electron-builder --mac --publish never"
   },
   "devDependencies": {
     "electron": "^44.4.5",
@@ -65,6 +66,29 @@
       "shortcutName": "Knjiga budžeta",
       "include": "build/installer.nsh",
       "artifactName": "Knjiga-budzeta-Setup-${version}.${ext}"
+    },
+    "afterPack": "scripts/after-pack.js",
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.finance",
+      "identity": null,
+      "hardenedRuntime": false,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSHumanReadableCopyright": "Knjiga budžeta"
+      }
+    },
+    "dmg": {
+      "artifactName": "Knjiga-budzeta-${version}-mac-${arch}.${ext}",
+      "title": "Knjiga budzeta ${version}"
     }
   },
   "dependencies": {

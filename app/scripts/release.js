@@ -37,11 +37,19 @@ async function gh(url, opts = {}) {
   const notesFile = path.join(__dirname, '..', 'release-notes', `${version}.md`);
   const body = fs.existsSync(notesFile) ? fs.readFileSync(notesFile, 'utf8') : '';
 
+  // Tag izdanja mora da pokazuje na kod iz koga je napravljeno (Mac verziju GitHub pravi iz tog taga),
+  // pa izvorni kod mora prvo da bude na GitHub-u: npm run push-source pre npm run release.
+  const { execFileSync } = require('child_process');
+  const root = path.join(__dirname, '..', '..');
+  const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+  const onRemote = execFileSync('git', ['branch', '-r', '--contains', head], { cwd: root, encoding: 'utf8' });
+  if (!/origin\/main/.test(onRemote)) throw new Error('Izvorni kod ove verzije jos nije na GitHub-u — prvo pokreni: npm run push-source -- "Izvorni kod ' + tag + '"');
+
   let release = await gh(`${api}/releases/tags/${tag}`);
   if (!release) {
     release = await gh(`${api}/releases`, {
       method: 'POST',
-      body: JSON.stringify({ tag_name: tag, target_commitish: 'main', name: version, body, draft: false, prerelease: false }),
+      body: JSON.stringify({ tag_name: tag, target_commitish: head, name: version, body, draft: false, prerelease: false }),
     });
     console.log(`Kreiran release ${tag}`);
   } else if (body && release.body !== body) {

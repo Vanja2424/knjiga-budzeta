@@ -1,0 +1,70 @@
+# Mac verzija Knjige budzeta (nepotpisana, ad-hoc). Pravi se na GitHub-ovom Mac-u kad se objavi novo
+# izdanje (npm run release na Windows-u) i .dmg fajlovi se zakace na to isto izdanje.
+# Rucno: Actions → macOS → Run workflow (sa tagom izdanja, npr. v1.19.0).
+name: macOS
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag izdanja kome se dodaju .dmg fajlovi (npr. v1.19.0); prazno = samo proba, bez objave'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  mac:
+    runs-on: macos-14
+    timeout-minutes: 40
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Zavisnosti
+        working-directory: app
+        run: npm ci
+
+      - name: Testovi jezgra
+        working-directory: app
+        run: npm test
+
+      - name: Smoke (prava aplikacija na Mac-u, bez podataka)
+        working-directory: app
+        run: npm run copy-web && node test/smoke.js
+
+      - name: Pakovanje (.dmg za Apple Silicon i Intel)
+        working-directory: app
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: npx electron-builder --mac --publish never
+
+      - name: Provera paketa
+        working-directory: app
+        run: |
+          ls -la dist/*.dmg
+          for app in dist/mac*/*.app; do codesign --verify --deep --strict "$app" && echo "OK $app"; done
+
+      - name: Postavi na izdanje
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" app/dist/*.dmg --clobber --repo "$GITHUB_REPOSITORY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: knjiga-budzeta-mac
+          path: app/dist/*.dmg
+          retention-days: 14

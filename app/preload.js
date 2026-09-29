@@ -52,6 +52,7 @@ contextBridge.exposeInMainWorld('desktop', {
     install: () => ipcRenderer.send('update:install'),
     postpone: () => ipcRenderer.send('update:postpone'),
     notes: () => ipcRenderer.invoke('update:notes'),
+    openDownload: () => ipcRenderer.send('update:open-download'),
     onChange: (cb) => ipcRenderer.on('desktop:update', (_e, s) => cb(s))
   },
 

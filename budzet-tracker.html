@@ -10,6 +10,7 @@
   if(window.desktop){
     document.documentElement.classList.add('desktop');
     if(window.desktop.info && window.desktop.info.mica) document.documentElement.classList.add('mica');
+    if(window.desktop.info && window.desktop.info.platform === 'darwin') document.documentElement.classList.add('mac');
   }
 
   // Desktop: svi podaci zive u jednom fajlu (Documents\Knjiga budzeta\podaci.json) umesto u
@@ -761,6 +762,7 @@
     font-size: 12.5px; color: var(--ink-soft);
   }
   html.desktop:not(.mica) .titlebar{ background: var(--paper); }
+  html.desktop.mac .titlebar{ width: 100%; padding-left: 78px; }
   .tb-btn{
     -webkit-app-region: no-drag; width: 38px; height: 30px; border: none; background: none; border-radius: 6px;
     color: var(--ink-soft); display: grid; place-items: center; cursor: pointer; transition: background-color .15s, color .15s;
@@ -2537,7 +2539,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       <div id="desktopSettings" style="display:none;">
         <div class="settings-group">
           <h3>Desktop aplikacija</h3>
-          <label class="paid-checkbox-label" style="margin-top:0 !important;"><input type="checkbox" id="deskAutostart"> Pokreni automatski sa Windows-om (tiho, u pozadini)</label>
+          <label class="paid-checkbox-label" style="margin-top:0 !important;"><input type="checkbox" id="deskAutostart"> <span id="deskAutostartLabel">Pokreni automatski sa Windows-om (tiho, u pozadini)</span></label>
           <label class="paid-checkbox-label"><input type="checkbox" id="deskCloseToTray"> Zatvaranje prozora ostavlja aplikaciju u system tray-u</label>
           <div class="import-status">Dok aplikacija radi u pozadini, podsetnici za kasna plaćanja i dugove stižu i kad je prozor zatvoren, a ikonica na taskbaru pokazuje broj kasnih plaćanja.</div>
           <div class="import-status" style="margin-top:1.2em;">Prečica za brzi unos (radi iz bilo kog programa):</div>
@@ -3295,6 +3297,26 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     openDialog(t('Prečice na tastaturi'), `<div class="shortcut-grid">${grid.innerHTML}</div>`, { html: true, alertOnly: true, okText: t('Zatvori') });
   }
   window.__openShortcuts = openShortcutsDialog;
+  // Mac: Ctrl/Alt/Shift se prikazuju kao ⌘ ⌥ ⇧ (u spisku precica i u opisima dugmadi, npr. "Novi rashod (⌘N)")
+  const isMacDesktop = document.documentElement.classList.contains('mac');
+  function macKeyLabels(root){
+    if(!isMacDesktop) return;
+    (root || document).querySelectorAll('kbd').forEach(k=>{
+      const map = { Ctrl: '⌘', Alt: '⌥', Shift: '⇧' };
+      if(map[k.textContent]) k.textContent = map[k.textContent];
+    });
+    (root || document).querySelectorAll('[title*="Ctrl+"], [title*="Alt+"]').forEach(el=>{
+      el.title = el.title.replace(/Ctrl\+Shift\+/g, '⇧⌘').replace(/Ctrl\+Alt\+/g, '⌥⌘').replace(/Ctrl\+/g, '⌘').replace(/Alt\+/g, '⌥');
+    });
+  }
+  if(isMacDesktop){
+    macKeyLabels();
+    let macQueued = false;
+    new MutationObserver(()=>{ if(macQueued) return; macQueued = true; requestAnimationFrame(()=>{ macQueued = false; macKeyLabels(); }); })
+      .observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['title'] });
+    const al = document.getElementById('deskAutostartLabel');
+    if(al) al.textContent = t('Pokreni automatski pri prijavi na Mac (tiho, u pozadini)');
+  }
   // Dugmad samo sa ikonicom/znakom dobijaju aria-label iz title (citaci ekrana inace procitaju "✕").
   function labelIconButtons(root){
     (root || document).querySelectorAll('button[title]:not([aria-label])').forEach(b=>{
@@ -9241,12 +9263,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     // Podesavanja desktop aplikacije
     byId('desktopSettings').style.display = 'block';
     const shortcutLabel = (acc)=> acc
-      ? acc.replace('CommandOrControl', 'Ctrl').replace('Super', 'Win').replace('Space', 'Razmak').split('+').map(k=>`<kbd>${k}</kbd>`).join(' + ')
+      ? acc.replace('CommandOrControl', isMacDesktop ? '⌘' : 'Ctrl').replace('Super', 'Win').replace('Space', 'Razmak').replace(/^Alt|(?<=\+)Alt/g, isMacDesktop ? '⌥' : 'Alt').replace(/Shift/g, isMacDesktop ? '⇧' : 'Shift').split('+').map(k=>`<kbd>${k}</kbd>`).join(' + ')
       : '<span>isključeno</span>';
     function renderShortcutStatus(acc, ok){
       byId('deskShortcutKeys').innerHTML = shortcutLabel(acc);
       byId('deskShortcutStatus').textContent = !acc ? 'Brzi unos je i dalje dostupan iz tray menija i sa desnim klikom na ikonicu na taskbaru.'
-        : ok ? 'Pritisni prečicu bilo gde u Windows-u da otvoriš mali prozor za brzi unos rashoda.'
+        : ok ? (isMacDesktop ? 'Pritisni prečicu bilo gde na Mac-u da otvoriš mali prozor za brzi unos rashoda.' : 'Pritisni prečicu bilo gde u Windows-u da otvoriš mali prozor za brzi unos rashoda.')
         : 'Ovu prečicu već koristi neki drugi program — izaberi drugu.';
     }
     async function refreshDesktopSettings(){
@@ -9279,12 +9301,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(s.status === 'downloading' && s.version){ el.classList.add('pending'); label = t('v{0} → {1} (preuzima se)', s.current, s.version); title = t('Nova verzija {0} se preuzima.', s.version); }
       if(s.status === 'ready' && s.version){ el.classList.add('ready'); label = t('Ažuriraj na {0}', s.version); title = t('Instalirana je {0}, a dostupna je {1} — klikni da ažuriraš.', s.current, s.version); }
       if(s.status === 'installing'){ el.classList.add('ready'); label = t('Instaliram {0}…', s.version || ''); }
+      if(s.status === 'manual' && s.version){ el.classList.add('ready'); label = t('Preuzmi {0}', s.version); title = t('Instalirana je {0}, a dostupna je {1} — klikni da preuzmeš.', s.current, s.version); }
       el.textContent = label; el.title = title; el.setAttribute('aria-label', title);
-      icon.classList.toggle('update-dot', s.status === 'downloading' || s.status === 'ready' || s.status === 'installing');
-      icon.title = (s.status === 'ready') ? title : '';
+      icon.classList.toggle('update-dot', s.status === 'downloading' || s.status === 'ready' || s.status === 'installing' || s.status === 'manual');
+      icon.title = (s.status === 'ready' || s.status === 'manual') ? title : '';
     }
     byId('sbVersion').addEventListener('click', ()=>{
       if(updateState && updateState.status === 'ready'){ desktop.update.install(); return; }
+      if(updateState && updateState.status === 'manual'){ desktop.update.openDownload(); return; }
       showScreen('podesavanja');
       setTimeout(()=> byId('desktopUpdates').scrollIntoView({behavior:'smooth', block:'start'}), 80);
       if(!updateState || !['downloading','installing'].includes(updateState.status)) desktop.update.check();
@@ -9306,13 +9330,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           ? t('Verzija {0} je spremna — instaliraće se čim skloniš prozor (tray ili minimizuj) ili zatvoriš aplikaciju.', s.version)
           : t('Verzija {0} je spremna i instaliraće se automatski za nekoliko trenutaka.', s.version),
         installing: t('Instaliram verziju {0}…', s.version),
+        manual: t('Dostupna je verzija {0}. Klikni „Preuzmi“, otvori preuzeti .dmg i prevuci aplikaciju u Applications (preko stare) — podaci ostaju.', s.version),
         error: 'Provera nije uspela (možda nema interneta) — pokušaću ponovo kasnije. ' + (s.error || '')
       }[s.status] || '';
-      byId('deskUpdateStatus').textContent = txt;
-      byId('deskUpdateInstallBtn').style.display = s.status === 'ready' ? '' : 'none';
-      pill.style.display = (s.status === 'ready' || s.status === 'installing') ? 'flex' : 'none';
+      byId('deskUpdateStatus').textContent = isMacDesktop && ['idle', 'current'].includes(s.status)
+        ? (s.status === 'current' ? t('Imaš najnoviju verziju. Aplikacija sama proverava nove verzije i javi kad stigne nova.') : t('Nove verzije se proveravaju automatski; kad stigne nova, aplikacija ponudi dugme „Preuzmi“.'))
+        : txt;
+      const manual = s.status === 'manual';
+      byId('deskUpdateInstallBtn').style.display = (s.status === 'ready' || manual) ? '' : 'none';
+      byId('deskUpdateInstallBtn').textContent = manual ? t('Preuzmi') : t('Restartuj i ažuriraj');
+      pill.style.display = (s.status === 'ready' || s.status === 'installing' || manual) ? 'flex' : 'none';
       byId('tbUpdateLater').style.display = (s.status === 'ready' && s.installAt) ? '' : 'none';
-      byId('tbUpdateNow').style.display = s.status === 'ready' ? '' : 'none';
+      byId('tbUpdateNow').style.display = (s.status === 'ready' || manual) ? '' : 'none';
+      byId('tbUpdateNow').textContent = manual ? t('Preuzmi') : t('Ažuriraj sada');
       clearInterval(countdownTimer);
       const tick = ()=>{
         const st = updateState;
@@ -9321,7 +9351,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         else if(st.installAt){
           const secs = Math.max(0, Math.ceil((st.installAt - Date.now()) / 1000));
           label = t('Verzija {0} se instalira za {1} s', st.version, secs);
-        } else if(st.saveFailed) label = t('Ažuriranje odloženo — podaci nisu sačuvani');
+        } else if(st.status === 'manual') label = t('Dostupna je verzija {0}', st.version);
+        else if(st.saveFailed) label = t('Ažuriranje odloženo — podaci nisu sačuvani');
         else label = t('Verzija {0} je spremna', st.version);
         byId('tbUpdateText').textContent = label;
       };
@@ -9332,8 +9363,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     desktop.update.onChange(renderUpdate);
     desktop.update.get().then(renderUpdate);
     byId('deskUpdateCheckBtn').addEventListener('click', ()=> desktop.update.check());
-    byId('deskUpdateInstallBtn').addEventListener('click', ()=> desktop.update.install());
-    byId('tbUpdateNow').addEventListener('click', ()=> desktop.update.install());
+    const installOrDownload = ()=> (updateState && updateState.status === 'manual') ? desktop.update.openDownload() : desktop.update.install();
+    byId('deskUpdateInstallBtn').addEventListener('click', installOrDownload);
+    byId('tbUpdateNow').addEventListener('click', installOrDownload);
     byId('tbUpdateLater').addEventListener('click', ()=> desktop.update.postpone());
     // Posle upravo instaliranog azuriranja: kratka poruka + beleske o izdanju u Podesavanjima
     desktop.update.notes().then(notes=>{
