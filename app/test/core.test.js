@@ -588,3 +588,41 @@ test('checkDataFileShape: poznati kljucevi ispravnog tipa, JSON string ili vredn
   assert.equal(C.checkDataFileShape(null).ok, false);
   assert.equal(C.checkDataFileShape([]).ok, false);
 });
+
+// ---------- Placanje i podsetnici ----------
+test('isDueInMonth: until zavrsava ponavljajucu stavku', () => {
+  assert.equal(C.isDueInMonth({ frequency: 'monthly', until: '2026-10' }, '2026-10'), true);
+  assert.equal(C.isDueInMonth({ frequency: 'monthly', until: '2026-10' }, '2026-11'), false);
+  assert.equal(C.isDueInMonth({ frequency: 'monthly' }, '2030-01'), true);
+  assert.equal(C.isDueInMonth({ frequency: 'yearly', anchorMonth: 3, until: '2026-12' }, '2027-03'), false);
+});
+
+test('overdueRecurring: samo rashodi, dan < danas, nije placeno ni preskoceno', () => {
+  const recurring = [
+    { id: 'k', type: 'expense', day: 1, frequency: 'monthly' },
+    { id: 'd', type: 'expense', day: 29, frequency: 'monthly' },   // dospeva danas (29.) -> nije kasno
+    { id: 'p', type: 'expense', day: 5, frequency: 'monthly' },    // placeno
+    { id: 's', type: 'expense', day: 5, frequency: 'monthly' },    // preskoceno
+    { id: 'i', type: 'income', day: 1, frequency: 'monthly' },     // prihod
+    { id: 'q', type: 'expense', day: 1, frequency: 'quarterly', anchorMonth: 1 }, // septembar nije kvartal od januara
+    { id: 'u', type: 'expense', day: 1, frequency: 'monthly', until: '2026-08' },
+    { id: 'x', day: 2, frequency: 'monthly' }                      // bez type -> rashod
+  ];
+  const applied = { '2026-09': ['p'] }, skipped = { '2026-09': ['s'] };
+  assert.deepEqual(C.overdueRecurring(recurring, applied, skipped, '2026-09', 29).map(r => r.id), ['k', 'x']);
+  assert.deepEqual(C.overdueRecurring(recurring, applied, skipped, '2026-09', 1), []);
+  assert.deepEqual(C.overdueRecurring([], applied, skipped, '2026-09', 29), []);
+});
+
+test('debtPaid: rucne uplate + placene rate tog duga', () => {
+  const d = { id: 'd1', amount: 10000, paidAmount: 1500 };
+  const entries = [
+    { id: 'rec-r1-2026-08', type: 'expense', amount: 2000, debtId: 'd1' },
+    { id: 'rec-r1-2026-09', type: 'expense', amount: 2000, debtId: 'd1', paid: false }, // neplaceno
+    { id: 'z', type: 'expense', amount: 700, debtId: 'd2' },                              // drugi dug
+    { id: 'w', type: 'expense', amount: 900 }
+  ];
+  assert.equal(C.debtPaid(d, entries), 3500);
+  assert.equal(C.debtPaid({ id: 'd3', amount: 5 }, entries), 0);
+  assert.equal(C.debtPaid({ id: 'd1', amount: 5, paidAmount: 0.1 }, [{ type: 'expense', amount: 0.2, debtId: 'd1' }]), 0.3);
+});

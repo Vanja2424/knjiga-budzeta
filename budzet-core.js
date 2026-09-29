@@ -37,6 +37,7 @@
   function clampRecurringDay(day){ return Math.max(1, Math.min(31, parseInt(day, 10) || 1)); }
   // Mesecno je uvek "na redu"; kvartalno/godisnje prema anchorMonth (1-12).
   function isDueInMonth(r, mKey){
+    if(r.until && mKey > r.until) return false;
     if(!r.frequency || r.frequency === 'monthly') return true;
     const mo = parseInt(mKey.split('-')[1], 10);
     const anchor = r.anchorMonth || 1;
@@ -659,6 +660,17 @@
       && !(((s.optOut || {})[mKey]) || []).includes(r.id)
       && (dayLimit == null || effectiveDay(r.day, mKey) <= dayLimit));
   }
+  // Zakasneli rashodi iz ponavljajucih u mesecu: dospeli (dan < danas), nisu placeni ni preskoceni; prihodi ne.
+  function overdueRecurring(recurring, applied, skipped, mKey, today){
+    return (recurring || []).filter(r => r.type !== 'income' && isDueInMonth(r, mKey)
+      && !isRecurringPaid(applied, r, mKey) && !isRecurringSkipped(skipped, r, mKey)
+      && effectiveDay(r.day, mKey) < today);
+  }
+  // Otplaceno od duga: rucne uplate + placeni rashodi rata vezani za taj dug (debtId). Zaokruzeno na pare.
+  function debtPaid(d, entries){
+    const linked = (entries || []).reduce((s, e) => (e.type === 'expense' && e.paid !== false && e.debtId === d.id) ? s + e.amount : s, 0);
+    return round2((d.paidAmount || 0) + linked);
+  }
 
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
@@ -700,7 +712,7 @@
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
-    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue,
+    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     checkWorkbookShape, checkDataFileShape
   };
 });
