@@ -560,6 +560,21 @@
       $('undoBtn').click(); await sleep(80);
       check('rata: undo posle brisanja rate vraća ponavljajuću stavku', JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).some(r => r.id === inst.id));
       check('rata: undo ne duplicira već zadržani plaćeni rashod', entries().filter(e => e.id === keptEntryId).length === 1);
+      // Ručno unet iznos veći od ostatka se svodi na ostatak (ceo dug 3000 je opet otvoren)
+      window.__deleteEntriesById([keptEntryId]); await sleep(60);
+      window.__markRecurringPaid(inst.id, 999999); await sleep(60);
+      const capped = entries().find(e => e.id === keptEntryId);
+      check('rata: veći iznos od ostatka se svodi na ostatak', !!capped && capped.amount === 3000, capped && capped.amount);
+      window.__deleteEntriesById([keptEntryId]); await sleep(60);
+      // Promena smera duga odmah zaustavlja ratu, a vraćanje smera je nastavlja
+      go('dugovi'); await sleep(60);
+      const dirEl = document.querySelector(`[data-toggle-dir="${CSS.escape(rd.id)}"]`);
+      if (dirEl) {
+        dirEl.click(); await sleep(80);
+        check('rata: promena smera duga odmah zaustavlja ratu', !!JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until);
+        document.querySelector(`[data-toggle-dir="${CSS.escape(rd.id)}"]`).click(); await sleep(80);
+        check('rata: vraćanje smera nastavlja ratu', !JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until);
+      } else check('rata: dugme za smer duga postoji', false);
     }
 
     // Cuvanje u fajl

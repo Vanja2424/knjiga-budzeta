@@ -3811,7 +3811,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Oznaci ponavljajucu stavku placenom za mesec i napravi njen rashod (bez iscrtavanja/zvuka) — vraca id rashoda.
   // Rata (r.debtId) ciji je dug vec izmiren: ne pravi nista, vraca null — pozivaoci moraju da provere.
   function markRecurringPaid(r, mKey, amount){
-    if(r.debtId){ const d = debts.find(x=> x.id === r.debtId); if(d && debtRemaining(d) <= 0) return null; }
+    // Rata ne sme da predje ostatak duga: izmiren dug -> nista; rucno unet veci iznos -> ostatak
+    if(r.debtId){
+      const d = debts.find(x=> x.id === r.debtId);
+      if(d){ const rem = debtRemaining(d); if(rem <= 0) return null; if(typeof amount === 'number' && amount > rem) amount = rem; }
+    }
     if(!applied[mKey]) applied[mKey] = [];
     if(!applied[mKey].includes(r.id)) applied[mKey].push(r.id);
     if(skipped[mKey] && skipped[mKey].includes(r.id)){ skipped[mKey] = skipped[mKey].filter(id => id !== r.id); saveSkipped(); }
@@ -3917,12 +3921,13 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function removeAllRecurringOccurrences(r){
     const prefix = 'rec-' + r.id + '-';
     const cur = currentMonthKey();
-    const isKeptForDebt = e => r.debtId && e.id.slice(prefix.length) <= cur && applied[e.id.slice(prefix.length)] && applied[e.id.slice(prefix.length)].includes(r.id);
+    // Placene rate (i unapred placene) su otplata duga — ostaju; brisu se samo neplacene
+    const isKeptForDebt = e => r.debtId && applied[e.id.slice(prefix.length)] && applied[e.id.slice(prefix.length)].includes(r.id);
     const removedEntries = entries.filter(e => e.id.startsWith(prefix) && !isKeptForDebt(e));
     entries = entries.filter(e => !e.id.startsWith(prefix) || isKeptForDebt(e));
     const removedApplied = {};
     Object.keys(applied).forEach(mKey=>{
-      if(applied[mKey] && applied[mKey].includes(r.id) && !(r.debtId && mKey <= cur)){
+      if(applied[mKey] && applied[mKey].includes(r.id) && !r.debtId){
         removedApplied[mKey] = true;
         applied[mKey] = applied[mKey].filter(id=>id!==r.id);
       }
@@ -6658,7 +6663,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             ? t('Iznos (RSD) — {0} po današnjem kursu NBS', fmtOrig(r.origAmount, r.currency))
             : (hasDifferentHistory ? t('Iznos (RSD) — poslednji put: {0}', fmt(lastAmount)) : t('Iznos (RSD)'));
           openEditModal(t('Plati: {0}', r.desc), [
-            {key:'amount', label, type:'number', value: hasDifferentHistory ? lastAmount : nowAmount}
+            {key:'amount', label, type:'number', value: r.debtId ? suggestedPayAmount(r) : (hasDifferentHistory ? lastAmount : nowAmount)}
           ], (vals)=>{
             if(isNaN(vals.amount) || vals.amount <= 0) return;
             togglePaid(r, true, vals.amount);
@@ -6948,7 +6953,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         const d = debts.find(x=>x.id === el.dataset.toggleDir);
         if(!d) return;
         d.direction = d.direction === 'owed_to_me' ? 'i_owe' : 'owed_to_me';
-        saveDebts(); renderDebts(); renderSummary();
+        saveDebts(); renderAll(); // renderAll pokrece syncDebtInstallments (rata staje/nastavlja se odmah)
       });
     });
     wireEditButton(list, {
