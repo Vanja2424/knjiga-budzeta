@@ -1614,8 +1614,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .analiza-bought-title{ font:600 12px/1.3 var(--font); color:var(--ink-soft); margin:0.2em 0 0.35em; }
 .analiza-bought-item{ display:inline-block; margin:0 0.5em 0.35em 0; padding:2px 8px; border-radius:6px; background:var(--fill); font-size:12.5px; }
 .analiza-bar-col{ fill:var(--fill-strong); } .analiza-bar-sel{ fill:var(--ledger); }
-#screen-analiza .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0; text-align:left; }
-#screen-analiza .btn-link:hover{ text-decoration:underline; }
+#screen-analiza .btn-link, .goal-plan .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0; text-align:left; }
+#screen-analiza .btn-link:hover, .goal-plan .btn-link:hover{ text-decoration:underline; }
 @media (max-width: 600px){ .analiza-cat-head{ grid-template-columns:1fr auto; } .analiza-cat-head .analiza-bar{ grid-column:1 / -1; order:3; } }
 .analiza-split{ display:flex; height:12px; border-radius:6px; overflow:hidden; background:var(--fill); }
 .analiza-split .fixed, .swatch.fixed{ background:var(--ledger); }
@@ -1691,6 +1691,19 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .row-flash{ animation: rowFlash 1.6s ease-out; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce){ .row-flash{ animation: none; background: color-mix(in srgb, var(--accent) 18%, transparent); } }
 .debt-fx{ align-items:center; gap:0.6em; } .debt-fx .btn-secondary{ padding:3px 10px; font-size:12.5px; }
+/* ---- Mesec iza tebe, mesecna uplata u cilj (v1.15) ---- */
+.month-review-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:1em; }
+.month-review-close{ border:none; background:transparent; color:var(--ink-soft); font-size:15px; width:28px; height:28px; border-radius:50%; cursor:default; flex-shrink:0; }
+.month-review-close:hover{ background:var(--fill); }
+.month-review-stats{ display:grid; grid-template-columns:repeat(auto-fit, minmax(8.5em, 1fr)); gap:0.8em; margin:0.2em 0 0.8em; }
+.month-review-stat{ display:flex; flex-direction:column; gap:2px; font-size:12.5px; color:var(--ink-soft); }
+.month-review-stat b{ font-size:17px; color:var(--ink); font-variant-numeric:tabular-nums; }
+.month-review-stat b.pos{ color:var(--pos-text); } .month-review-stat b.neg{ color:var(--neg-text); }
+.month-review-list{ margin:0 0 0.9em; padding-left:1.1em; font-size:13.5px; line-height:1.6; }
+.month-review-warn{ color:var(--warn-text); font-weight:600; }
+.month-review-actions{ display:flex; flex-wrap:wrap; gap:0.6em; }
+.analiza-whatif-action{ margin-top:0.7em; }
+.goal-plan{ display:flex; justify-content:space-between; align-items:center; gap:0.8em; font-size:12.5px; color:var(--ink-soft); margin-top:0.5em; }
 </style>
 </head>
 <body>
@@ -1760,6 +1773,15 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
   <!-- PREGLED -->
   <div class="screen active" id="screen-pregled">
+
+    <div class="panel month-review" id="monthReviewPanel" style="display:none; margin-bottom:1.8em;">
+      <div class="month-review-head">
+        <h2 id="monthReviewTitle">Mesec iza tebe</h2>
+        <button class="icon-btn month-review-close" id="monthReviewClose" title="Zatvori" aria-label="Zatvori">✕</button>
+      </div>
+      <div id="monthReviewBody"></div>
+      <div class="month-review-actions" id="monthReviewActions"></div>
+    </div>
 
     <div class="panel" id="accountsOverviewPanel" style="display:none; margin-bottom:1.8em;">
       <h2>Stanje na računima</h2>
@@ -2236,6 +2258,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <label for="analizaWhatIf" id="analizaWhatIfLabel"></label>
         <input type="range" id="analizaWhatIf" min="0" max="50" step="5" value="10">
         <div id="analizaWhatIfResult"></div>
+        <div id="analizaWhatIfAction" class="analiza-whatif-action"></div>
       </div>
     </div>
   </div>
@@ -3351,7 +3374,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   let activeScreen = 'pregled';
   // Iscrtavanje po ekranu — posle izmene se odmah crta samo vidljivi ekran, ostali pri otvaranju.
   const SCREEN_RENDER = {
-    pregled: ()=>{ renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
+    pregled: ()=>{ renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
     prihodi: ()=> renderIncome(),
     rashodi: ()=> renderExpenses(),
     racuni: ()=> renderAccounts(),
@@ -4397,16 +4420,90 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     renderAll();
   });
   // Uplata u cilj: ako je cilj vezan za racun, napravi i prenos sa podrazumevanog racuna na taj racun
-  function contributeToGoal(g, amount, fromAccount){
-    g.current += amount;
+  // Vraca id napravljenog prenosa (ili null). opts: { date, auto } — za mesecnu uplatu iz plana.
+  function contributeToGoal(g, amount, fromAccount, opts){
+    opts = opts || {};
+    g.current = C.round2(g.current + amount);
+    let transferId = null;
     if(g.accountId && accountById(g.accountId)){
       const from = fromAccount || (accounts.find(a=> a.id !== g.accountId) || {}).id;
       if(from && from !== g.accountId){
-        entries.push({ id: newId(), type: 'transfer', desc: t('Uplata u cilj: {0}', g.name), amount, date: toISODateLocal(new Date()), fromAccount: from, toAccount: g.accountId, goalId: g.id });
+        transferId = newId();
+        const tr = { id: transferId, type: 'transfer', desc: t('Uplata u cilj: {0}', g.name), amount, date: opts.date || toISODateLocal(new Date()), fromAccount: from, toAccount: g.accountId, goalId: g.id };
+        if(opts.auto) tr.autoGoal = true;
+        entries.push(tr);
         saveEntries();
       }
     }
     saveGoals();
+    return transferId;
+  }
+
+  // ---- Mesecna uplata u cilj (g.monthly) ----
+  // Iz kopije/Excela: samo ispravan plan (iznos > 0, mesec YYYY-MM), inace undefined.
+  function cleanGoalPlan(p){
+    if(!p || typeof p !== 'object') return undefined;
+    const amount = Number(p.amount);
+    const since = String(p.since || '');
+    if(!(amount > 0) || !/^\d{4}-\d{2}$/.test(since)) return undefined;
+    const plan = { amount: C.round2(amount), day: C.clampRecurringDay(p.day), since };
+    if(/^\d{4}-\d{2}$/.test(String(p.last || ''))) plan.last = String(p.last);
+    return plan;
+  }
+  // Kao automatski upis: dospele uplate (i propustene dok je aplikacija bila zatvorena) se same uplate.
+  function processGoalPlans(){
+    const cur = currentMonthKey();
+    const today = new Date().getDate();
+    const done = [];
+    goals.forEach(g=>{
+      if(!g.monthly) return;
+      const due = C.goalPlanDue(g, cur, today);
+      if(!due.length) return;
+      const prevLast = g.monthly.last;
+      due.forEach(d=>{
+        const trId = contributeToGoal(g, d.amount, null, { date: d.mKey + '-' + String(d.day).padStart(2, '0'), auto: true });
+        done.push({ goalId: g.id, amount: d.amount, trId, prevLast });
+      });
+      g.monthly.last = due[due.length - 1].mKey;
+    });
+    if(!done.length) return false;
+    saveGoals();
+    const total = C.round2(done.reduce((s, d)=> s + d.amount, 0));
+    const show = ()=> showUndoToast(t('Automatski uplaćeno u ciljeve: {0} ({1})', done.length, fmt(total)), ()=>{
+      const trIds = new Set(done.map(d=> d.trId).filter(Boolean));
+      entries = entries.filter(e=> !trIds.has(e.id));
+      done.forEach(d=>{
+        const g = goals.find(x=> x.id === d.goalId);
+        if(!g) return;
+        g.current = Math.max(0, C.round2(g.current - d.amount));
+        if(g.monthly){ if(d.prevLast) g.monthly.last = d.prevLast; else delete g.monthly.last; }
+      });
+      saveEntries(); saveGoals(); renderAll();
+    });
+    if(document.visibilityState !== 'visible'){
+      document.addEventListener('visibilitychange', function onVis(){
+        if(document.visibilityState !== 'visible') return;
+        document.removeEventListener('visibilitychange', onVis);
+        show();
+      });
+    } else show();
+    return true;
+  }
+  window.__processGoalPlans = () => { const c = processGoalPlans(); if(c) renderAll(); return c; };
+  // Nov plan: od tekuceg meseca ako dan jos nije prosao, inace od sledeceg (ili uvek od sledeceg).
+  function setGoalPlan(g, amount, day, fromNextMonth){
+    const cur = currentMonthKey();
+    day = C.clampRecurringDay(day);
+    const since = (fromNextMonth || C.effectiveDay(day, cur) <= new Date().getDate()) ? C.addMonths(cur, 1) : cur;
+    g.monthly = { amount: C.round2(amount), day, since };
+  }
+  function goalPlanNextDate(g){
+    const p = g.monthly;
+    const cur = currentMonthKey();
+    let m = p.since > cur ? p.since : cur;
+    if(p.last && p.last >= m) m = C.addMonths(p.last, 1);
+    if(m === cur && C.effectiveDay(p.day, cur) <= new Date().getDate()) m = C.addMonths(cur, 1);
+    return parseLocalDate(C.dueDateFor({ day: p.day }, m));
   }
 
   // ---- Progres trake koje se "pune" pri renderu ----
@@ -4418,6 +4515,82 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       });
     });
   }
+
+  // ---- Mesec iza tebe (kartica na Pregledu, prvih 10 dana meseca) ----
+  const MONTH_REVIEW_KEY = 'budzet-mesecni-pregled-zatvoren-v1';
+  function dismissMonthReview(mKey){
+    localStorage.setItem(MONTH_REVIEW_KEY, mKey);
+    renderMonthReview();
+  }
+  let monthReviewToday = null; // samo za testove (window.__monthReview)
+  function renderMonthReview(){
+    const panel = document.getElementById('monthReviewPanel');
+    const mKey = C.monthReviewMonth(monthReviewToday || toISODateLocal(new Date()), localStorage.getItem(MONTH_REVIEW_KEY));
+    const hasData = mKey && entries.some(e=> (e.type === 'income' || (e.type === 'expense' && isExpensePaid(e))) && C.shareInMonth(e, mKey) > 0);
+    if(!hasData){ panel.style.display = 'none'; return; }
+    const r = C.monthReview(entries, { recurring, applied, skipped, limits }, mKey, 6);
+    panel.style.display = 'block';
+    panel.dataset.month = mKey;
+    document.getElementById('monthReviewTitle').textContent = t('Mesec iza tebe: {0}', monthYearLabelSr(mKey));
+    const stat = (label, val, cls) => `<div class="month-review-stat"><span>${label}</span><b class="${cls || ''}">${val}</b></div>`;
+    const lines = [];
+    if(r.enough && r.expensePct != null && r.expensePct !== 0) lines.push(r.expensePct > 0
+      ? t('Potrošnja je {0}% veća od proseka ({1}).', r.expensePct, fmt(r.avgExpense))
+      : t('Potrošnja je {0}% manja od proseka ({1}).', -r.expensePct, fmt(r.avgExpense)));
+    r.up.forEach(x=> lines.push(t('{0}: {1} više nego obično', catTagHtml(x.cat), fmt(x.diff))));
+    if(r.down) lines.push(t('{0}: {1} manje nego obično', catTagHtml(r.down.cat), fmt(-r.down.diff)));
+    r.overBudget.forEach(x=> lines.push(t('{0}: preko budžeta za {1}', catTagHtml(x.cat), fmt(x.spent - x.limit))));
+    const unpaidCount = r.unpaidEntries.length + r.unpaidRecurring.length;
+    if(unpaidCount){
+      const names = r.unpaidEntries.map(e=> e.desc).concat(r.unpaidRecurring.map(x=> x.desc)).filter(Boolean);
+      const shown = names.slice(0, 3).map(n=> `<span translate="no">${escapeHtml(n)}</span>`).join(', ') + (names.length > 3 ? ', …' : '');
+      lines.push(`<span class="month-review-warn">${t('Ostalo neplaćeno: {0} ({1})', unpaidCount, fmt(r.unpaidTotal))}</span>${shown ? ' — ' + shown : ''}`);
+    }
+    document.getElementById('monthReviewBody').innerHTML = `<div class="month-review-stats">
+        ${stat(t('Prihodi'), fmt(r.income))}${stat(t('Rashodi'), fmt(r.expense))}
+        ${stat(t('Razlika'), (r.net > 0 ? '+' : '') + fmt(r.net), r.net >= 0 ? 'pos' : 'neg')}
+        ${r.savingsRate != null ? stat(t('Stopa štednje'), r.savingsRate + '%', r.savingsRate >= 0 ? 'pos' : 'neg') : ''}
+      </div>${lines.length ? `<ul class="month-review-list">${lines.map(l=> `<li>${l}</li>`).join('')}</ul>` : ''}`;
+    const acts = [`<button class="btn-secondary" id="monthReviewAnaliza">${t('Detaljno u Analizi')}</button>`];
+    const sweep = r.net > 0 && activeGoals().length ? Math.floor(r.net) : 0;
+    if(sweep > 0) acts.push(`<button class="btn-secondary" id="monthReviewSweep">${t('Prebaci višak u cilj')}</button>`);
+    if(r.unpaidEntries.length) acts.push(`<button class="btn-secondary" id="monthReviewUnpaid">${t('Pogledaj neplaćeno')}</button>`);
+    const box = document.getElementById('monthReviewActions');
+    box.innerHTML = acts.join('');
+    document.getElementById('monthReviewAnaliza').addEventListener('click', ()=> openAnaliza(null, mKey));
+    if(sweep > 0) document.getElementById('monthReviewSweep').addEventListener('click', ()=>{
+      const list = activeGoals();
+      openEditModal(t('Prebaci višak iz meseca {0} u cilj', monthYearLabelSr(mKey)), [
+        {key:'goalName', label:'Cilj', type:'select', value: list[0].name, options: list.map(g=> g.name)},
+        {key:'amount', label:'Iznos (RSD)', type:'number', value: sweep},
+      ], vals=>{
+        const g = list.find(x=> x.name === vals.goalName);
+        if(!g || isNaN(vals.amount) || vals.amount <= 0) return;
+        const before = g.current;
+        const trId = contributeToGoal(g, vals.amount);
+        localStorage.setItem(MONTH_REVIEW_KEY, mKey);
+        renderAll();
+        showUndoToast(t('Uplaćeno {0} u cilj „{1}“', fmt(vals.amount), g.name), ()=>{
+          g.current = before;
+          if(trId){ entries = entries.filter(e=> e.id !== trId); saveEntries(); }
+          saveGoals(); localStorage.removeItem(MONTH_REVIEW_KEY); renderAll();
+        });
+      });
+    });
+    if(r.unpaidEntries.length) document.getElementById('monthReviewUnpaid').addEventListener('click', ()=>{
+      expListMonth = mKey; dirtyScreens.add('rashodi');
+      showScreen('rashodi');
+    });
+  }
+  window.__monthReview = iso => { monthReviewToday = iso || null; renderMonthReview(); };
+  window.__goals = () => goals;
+  window.__saveGoals = () => { saveGoals(); renderAll(); };
+  document.getElementById('monthReviewClose').addEventListener('click', ()=>{
+    const mKey = document.getElementById('monthReviewPanel').dataset.month;
+    if(!mKey) return;
+    dismissMonthReview(mKey);
+    showUndoToast(t('Pregled meseca je zatvoren'), ()=>{ localStorage.removeItem(MONTH_REVIEW_KEY); renderMonthReview(); });
+  });
 
   // ---- Pregled ----
   function renderPregled(){
@@ -4706,13 +4879,46 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const avg = C.variableAverage(entries, month, analizaState.n, fixedCategories);
     const w = C.whatIf(avg, analizaState.whatIf, goals, new Date());
     const res = document.getElementById('analizaWhatIfResult');
+    const act = document.getElementById('analizaWhatIfAction');
+    act.innerHTML = '';
     if(avg <= 0){ res.textContent = t('Za poređenje su potrebna bar 2 meseca podataka'); return; }
     res.innerHTML = t('Ušteda: {0} mesečno · {1} godišnje', fmt(w.monthly), `<b>${fmt(w.yearly)}</b>`) +
       (w.goal ? `<div class="analiza-goal">${t('Cilj „{0}“ stižeš {1} ranije', escapeHtml(w.goal.name), monthsTxt(w.goal.sooner))}</div>` : '');
+    const amount = C.planAmount(w.monthly);
+    if(amount <= 0) return;
+    if(!activeGoals().length){
+      act.innerHTML = `<span class="muted">${t('Napravi cilj da bi ušteda išla u njega')}</span> <button class="btn-link" id="analizaWhatIfNewGoal">${t('Ciljevi')}</button>`;
+      document.getElementById('analizaWhatIfNewGoal').addEventListener('click', ()=> showScreen('ciljevi'));
+      return;
+    }
+    act.innerHTML = `<button class="btn-secondary" id="analizaWhatIfPlan">${t('Uplaćuj {0} mesečno u cilj…', fmt(amount))}</button>`;
+    document.getElementById('analizaWhatIfPlan').addEventListener('click', ()=> openWhatIfPlan(amount, w.goal && w.goal.id));
+  }
+  const activeGoals = () => goals.filter(g=> g.current < g.target);
+  // "Sta ako" -> mesecna uplata u cilj; plan uvek krece od sledeceg meseca (ovaj je vec u toku).
+  function openWhatIfPlan(amount, goalId){
+    const list = activeGoals();
+    const pre = list.find(g=> g.id === goalId) || list[0];
+    const next = C.addMonths(currentMonthKey(), 1);
+    openEditModal(t('Mesečna uplata u cilj od {0}', monthYearLabelSr(next)), [
+      {key:'goalName', label:'Cilj (postojeća mesečna uplata biće zamenjena)', type:'select', value: pre.name, options: list.map(g=> g.name)},
+      {key:'amount', label:'Iznos mesečno (RSD)', type:'number', value: amount},
+      {key:'day', label:'Dan u mesecu', type:'number', value: 1},
+    ], vals=>{
+      const g = list.find(x=> x.name === vals.goalName);
+      if(!g || isNaN(vals.amount) || vals.amount <= 0) return;
+      const prev = g.monthly;
+      setGoalPlan(g, vals.amount, vals.day, true);
+      saveGoals(); renderAll();
+      showUndoToast(t('Mesečna uplata {0} u cilj „{1}“ od {2}', fmt(g.monthly.amount), g.name, monthYearLabelSr(g.monthly.since)), ()=>{
+        if(prev) g.monthly = prev; else delete g.monthly;
+        saveGoals(); renderAll();
+      });
+    });
   }
   document.getElementById('analizaWhatIf').addEventListener('input', e=>{ analizaState.whatIf = Number(e.target.value) || 0; renderAnalizaWhatIf(analizaState.month); });
-  function openAnaliza(section){
-    analizaState.month = currentMonthKey();
+  function openAnaliza(section, month){
+    analizaState.month = month || currentMonthKey();
     analizaState.n = 6;
     showScreen('analiza');
     renderScreen('analiza');
@@ -6828,6 +7034,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <div class="bar-track"><div class="bar-fill ${barClass}" data-target="${pct.toFixed(1)}%"></div></div>
         <div class="goal-meta"><span>${t('Rok: {0}', deadlineTxt)}${g.accountId && accountById(g.accountId) ? t(' · račun: {0}', escapeHtml(accountName(g.accountId))) : ''}</span><span>${pct>=100?'<span class="done-label"><svg class="goal-check" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>' + t('Cilj ostvaren') + '</span>':t('{0} preostalo', fmt(g.target-g.current))}</span></div>
         ${goalSuggestionHtml(g)}
+        ${g.monthly ? `<div class="goal-plan"><span>${pct >= 100 ? t('Mesečna uplata: {0} · cilj je ostvaren', fmt(g.monthly.amount)) : t('Mesečna uplata: {0} · sledeća {1}', fmt(g.monthly.amount), goalPlanNextDate(g).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit'}))}</span><button class="btn-link goal-plan-remove" data-id="${g.id}">Ukloni</button></div>` : ''}
         <div class="goal-contribute">
           <input type="number" placeholder="Iznos uplate (RSD)" min="1" data-goal="${g.id}" class="goal-add-input">
           <button class="add" data-goal="${g.id}">Dodaj uplatu</button>
@@ -6849,8 +7056,15 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         {key:'current', label:'Trenutno sakupljeno (RSD)', type:'number', value:g.current},
         {key:'deadline', label:'Rok (opciono)', type:'date', value:g.deadline || ''},
         ...(accounts.length >= 2 ? [{key:'account', label:'Novac za cilj je na računu', type:'select', value: g.accountId ? accountName(g.accountId) : '— bez računa —', options: ['— bez računa —', ...accounts.map(a=>a.name)]}] : []),
+        {key:'planAmount', label:'Mesečna uplata (RSD, 0 = bez)', type:'number', value: g.monthly ? g.monthly.amount : 0},
+        {key:'planDay', label:'Dan u mesecu za uplatu', type:'number', value: g.monthly ? g.monthly.day : 1},
       ],
       onSave: (g, vals)=>{
+        if(!isNaN(vals.planAmount)){
+          if(vals.planAmount <= 0) delete g.monthly;
+          else if(g.monthly){ g.monthly.amount = C.round2(vals.planAmount); g.monthly.day = C.clampRecurringDay(vals.planDay); }
+          else setGoalPlan(g, vals.planAmount, vals.planDay);
+        }
         if(vals.account !== undefined){ const a = accounts.find(x=> x.name === vals.account); g.accountId = a ? a.id : undefined; }
         if(!vals.name || !vals.name.trim() || isNaN(vals.target) || vals.target <= 0) return;
         g.name = vals.name.trim(); g.target = vals.target;
@@ -6866,6 +7080,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       undoLabel: g => t('Obrisan cilj: "{0}"', g.name),
       onUndo: g => { goals.push(g); saveGoals(); }
     });
+    list.querySelectorAll('.goal-plan-remove').forEach(btn=> btn.addEventListener('click', ()=>{
+      const g = goals.find(x=> x.id === btn.dataset.id);
+      if(!g || !g.monthly) return;
+      const plan = g.monthly;
+      delete g.monthly;
+      saveGoals(); renderAll();
+      showUndoToast(t('Uklonjena mesečna uplata za „{0}“', g.name), ()=>{ g.monthly = plan; saveGoals(); renderAll(); });
+    }));
     wireContributeButton(list, 'goal', 'goal-add-input', (id, val)=>{
       const goal = goals.find(g=>g.id === id);
       if(!goal) return;
@@ -7540,7 +7762,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       target: Number(g.target) || 0,
       current: Math.max(0, Number(g.current) || 0),
       deadline: (typeof g.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.deadline)) ? g.deadline : '',
-      accountId: typeof g.accountId === 'string' ? g.accountId : undefined
+      accountId: typeof g.accountId === 'string' ? g.accountId : undefined,
+      monthly: cleanGoalPlan(g.monthly)
     })).filter(g => g.name && g.target > 0);
     const cleanDebts = (Array.isArray(data.debts) ? data.debts.filter(isPlainObject) : []).map(d=>({
       id: (typeof d.id === 'string' && d.id) ? d.id : newId(),
@@ -7825,7 +8048,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
     const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
-    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||''})));
+    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
     const paidRows = [];
     Object.keys(applied).forEach(mKey=>{ (applied[mKey]||[]).forEach(rid=> paidRows.push({Mesec:mKey, RecurringID:rid})); });
@@ -7916,7 +8139,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       name: String(r.Naziv || ''),
       target: Number(r.Cilj) || 0,
       current: Number(r.Trenutno) || 0,
-      deadline: r.Rok ? normalizeDateCell(r.Rok) : ''
+      deadline: r.Rok ? normalizeDateCell(r.Rok) : '',
+      monthly: cleanGoalPlan(Number(r.MesecnaUplata) > 0 ? { amount: r.MesecnaUplata, day: r.DanUplate, since: String(r.UplataOd || ''), last: String(r.PoslednjaUplata || '') } : null)
     }));
 
     const placRows = sheetRows('PlacenoLog');
@@ -8379,11 +8603,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Ispravnost nadoknade (backfill) meseci u monthsToProcess zavisi od toga da je sve pre ovog poziva
   // sinhrono izvrseno (recurring/applied/skipped vec ucitani) — ne pomerati iza async koda.
   processAutoPay();
+  processGoalPlans();
   // Aplikacija moze danima da radi u tray-u — proveri automatske uplate i prelazak dana/meseca.
   let lastSeenDay = toISODateLocal(new Date());
   setInterval(()=>{
     const today = toISODateLocal(new Date());
-    const changed = processAutoPay();
+    const changed = processAutoPay() | processGoalPlans();
     if(changed || today !== lastSeenDay){
       lastSeenDay = today;
       if(viewMonthFollowsToday && viewMonth !== currentMonthKey()){ viewMonth = currentMonthKey(); expListMonth = incListMonth = viewMonth; }

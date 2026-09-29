@@ -366,6 +366,20 @@
     'Ukupno: {0} {1}': 'Total: {0} {1}', ' (iznos gore: {0})': ' (amount above: {0})', '≈ {0} · ': '≈ {0} · ',
     'Sačuvano {0}': 'Saved {0}', 'Prebaci višak ({0}) u cilj': 'Move surplus ({0}) to a goal', 'Predlog na osnovu proseka: {0}': 'Suggestion: {0}',
     'Uplata u cilj: {0}': 'Goal contribution: {0}', 'Pokreni automatski ': 'Start automatically',
+    // ---- v1.15: mesec iza tebe, mesecna uplata u cilj ----
+    'Mesec iza tebe': 'Last month', 'Mesec iza tebe: {0}': 'Last month: {0}', 'Stopa štednje': 'Savings rate',
+    'Potrošnja je {0}% veća od proseka ({1}).': 'Spending was {0}% above average ({1}).', 'Potrošnja je {0}% manja od proseka ({1}).': 'Spending was {0}% below average ({1}).',
+    '{0}: {1} više nego obično': '{0}: {1} more than usual', '{0}: {1} manje nego obično': '{0}: {1} less than usual',
+    '{0}: preko budžeta za {1}': '{0}: over budget by {1}', 'Ostalo neplaćeno: {0} ({1})': 'Left unpaid: {0} ({1})',
+    'Detaljno u Analizi': 'Details in Analysis', 'Pogledaj neplaćeno': 'See unpaid', 'Prebaci višak iz meseca {0} u cilj': 'Move {0} surplus to a goal',
+    'Uplaćeno {0} u cilj „{1}“': 'Added {0} to goal “{1}”', 'Pregled meseca je zatvoren': 'Monthly review closed',
+    'Napravi cilj da bi ušteda išla u njega': 'Create a goal so the savings can go into it', 'Uplaćuj {0} mesečno u cilj…': 'Put {0} a month into a goal…',
+    'Mesečna uplata u cilj od {0}': 'Monthly goal contribution from {0}', 'Cilj (postojeća mesečna uplata biće zamenjena)': 'Goal (an existing monthly contribution will be replaced)',
+    'Iznos mesečno (RSD)': 'Amount per month (RSD)', 'Mesečna uplata {0} u cilj „{1}“ od {2}': 'Monthly {0} into goal “{1}” from {2}',
+    'Mesečna uplata: {0} · sledeća {1}': 'Monthly contribution: {0} · next {1}', 'Mesečna uplata: {0} · cilj je ostvaren': 'Monthly contribution: {0} · goal reached',
+    'Uklonjena mesečna uplata za „{0}“': 'Removed the monthly contribution for “{0}”',
+    'Mesečna uplata (RSD, 0 = bez)': 'Monthly contribution (RSD, 0 = none)', 'Dan u mesecu za uplatu': 'Day of month for the contribution',
+    'Automatski uplaćeno u ciljeve: {0} ({1})': 'Added to goals automatically: {0} ({1})',
     'dospeva: {0}': 'due: {0}', 'rashodi {0}': 'expenses {0}', 'prihodi {0}': 'income {0}', '{0} preneto': '{0} carried over', '{0} / {1} · ': '{0} / {1} · ',
   };
 

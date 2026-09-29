@@ -694,3 +694,84 @@ test('normalizeShopping cuva dismissed (samo kljuc -> datum)', () => {
   assert.deepEqual(n.dismissed, { mleko: '2026-09-22' });
   assert.deepEqual(C.normalizeShopping(null, () => 'id').dismissed, {});
 });
+
+// ---------- Paket 4: mesecna uplata u cilj, mesecni pregled ----------
+test('goalPlanDue: meseci od since / last+1, tekuci tek posle dana, ostatak do cilja', () => {
+  const g = { target: 100000, current: 10000, monthly: { amount: 5000, day: 15, since: '2026-07' } };
+  assert.deepEqual(C.goalPlanDue(g, '2026-09', 14).map(x => [x.mKey, x.amount, x.day]), [['2026-07', 5000, 15], ['2026-08', 5000, 15]]);
+  assert.deepEqual(C.goalPlanDue(g, '2026-09', 15).map(x => x.mKey), ['2026-07', '2026-08', '2026-09']);
+  const withLast = { ...g, monthly: { ...g.monthly, last: '2026-08' } };
+  assert.deepEqual(C.goalPlanDue(withLast, '2026-09', 20).map(x => x.mKey), ['2026-09']);
+  assert.deepEqual(C.goalPlanDue(withLast, '2026-09', 10), []);
+  // poslednja uplata = ostatak, pa nista
+  const near = { target: 20000, current: 12000, monthly: { amount: 5000, day: 1, since: '2026-07' } };
+  assert.deepEqual(C.goalPlanDue(near, '2026-09', 30).map(x => x.amount), [5000, 3000]);
+  assert.deepEqual(C.goalPlanDue({ ...near, current: 20000 }, '2026-09', 30), []);
+  // buduci since, bez plana, nevazeci iznos
+  assert.deepEqual(C.goalPlanDue({ ...g, monthly: { ...g.monthly, since: '2026-10' } }, '2026-09', 30), []);
+  assert.deepEqual(C.goalPlanDue({ target: 1, current: 0 }, '2026-09', 30), []);
+  assert.deepEqual(C.goalPlanDue({ ...g, monthly: { ...g.monthly, amount: 0 } }, '2026-09', 30), []);
+  // najvise 24 meseca unazad
+  const old = { target: 1e9, current: 0, monthly: { amount: 100, day: 1, since: '2020-01' } };
+  const due = C.goalPlanDue(old, '2026-09', 30);
+  assert.equal(due.length, 24);
+  assert.equal(due[0].mKey, '2024-10');
+  // dan 31 u februaru -> 28
+  const feb = { target: 1e6, current: 0, monthly: { amount: 100, day: 31, since: '2026-02' } };
+  assert.deepEqual(C.goalPlanDue(feb, '2026-02', 28).map(x => x.day), [28]);
+  assert.deepEqual(C.goalPlanDue(feb, '2026-02', 27), []);
+});
+
+test('planAmount: zaokruzeno na 100, najmanje 100', () => {
+  assert.equal(C.planAmount(2349), 2300);
+  assert.equal(C.planAmount(2350), 2400);
+  assert.equal(C.planAmount(30), 100);
+  assert.equal(C.planAmount(0), 0);
+  assert.equal(C.planAmount(-5), 0);
+});
+
+test('monthReviewMonth: prvih 10 dana, prethodni mesec, osim ako je zatvoren', () => {
+  assert.equal(C.monthReviewMonth('2026-10-01', null), '2026-09');
+  assert.equal(C.monthReviewMonth('2026-10-10', ''), '2026-09');
+  assert.equal(C.monthReviewMonth('2026-10-11', null), null);
+  assert.equal(C.monthReviewMonth('2026-10-03', '2026-09'), null);
+  assert.equal(C.monthReviewMonth('2026-10-03', '2026-08'), '2026-09');
+  assert.equal(C.monthReviewMonth('2027-01-05', null), '2026-12');
+});
+
+test('monthReview: zbirovi, stopa, iznad proseka, pad, limiti, neplaceno', () => {
+  const inc = (id, date, amount) => ({ id, type: 'income', date, amount, category: 'Plata', desc: 'Plata' });
+  const entries = [];
+  ['2026-06', '2026-07', '2026-08'].forEach((m, i) => {
+    entries.push(inc('i' + i, m + '-01', 100000));
+    entries.push(ex('h' + i, m + '-05', 20000, 'Hrana', 'Market'));
+    entries.push(ex('z' + i, m + '-06', 10000, 'Zabava', 'Bioskop'));
+  });
+  entries.push(inc('i9', '2026-09-01', 100000));
+  entries.push(ex('h9', '2026-09-05', 30000, 'Hrana', 'Market'));      // +10.000 (50%) -> iznad proseka
+  entries.push(ex('z9', '2026-09-06', 2000, 'Zabava', 'Bioskop'));      // -8.000 -> najveci pad
+  entries.push(ex('u9', '2026-09-20', 5000, 'Racuni', 'Struja', { paid: false }));
+  const recurring = [
+    { id: 'r1', type: 'expense', desc: 'Internet', amount: 2500, category: 'Racuni', day: 10 },
+    { id: 'r2', type: 'expense', desc: 'Teretana', amount: 3000, category: 'Zabava', day: 12 },
+    { id: 'r3', type: 'expense', desc: 'Kirija', amount: 30000, category: 'Stan', day: 1 },
+    { id: 'r4', type: 'income', desc: 'Honorar', amount: 9000, category: 'Plata', day: 1 },
+    { id: 'r5', type: 'expense', desc: 'Novo', amount: 700, category: 'Racuni', day: 1 } // nikad placena ranije -> verovatno dodata kasnije
+  ];
+  const state = { recurring, applied: { '2026-08': ['r1', 'r3', 'r4'], '2026-09': ['r3'], '2026-10': ['r5'] }, skipped: { '2026-09': ['r2'] }, limits: { Hrana: 25000, Zabava: 5000, Stan: 0 } };
+  const r = C.monthReview(entries, state, '2026-09', 6);
+  assert.deepEqual([r.month, r.income, r.expense, r.net, r.savingsRate], ['2026-09', 100000, 32000, 68000, 68]);
+  assert.equal(r.enough, true);
+  assert.equal(r.avgExpense, 30000);
+  assert.equal(r.expensePct, 7);
+  assert.deepEqual(r.up.map(x => [x.cat, x.diff]), [['Hrana', 10000]]);
+  assert.deepEqual(r.down && [r.down.cat, r.down.diff], ['Zabava', -8000]);
+  assert.deepEqual(r.overBudget, [{ cat: 'Hrana', spent: 30000, limit: 25000 }]);
+  assert.deepEqual(r.unpaidEntries.map(e => e.id), ['u9']);
+  assert.deepEqual(r.unpaidRecurring.map(x => x.id), ['r1']); // r2 preskocen, r3 placen, r4 prihod
+  assert.equal(r.unpaidTotal, 7500);
+  // bez prihoda -> stopa null; malo podataka -> nema poredjenja
+  const lone = C.monthReview([ex('a', '2026-09-02', 1000, 'Hrana', 'x')], {}, '2026-09', 6);
+  assert.deepEqual([lone.savingsRate, lone.enough, lone.avgExpense, lone.expensePct, lone.down], [null, false, null, null, null]);
+  assert.deepEqual(lone.up, []);
+});

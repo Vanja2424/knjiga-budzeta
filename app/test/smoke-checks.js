@@ -620,6 +620,76 @@
     }
     window.__deleteEntriesById(rsIds);
 
+    // Paket 4: mesec iza tebe (kartica na Pregledu)
+    {
+      const cur = monthKey(new Date());
+      const prevM = window.BudzetCore.addMonths(cur, -1);
+      const revCat = window.__desktopBridge.getQuickAddData().expenseCats[0];
+      window.__desktopBridge.addEntry({ type: 'expense', desc: 'P4 pregled', amount: 1234, currency: 'RSD', category: revCat, date: prevM + '-05' });
+      const revId = (entries().find(e => e.desc === 'P4 pregled') || {}).id;
+      localStorage.removeItem('budzet-mesecni-pregled-zatvoren-v1');
+      go('pregled'); await sleep(60);
+      window.__monthReview(cur + '-03'); await sleep(40);
+      check('pregled meseca: kartica se prikazuje prvih dana meseca', $('monthReviewPanel').style.display !== 'none' && $('monthReviewPanel').dataset.month === prevM, $('monthReviewPanel').style.display);
+      check('pregled meseca: prihodi/rashodi/razlika', /Rashodi/.test($('monthReviewBody').textContent) && $('monthReviewActions').querySelector('#monthReviewAnaliza') != null, $('monthReviewBody').textContent.slice(0, 200));
+      $('monthReviewAnaliza').click(); await sleep(80);
+      check('pregled meseca: Detaljno otvara Analizu za taj mesec', $('screen-analiza').classList.contains('active') && $('analizaMonth').value === prevM, $('analizaMonth').value);
+      go('pregled'); await sleep(60);
+      window.__monthReview(cur + '-03'); await sleep(40);
+      $('monthReviewClose').click(); await sleep(60);
+      check('pregled meseca: Zatvori sakriva karticu', $('monthReviewPanel').style.display === 'none' && localStorage.getItem('budzet-mesecni-pregled-zatvoren-v1') === prevM);
+      window.__monthReview(cur + '-11'); await sleep(40);
+      localStorage.removeItem('budzet-mesecni-pregled-zatvoren-v1');
+      window.__monthReview(cur + '-11'); await sleep(40);
+      check('pregled meseca: posle 10. u mesecu se ne prikazuje', $('monthReviewPanel').style.display === 'none');
+      window.__monthReview(null);
+      if (revId) window.__deleteEntriesById([revId]);
+      localStorage.setItem('budzet-mesecni-pregled-zatvoren-v1', prevM);
+    }
+
+    // Paket 4: mesecna uplata u cilj — "sta ako" pravi plan, obrada uplacuje propustene mesece, Ponisti vraca
+    {
+      const cur = monthKey(new Date());
+      const gs = window.__goals();
+      const g = { id: 'p4-goal', name: 'P4 cilj', target: 1000000, current: 0, deadline: '' };
+      gs.push(g); window.__saveGoals(); await sleep(60);
+      // bar 2 meseca promenljivih troskova da "sta ako" ima prosek
+      const wiCat = window.__desktopBridge.getQuickAddData().expenseCats[0];
+      for (const k of [-1, -2]) window.__desktopBridge.addEntry({ type: 'expense', desc: 'P4 šta ako', amount: 20000, currency: 'RSD', category: wiCat, date: window.BudzetCore.addMonths(cur, k) + '-07' });
+      const wiIds = entries().filter(e => e.desc === 'P4 šta ako').map(e => e.id);
+      go('analiza'); await sleep(80);
+      setVal('analizaWhatIf', '20'); await sleep(40);
+      const planBtn = $('analizaWhatIfPlan');
+      if (planBtn) {
+        planBtn.click(); await sleep(60);
+        const sel = document.querySelector('#editModalFields [data-field="goalName"]');
+        sel.value = 'P4 cilj';
+        document.querySelector('#editModalFields [data-field="amount"]').value = '2500';
+        $('editModalSave').click(); await sleep(80);
+        const gg = window.__goals().find(x => x.id === 'p4-goal');
+        check('šta ako: plan mesečne uplate od sledećeg meseca', !!gg.monthly && gg.monthly.amount === 2500 && gg.monthly.since === window.BudzetCore.addMonths(cur, 1), JSON.stringify(gg.monthly));
+      } else check('šta ako: dugme za mesečnu uplatu postoji', /Napravi cilj/.test($('analizaWhatIfAction').textContent) || false, $('analizaWhatIfAction').innerHTML + ' | ' + $('analizaWhatIfResult').textContent);
+      // plan koji je poceo pre dva meseca: obrada uplacuje 2-3 meseca
+      const gg = window.__goals().find(x => x.id === 'p4-goal');
+      gg.monthly = { amount: 1000, day: 1, since: window.BudzetCore.addMonths(cur, -2) };
+      window.__saveGoals(); await sleep(40);
+      const did = window.__processGoalPlans(); await sleep(60);
+      const after = window.__goals().find(x => x.id === 'p4-goal');
+      check('mesečna uplata: propušteni meseci se uplaćuju', did && after.current === 3000 && after.monthly.last === cur, after.current + ' ' + after.monthly.last);
+      check('mesečna uplata: ponovna obrada ne uplaćuje dvaput', !window.__processGoalPlans());
+      $('undoBtn').click(); await sleep(80);
+      const undone = window.__goals().find(x => x.id === 'p4-goal');
+      check('mesečna uplata: Poništi vraća iznos i poslednji mesec', undone.current === 0 && !undone.monthly.last, undone.current + ' ' + undone.monthly.last);
+      go('ciljevi'); await sleep(60);
+      check('cilj: kartica pokazuje mesečnu uplatu', /Mesečna uplata: 1\.000 RSD/.test($('goalsList').textContent), $('goalsList').textContent.slice(0, 300));
+      const rm = document.querySelector('.goal-plan-remove[data-id="p4-goal"]');
+      rm && rm.click(); await sleep(60);
+      check('cilj: Ukloni briše mesečnu uplatu', !window.__goals().find(x => x.id === 'p4-goal').monthly);
+      const idx = window.__goals().findIndex(x => x.id === 'p4-goal');
+      window.__goals().splice(idx, 1); window.__saveGoals(); await sleep(40);
+      window.__deleteEntriesById(wiIds);
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

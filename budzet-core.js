@@ -675,6 +675,72 @@
     return round2((d.paidAmount || 0) + linked);
   }
 
+  // ---------- Mesecna uplata u cilj ----------
+  // Plan na cilju: g.monthly = { amount, day, since: 'YYYY-MM', last?: 'YYYY-MM' }.
+  // Dospele uplate: od max(since, last+1) do tekuceg (najvise 24 meseca unazad); tekuci tek kad dan prodje.
+  // Zbir ne prelazi ostatak do cilja.
+  function goalPlanDue(goal, current, todayDay){
+    const p = goal && goal.monthly;
+    const amount = p ? Number(p.amount) : 0;
+    if(!p || !(amount > 0) || !/^\d{4}-\d{2}$/.test(p.since || '')) return [];
+    let start = p.since;
+    if(/^\d{4}-\d{2}$/.test(p.last || '') && addMonths(p.last, 1) > start) start = addMonths(p.last, 1);
+    const oldest = addMonths(current, -23);
+    if(start < oldest) start = oldest;
+    if(start > current) return [];
+    let left = round2((Number(goal.target) || 0) - (Number(goal.current) || 0));
+    const out = [];
+    monthRange(start, current).forEach(mKey => {
+      const day = effectiveDay(p.day, mKey);
+      if(mKey === current && day > todayDay) return;
+      if(left <= 0) return;
+      const amt = round2(Math.min(amount, left));
+      left = round2(left - amt);
+      out.push({ mKey, amount: amt, day });
+    });
+    return out;
+  }
+  // Predlog iznosa plana iz "sta ako" usteda: zaokruzeno na 100, najmanje 100 (0 kad nema ustede).
+  const planAmount = monthly => (Number(monthly) > 0) ? Math.max(100, Math.round(monthly / 100) * 100) : 0;
+
+  // ---------- Mesecni pregled ("Mesec iza tebe") ----------
+  // Prvih 10 dana u mesecu -> prethodni mesec, osim ako je vec zatvoren.
+  function monthReviewMonth(todayISO, dismissed){
+    if(parseInt(todayISO.slice(8, 10), 10) > 10) return null;
+    const prev = addMonths(todayISO.slice(0, 7), -1);
+    return dismissed === prev ? null : prev;
+  }
+  const REVIEW_DOWN_MIN = 1000;
+  // state: { recurring, applied, skipped, limits }
+  function monthReview(entries, state, mKey, n){
+    const s = state || {};
+    const t = monthTotals(entries, mKey);
+    const b = categoryBreakdown(entries, mKey, n || 6);
+    const avgExpense = b.enough ? round2(b.avg) : null;
+    const downs = b.enough ? b.rows.concat(
+        // kategorija bez troska u ovom mesecu nije u rows, a pad je ceo prosek
+        [...new Set(entries.filter(isPaidExp).map(e => e.category))].filter(c => !b.rows.some(r => r.cat === c))
+          .map(cat => { const avg = periodStats(entries, b.months, e => e.category === cat).avg; return { cat, total: 0, avg, diff: -avg }; }))
+      .filter(r => r.avg > 0 && r.diff <= -REVIEW_DOWN_MIN).sort((a, b2) => a.diff - b2.diff) : [];
+    const limits = s.limits || {};
+    const overBudget = Object.keys(limits).filter(c => limits[c] > 0).map(cat => ({ cat, spent: round2(sumPaid(entries, mKey, e => e.category === cat)), limit: limits[cat] }))
+      .filter(x => x.spent > x.limit).sort((a, b2) => (b2.spent - b2.limit) - (a.spent - a.limit));
+    const unpaidEntries = (entries || []).filter(e => e.type === 'expense' && e.paid === false && (e.date || '').slice(0, 7) === mKey);
+    const ids = new Set((entries || []).map(e => e.id));
+    // samo stavke koje su vec ranije bile placene/preskocene — inace je stavka verovatno dodata posle tog meseca
+    const earlier = Object.keys(s.applied || {}).concat(Object.keys(s.skipped || {})).filter(k => k < mKey);
+    const knownBefore = r => earlier.some(k => ((s.applied || {})[k] || []).includes(r.id) || ((s.skipped || {})[k] || []).includes(r.id));
+    const unpaidRecurring = (s.recurring || []).filter(r => r.type !== 'income' && isDueInMonth(r, mKey) && knownBefore(r)
+      && !isRecurringPaid(s.applied, r, mKey) && !isRecurringSkipped(s.skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey)));
+    return {
+      month: mKey, income: t.income, expense: t.expense, net: t.net,
+      savingsRate: t.income > 0 ? Math.round(t.net / t.income * 100) : null,
+      enough: b.enough, avgExpense, expensePct: avgExpense > 0 ? Math.round((t.expense - avgExpense) / avgExpense * 100) : null,
+      up: aboveAverage(b).slice(0, 3), down: downs[0] || null, overBudget, unpaidEntries, unpaidRecurring,
+      unpaidTotal: round2(unpaidEntries.reduce((x, e) => x + e.amount, 0) + unpaidRecurring.reduce((x, r) => x + (Number(r.amount) || 0), 0))
+    };
+  }
+
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
   // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
   const purchasedItemName = label => String(label == null ? '' : label).replace(/\s*\(\d[^()]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
@@ -778,6 +844,7 @@
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
+    goalPlanDue, planAmount, monthReviewMonth, monthReview,
     checkWorkbookShape, checkDataFileShape
   };
 });
