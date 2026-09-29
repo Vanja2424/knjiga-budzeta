@@ -315,6 +315,7 @@
     '<b>{0}</b> je trenutno najslabija tačka ({1}/100): {2}': '<b>{0}</b> is currently the weakest area ({1}/100): {2}', 'Finansijsko zdravlje: {0} od 100 ({1})': 'Financial health: {0} of 100 ({1})',
     'Obrisan prihod: "{0}"': 'Deleted income: "{0}"', 'Obrisan rashod: "{0}"': 'Deleted expense: "{0}"', 'Obrisano {0} prihoda': 'Deleted {0} income items', 'Obrisano {0} rashoda': 'Deleted {0} expenses',
     'Obrisana stavka: "{0}"': 'Deleted item: "{0}"', 'Obrisana ponavljajuća stavka: "{0}"': 'Deleted recurring item: "{0}"', 'Obrisan cilj: "{0}"': 'Deleted goal: "{0}"', 'Obrisano: "{0}"': 'Deleted: "{0}"',
+    'Automatski upisano za propuštene mesece: {0}': 'Recorded automatically for missed months: {0}',
     'Ukupno: {0}': 'Total: {0}', 'Izabrano: {0}': 'Selected: {0}', '{0} neplaćenih rashoda': '{0} unpaid expenses',
     'veći je od ukupnog mesečnog budžeta ({0})': 'is more than the total monthly budget ({0})', 'prosečan prihod poslednja 3 meseca: {0}': 'average income over the last 3 months: {0}',
     'Predlog na osnovu proseka poslednja 3 meseca: {0}': 'Suggestion from the last 3 months’ average: {0}', 'Mesečni budžet za {0}': 'Monthly budget for {0}',

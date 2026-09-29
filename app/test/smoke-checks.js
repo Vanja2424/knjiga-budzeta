@@ -430,6 +430,20 @@
     check('rashodi: prošli mesec nema očekivanih', document.querySelectorAll('#expenseUpcoming .upcoming-row').length === 0);
     $('periodToday').click(); await sleep(60);
 
+    // Automatsko plaćanje za propuštene mesece (aplikacija nije bila otvarana)
+    const apKey = 'budzet-autoupis-poslednji-mesec-v1';
+    check('autoupis: ključ poslednjeg meseca postoji', localStorage.getItem(apKey) === curM, localStorage.getItem(apKey));
+    const apRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoke pretplata');
+    if (apRec && typeof window.__processAutoPay === 'function') {
+      const m1 = window.BudzetCore.addMonths(curM, -2), m2 = window.BudzetCore.addMonths(curM, -1);
+      localStorage.setItem(apKey, window.BudzetCore.addMonths(curM, -3));
+      window.__processAutoPay(); await sleep(60);
+      const ids = entries().map(e => e.id);
+      check('autoupis: propušteni meseci su upisani', ids.includes('rec-' + apRec.id + '-' + m1) && ids.includes('rec-' + apRec.id + '-' + m2), JSON.stringify([m1, m2]));
+      check('autoupis: ključ je posle obrade tekući mesec', localStorage.getItem(apKey) === curM);
+      window.__deleteEntriesById(['rec-' + apRec.id + '-' + m1, 'rec-' + apRec.id + '-' + m2]);
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

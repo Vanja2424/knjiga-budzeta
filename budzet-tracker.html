@@ -3652,8 +3652,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(!applied[mKey].includes(rid)) applied[mKey].push(rid);
     saveApplied();
   }
-  function isPaid(r, mKey){ return (applied[mKey] || []).includes(r.id); }
-  function isSkipped(r, mKey){ return (skipped[mKey] || []).includes(r.id); }
+  function isPaid(r, mKey){ return C.isRecurringPaid(applied, r, mKey); }
+  function isSkipped(r, mKey){ return C.isRecurringSkipped(skipped, r, mKey); }
   function toggleSkipMonth(r, on){
     const mKey = currentMonthKey();
     if(!skipped[mKey]) skipped[mKey] = [];
@@ -3689,23 +3689,40 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // placene. Mesec koji je korisnik pauzirao ili rucno odcekirao se ne dira.
   const AUTOPAY_OFF_KEY = 'budzet-autoupis-iskljuceno-v1';
   let autoPayOptOut = JSON.parse(localStorage.getItem(AUTOPAY_OFF_KEY) || '{}');
+  // Obradjuje sve mesece od poslednjeg obradjenog do tekuceg (aplikacija je mozda bila zatvorena), najvise 24 unazad.
+  // U proslim mesecima upisuje sve dospelo; u tekucem samo ono ciji je dan prosao.
+  const AUTOPAY_LAST_KEY = 'budzet-autoupis-poslednji-mesec-v1';
   function processAutoPay(){
-    const mKey = currentMonthKey();
+    const cur = currentMonthKey();
     const today = new Date().getDate();
+    const months = C.monthsToProcess(localStorage.getItem(AUTOPAY_LAST_KEY), cur, 24);
     let changed = false;
-    recurring.forEach(r=>{
-      if(!r.autoPay || !isDueThisMonth(r, mKey) || isPaid(r, mKey) || isSkipped(r, mKey)) return;
-      if((autoPayOptOut[mKey] || []).includes(r.id)) return;
-      if(C.effectiveDay(r.day, mKey) > today) return;
-      if(!applied[mKey]) applied[mKey] = [];
-      applied[mKey].push(r.id);
-      const id = recurringEntryId(r, mKey);
-      if(!entries.some(e=>e.id === id)) entries.push(Object.assign(recurringEntry(r, mKey), { auto: true }));
-      changed = true;
+    const backfilled = [];
+    months.forEach(mKey=>{
+      C.autoPayDue(recurring, { applied, skipped, optOut: autoPayOptOut }, mKey, mKey === cur ? today : null).forEach(r=>{
+        if(!applied[mKey]) applied[mKey] = [];
+        applied[mKey].push(r.id);
+        const id = recurringEntryId(r, mKey);
+        if(!entries.some(e=>e.id === id)){
+          entries.push(Object.assign(recurringEntry(r, mKey), { auto: true }));
+          if(mKey !== cur) backfilled.push({ id, rid: r.id, mKey });
+        }
+        changed = true;
+      });
     });
+    if(localStorage.getItem(AUTOPAY_LAST_KEY) !== cur) localStorage.setItem(AUTOPAY_LAST_KEY, cur);
     if(changed){ saveApplied(); saveEntries(); }
+    if(backfilled.length){
+      showUndoToast(t('Automatski upisano za propuštene mesece: {0}', backfilled.length), ()=>{
+        const ids = new Set(backfilled.map(b=> b.id));
+        entries = entries.filter(e=> !ids.has(e.id));
+        backfilled.forEach(b=>{ applied[b.mKey] = (applied[b.mKey] || []).filter(x=> x !== b.rid); });
+        saveApplied(); saveEntries(); renderAll();
+      });
+    }
     return changed;
   }
+  window.__processAutoPay = () => { const c = processAutoPay(); if(c) renderAll(); return c; };
 
   function paidThroughLabel(r){
     let lastPaidK = -1;
@@ -3833,31 +3850,19 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     return { paid, pending, pendingCount };
   }
   // Zbirovi za jedan mesec — jedini izvor brojki za sazetak, Pregled, upozorenja i analizu.
-  function monthTotals(mKey){
-    let income = 0, expense = 0;
-    const byCat = {};
-    entries.forEach(e=>{
-      if(e.type !== 'income' && !isPaidExpense(e)) return;
-      const share = C.shareInMonth(e, mKey);
-      if(!share) return;
-      if(e.type === 'income') income += share;
-      else { expense += share; byCat[e.category] = (byCat[e.category]||0) + share; }
-    });
-    return { income, expense, net: income - expense, byCat, catEntries: Object.entries(byCat).sort((a,b)=>b[1]-a[1]) };
-  }
+  function monthTotals(mKey){ return C.monthTotals(entries, mKey); }
   // Ukupno stanje (sve do danas): prihodi − placeni rashodi − vec vraceni deo mojih dugova.
   function overallBalance(){
     const income = entries.filter(e=>e.type==='income').reduce((s,e)=>s+e.amount,0);
     const expense = entries.filter(e=>e.type==='expense' && isExpensePaid(e)).reduce((s,e)=>s+e.amount,0);
-    return income - expense - debtExpenseTotals().paid;
+    return C.round2(income - expense - debtExpenseTotals().paid);
   }
   // "Za placanje" za izabrani mesec: neplaceni rashodi tog meseca (za tekuci mesec i svi raniji
   // neplaceni — oni kasne) + ponavljajuci rashodi koji tek dospevaju + (tekuci mesec) moji dugovi.
   // Ocekivani prihodi se prikazuju odvojeno, ne sabiraju se sa rashodima.
   // Ponavljajuce stavke koje u mesecu (tekucem ili buducem) tek dospevaju: nisu placene, preskocene ni upisane kao rashod
   function pendingRecurring(mKey){
-    if(mKey < currentMonthKey()) return [];
-    return recurring.filter(r => isDueThisMonth(r, mKey) && !isPaid(r, mKey) && !isSkipped(r, mKey) && !entries.some(e=>e.id === recurringEntryId(r, mKey)));
+    return C.pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonthKey());
   }
   function pendingForMonth(mKey){
     const cur = currentMonthKey();
