@@ -3701,6 +3701,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const mKey = monthKeyPlus(k);
       if(!applied[mKey]) applied[mKey] = [];
       if(applied[mKey].includes(r.id)) continue;
+      // Rata (r.debtId): ne pravi dalje unapred-placene mesece kad je dug vec izmiren.
+      if(r.debtId){ const d = debts.find(x=> x.id === r.debtId); if(d && debtRemaining(d) <= 0) break; }
       const dateStr = C.dueDateFor(r, mKey);
       entries.push(recurringEntry(r, mKey));
       applied[mKey].push(r.id);
@@ -3806,8 +3808,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   const spreadTag = e => isSpread(e) ? ` <span class="tag-chip" title="${t('Iznos se raspoređuje na više meseci')}">⇄ ${spreadLabel(e)}</span>` : '';
 
-  // Oznaci ponavljajucu stavku placenom za mesec i napravi njen rashod (bez iscrtavanja/zvuka) — vraca id rashoda
+  // Oznaci ponavljajucu stavku placenom za mesec i napravi njen rashod (bez iscrtavanja/zvuka) — vraca id rashoda.
+  // Rata (r.debtId) ciji je dug vec izmiren: ne pravi nista, vraca null — pozivaoci moraju da provere.
   function markRecurringPaid(r, mKey, amount){
+    if(r.debtId){ const d = debts.find(x=> x.id === r.debtId); if(d && debtRemaining(d) <= 0) return null; }
     if(!applied[mKey]) applied[mKey] = [];
     if(!applied[mKey].includes(r.id)) applied[mKey].push(r.id);
     if(skipped[mKey] && skipped[mKey].includes(r.id)){ skipped[mKey] = skipped[mKey].filter(id => id !== r.id); saveSkipped(); }
@@ -3820,9 +3824,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(!applied[mKey]) applied[mKey] = [];
     const entryId = recurringEntryId(r, mKey);
     if(checked){
-      markRecurringPaid(r, mKey, customAmount);
-      playPaidSound();
-      justPaidId = r.id;
+      const id = markRecurringPaid(r, mKey, customAmount);
+      if(id){ playPaidSound(); justPaidId = r.id; }
     } else {
       applied[mKey] = applied[mKey].filter(id => id !== r.id);
       entries = entries.filter(e => e.id !== entryId);
@@ -3851,7 +3854,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <input type="checkbox" class="pay-overdue-check" data-id="${r.id}" checked>
         <span class="pay-overdue-desc" translate="no">${escapeHtml(r.desc)}</span>
         <span class="muted">${parseLocalDate(C.dueDateFor(r, mKey)).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit'})}</span>
-        <input type="number" class="pay-overdue-amt" data-id="${r.id}" value="${recurringAmountNow(r)}" min="0" step="1" aria-label="${escapeHtml(r.desc)}">
+        <input type="number" class="pay-overdue-amt" data-id="${r.id}" value="${suggestedPayAmount(r)}" min="0" step="1" aria-label="${escapeHtml(r.desc)}">
       </label>`).join('');
     const upd = ()=>{
       const sum = [...document.querySelectorAll('.pay-overdue-check')].filter(c=> c.checked)
@@ -3869,6 +3872,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     payOverdueLastFocus = null;
   }
   // opts (smoke): { ids: [...] } plati te stavke po predlozenom iznosu bez modala
+  // Ne dozvoli da rucno unet iznos za ratu prekorači ostatak duga (prepunjavanje).
+  function capDebtAmount(r, amount){
+    if(amount == null || !r.debtId) return amount;
+    const d = debts.find(x=> x.id === r.debtId);
+    return d ? Math.min(amount, debtRemaining(d)) : amount;
+  }
   function confirmPayOverdue(opts){
     const mKey = currentMonthKey();
     const items = overdueNow();
@@ -3877,10 +3886,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     else chosen = [...document.querySelectorAll('.pay-overdue-check')].filter(c=> c.checked).map(c=>{
       const r = items.find(x=> x.id === c.dataset.id);
       const v = parseFloat(document.querySelector(`.pay-overdue-amt[data-id="${CSS.escape(c.dataset.id)}"]`).value);
-      return r ? { r, amount: v > 0 ? v : undefined } : null;
+      return r ? { r, amount: capDebtAmount(r, v > 0 ? v : undefined) } : null;
     }).filter(Boolean);
     if(!chosen.length){ closePayOverdue(); return false; }
-    const made = chosen.map(({ r, amount })=> ({ rid: r.id, entryId: markRecurringPaid(r, mKey, amount) }));
+    // markRecurringPaid vraca null za ratu ciji je dug u medjuvremenu izmiren — takve preskoci (nista nije nastalo).
+    const made = chosen.map(({ r, amount })=> ({ rid: r.id, entryId: markRecurringPaid(r, mKey, amount) })).filter(m=> m.entryId != null);
+    if(!made.length){ closePayOverdue(); return false; }
     saveApplied(); saveEntries(); closePayOverdue(); playPaidSound(); renderAll();
     const total = made.reduce((s, m)=> s + ((entries.find(e=> e.id === m.entryId) || {}).amount || 0), 0);
     showUndoToast(t('Plaćeno {0} stavki ({1})', made.length, fmt(total)), ()=>{
@@ -3900,13 +3911,18 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Brisanje ponavljajuće stavke mora ocistiti SVE mesece (proslost i buducnost, npr. placeno
   // unapred preko payAheadRecurring), ne samo tekuci — inace osirotele generisane stavke za
   // buduce mesece ostaju zauvek u entries jer reconcileAppliedEntries() samo dodaje, nikad ne brise.
+  // Rata (r.debtId): vec placene rate su STVARNI rashodi koji ulaze u otplatu duga (C.debtPaid) —
+  // brisanje stavke ne sme da ih obrise (to bi "vratilo" dug). Zadrzava se samo ono placeno za
+  // tekuci/prosli mesec; neplaceno i unapred-placeno (buduce) se brise zajedno sa samom stavkom.
   function removeAllRecurringOccurrences(r){
     const prefix = 'rec-' + r.id + '-';
-    const removedEntries = entries.filter(e => e.id.startsWith(prefix));
-    entries = entries.filter(e => !e.id.startsWith(prefix));
+    const cur = currentMonthKey();
+    const isKeptForDebt = e => r.debtId && e.id.slice(prefix.length) <= cur && applied[e.id.slice(prefix.length)] && applied[e.id.slice(prefix.length)].includes(r.id);
+    const removedEntries = entries.filter(e => e.id.startsWith(prefix) && !isKeptForDebt(e));
+    entries = entries.filter(e => !e.id.startsWith(prefix) || isKeptForDebt(e));
     const removedApplied = {};
     Object.keys(applied).forEach(mKey=>{
-      if(applied[mKey] && applied[mKey].includes(r.id)){
+      if(applied[mKey] && applied[mKey].includes(r.id) && !(r.debtId && mKey <= cur)){
         removedApplied[mKey] = true;
         applied[mKey] = applied[mKey].filter(id=>id!==r.id);
       }
@@ -3951,6 +3967,13 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Otplaceno/ostatak duga: rucne uplate + placene rate (rashodi sa debtId). overallBalance i dalje koristi samo d.paidAmount.
   const debtRemaining = d => Math.max(0, C.round2(d.amount - C.debtPaid(d, entries)));
   const debtInstallment = d => recurring.find(r => r.debtId === d.id);
+  // Predlozeni/prikazani iznos za placanje stavke — za ratu (r.debtId) ogranicen na ostatak duga,
+  // da predlog/podsetnik ne navode na iznos koji bi "prepunio" dug.
+  const suggestedPayAmount = r => {
+    if(!r.debtId) return recurringAmountNow(r);
+    const d = debts.find(x=> x.id === r.debtId);
+    return d ? Math.min(recurringAmountNow(r), debtRemaining(d)) : recurringAmountNow(r);
+  };
   // Rata prestaje kad je dug izmiren (until = tekuci mesec ako je rata za taj mesec vec placena,
   // inace prethodni mesec — da autoplaćanje ne naplati ratu za vec izmiren dug); kad dug ponovo ima ostatak, nastavlja se.
   function syncDebtInstallments(){
@@ -3960,7 +3983,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       if(!r.debtId) return;
       const d = debts.find(x=> x.id === r.debtId);
       if(!d) return;
-      const done = debtRemaining(d) <= 0;
+      // Dug obrnutog smera (owed_to_me) se za ratu tretira kao izmiren — ne dospeva ("i ja dugujem"
+      // vise ne vazi); vraca se kad se dug ponovo prevede na i_owe sa ostatkom.
+      const done = debtRemaining(d) <= 0 || d.direction !== 'i_owe';
       if(done && !r.until){ r.until = isPaid(r, cur) ? cur : C.addMonths(cur, -1); changed = true; }
       else if(!done && r.until){ delete r.until; changed = true; }
     });
@@ -3972,7 +3997,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     return r;
   }
   window.__createDebtInstallment = (id, o) => { const d = debts.find(x=> x.id === id); return d ? createDebtInstallment(d, o) : null; };
-  window.__markRecurringPaid = (rid, amount) => { const r = recurring.find(x=> x.id === rid); if(!r) return null; const id = markRecurringPaid(r, currentMonthKey(), amount); saveApplied(); saveEntries(); renderAll(); return id; };
+  window.__markRecurringPaid = (rid, amount) => { const r = recurring.find(x=> x.id === rid); if(!r) return null; const id = markRecurringPaid(r, currentMonthKey(), amount); if(id){ saveApplied(); saveEntries(); renderAll(); } return id; };
 
   // Dugovi gde JA dugujem ('i_owe') se racunaju u ukupne cifre isto kao obican rashod: uplaceni
   // deo (paidAmount) je "stvarno potroseno" -> RASHODI, a preostali deo je obaveza koja tek treba
@@ -4158,10 +4183,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   function recurringEntry(r, mKey, amount){
     let amt = amount;
+    // Rata (r.debtId): nikad ne "prepuni" dug — ako je dug vec izmiren, iznos je 0 (poziocima je
+    // markRecurringPaid koji vec zaustavlja stvaranje unosa u tom slucaju; ovo je odbrambena granica).
     if(amt == null && r.debtId){
       const d = debts.find(x=> x.id === r.debtId);
-      const rem = d ? debtRemaining(d) : 0;
-      amt = rem > 0 ? Math.min(recurringAmountNow(r), rem) : recurringAmountNow(r);
+      amt = d ? Math.min(recurringAmountNow(r), debtRemaining(d)) : recurringAmountNow(r);
     }
     const e = { id: recurringEntryId(r, mKey), type: r.type, desc: r.desc, amount: amt != null ? amt : recurringAmountNow(r), category: r.category, date: C.dueDateFor(r, mKey) };
     if(r.debtId) e.debtId = r.debtId;
@@ -5731,7 +5757,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         sendNotificationOnce(`rec-${r.id}-${curMonthKey}`, t('Kasni plaćanje'), t(r.type === 'income' ? '{0} je trebalo da bude naplaćeno pre {1}.' : '{0} je trebalo da bude plaćeno pre {1}.', r.desc, daysTxt(Math.abs(diff))), { screen: 'ponavljajuce', rowId: r.id });
       } else if(diff <= 1 && r.type === 'expense' && !r.autoPay){
         // Podsetnik unapred: dan pre i na dan dospeca
-        sendNotificationOnce(`due-${r.id}-${curMonthKey}-${diff}`, diff === 0 ? t('Danas dospeva') : t('Sutra dospeva'), `${r.desc} — ${fmt(r.amount)}.`, { screen: 'ponavljajuce', rowId: r.id });
+        sendNotificationOnce(`due-${r.id}-${curMonthKey}-${diff}`, diff === 0 ? t('Danas dospeva') : t('Sutra dospeva'), `${r.desc} — ${fmt(r.debtId ? suggestedPayAmount(r) : r.amount)}.`, { screen: 'ponavljajuce', rowId: r.id });
       }
     });
     const todayStr = toISODateLocal(new Date());
@@ -6573,7 +6599,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       let statusHtml;
       if(paid) statusHtml = '<span class="paid-tag">plaćeno ✓</span>';
       else if(skippedThisMonth) statusHtml = '<span class="paid-tag" style="color:var(--ink-soft);">pauzirano ⏸</span>';
-      else if(!due) statusHtml = t('sledeći put: {0}', monthYearLabelSr(nextDueMonthKey(r, mKey)));
+      else if(!due) statusHtml = (r.until && r.until < mKey) ? t('završeno') : t('sledeći put: {0}', monthYearLabelSr(nextDueMonthKey(r, mKey)));
       else statusHtml = t('dan {0}.', dueDayNow(r));
       const showAheadRow = due && !paid && !skippedThisMonth;
       const showPayAheadControls = showAheadRow && (!r.frequency || r.frequency === 'monthly');
@@ -6683,7 +6709,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         saveRecurring();
         return snapshot;
       },
-      undoLabel: r => t('Obrisana ponavljajuća stavka: "{0}"', r ? r.desc : ''),
+      undoLabel: r => (r && r.debtId) ? t('Rata se briše, ali već plaćene rate ostaju u rashodima i u otplati duga.') : t('Obrisana ponavljajuća stavka: "{0}"', r ? r.desc : ''),
       onUndo: (r, snapshot) => { if(r){ recurring.push(r); if(snapshot) restoreRecurringOccurrences(r, snapshot); } saveRecurring(); }
     });
     list.querySelectorAll('[data-ahead-btn]').forEach(b=>{
@@ -7457,6 +7483,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       accountId: typeof r.accountId === 'string' ? r.accountId : undefined,
       currency: CURRENCIES.includes(r.currency) ? r.currency : undefined,
       origAmount: Number(r.origAmount) || undefined,
+      debtId: (typeof r.debtId === 'string' && r.debtId) ? r.debtId : undefined,
+      until: (typeof r.until === 'string' && /^\d{4}-\d{2}$/.test(r.until)) ? r.until : undefined,
     })).filter(r => r.desc);
     const cleanGoals = (Array.isArray(data.goals) ? data.goals.filter(isPlainObject) : []).map(g=>({
       id: (typeof g.id === 'string' && g.id) ? g.id : newId(),
@@ -7736,7 +7764,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items)})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), DugID: e.debtId || ''})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -7747,7 +7775,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     XLSX.utils.book_append_sheet(wb, wsKat, 'Kategorije');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(incomeCats.map(c=>({Naziv:c}))), 'KategorijePrihoda');
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
-    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne'})));
+    const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
@@ -7805,7 +7833,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         ...(r.Racun ? { accountName: String(r.Racun) } : {}),
         ...((parseInt(r.PokrivaMeseci, 10) || 1) > 1 ? { spreadMonths: parseInt(r.PokrivaMeseci, 10), ...(/^\d{4}-\d{2}$/.test(String(r.OdMeseca)) ? { spreadStart: String(r.OdMeseca) } : {}) } : {}),
         ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {}),
-        ...(C.cellToItems(r.Kupljeno).length ? { items: C.cellToItems(r.Kupljeno) } : {})
+        ...(C.cellToItems(r.Kupljeno).length ? { items: C.cellToItems(r.Kupljeno) } : {}),
+        ...(r.DugID ? { debtId: String(r.DugID) } : {})
       };
     });
 
@@ -7829,6 +7858,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       isSubscription: /^(da|yes|true|1)$/i.test(String(r.Pretplata||'').trim()),
       autoPay: /^(da|yes|true|1)$/i.test(String(r.AutoUpis||'').trim()),
       ...(/^(da|yes|true|1)$/i.test(String(r.RaspodelaNaPeriod||'').trim()) ? { spreadPeriod: true } : {}),
+      ...(r.DugID ? { debtId: String(r.DugID) } : {}),
+      ...(/^\d{4}-\d{2}$/.test(String(r.Do||'')) ? { until: String(r.Do) } : {}),
     }));
 
     const ciljRows = sheetRows('Ciljevi');

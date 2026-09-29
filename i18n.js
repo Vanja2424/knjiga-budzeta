@@ -322,6 +322,7 @@
     'veći je od ukupnog mesečnog budžeta ({0})': 'is more than the total monthly budget ({0})', 'prosečan prihod poslednja 3 meseca: {0}': 'average income over the last 3 months: {0}',
     'Predlog na osnovu proseka poslednja 3 meseca: {0}': 'Suggestion from the last 3 months’ average: {0}', 'Mesečni budžet za {0}': 'Monthly budget for {0}',
     'sledeći put: {0}': 'next: {0}', 'dan {0}.': 'day {0}', 'Plati: {0}': 'Pay: {0}', 'Iznos (RSD) — poslednji put: {0}': 'Amount (RSD) — last time: {0}',
+    'završeno': 'done', 'Rata se briše, ali već plaćene rate ostaju u rashodima i u otplati duga.': 'The installment is being deleted, but rates already paid stay in expenses and in the debt payoff.',
     'Iznos (RSD) — {0} po današnjem kursu NBS': 'Amount (RSD) — {0} at today’s NBS rate', 'Iznos ({0}) — u RSD po današnjem kursu ≈ {1}': 'Amount ({0}) — in RSD at today’s rate ≈ {1}',
     '⏸ Pauziraj mesec': '⏸ Pause month', '⏸ Pauziraj ovaj termin': '⏸ Pause this time', '⏸ Pauzirano za ovaj mesec — ': '⏸ Paused for this month — ', 'vrati': 'undo',
     'rashodi {0} · prihodi {1}': 'expenses {0} · income {1}', 'Predlog: uplaćuj ~{0}/mesečno da stigneš do roka ({1} mes.).': 'Tip: contribute ~{0}/month to reach it by the deadline ({1} mo.).',

@@ -510,10 +510,57 @@
     const rEntry = entries().find(e => e.id === 'rec-' + inst.id + '-' + curM);
     check('rata: plaćanje pravi rashod sa debtId', !!rEntry && rEntry.debtId === rd.id && rEntry.amount === 1000);
     check('rata: ostatak duga se smanjio', window.BudzetCore.debtPaid(JSON.parse(localStorage.getItem('budzet-dugovi-v1')).find(d => d.id === rd.id), entries()) === 1000);
+    // Backup/Excel ne sme da izgubi debtId (Stavke sheet)
+    if (typeof window.__buildWorkbook === 'function') {
+      const wbStavke = window.__buildWorkbook();
+      const wbEntryRow = XLSX.utils.sheet_to_json(wbStavke.Sheets['Stavke']).find(x => x.ID === rEntry.id);
+      check('rata: Excel "Stavke" ima DugID', !!wbEntryRow && wbEntryRow.DugID === rd.id, JSON.stringify(wbEntryRow));
+    }
     window.__deleteEntriesById([rEntry.id]); window.__markRecurringPaid(inst.id, 3000); await sleep(60);
     check('rata: izmiren dug -> until', JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until === curM);
+    // Backup/Excel ne sme da izgubi debtId/until (Ponavljajuce sheet) — rata sad ima oboje
+    if (typeof window.__sanitizeImportedBackup === 'function') {
+      const rawRecurring = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1'));
+      const sanitized = window.__sanitizeImportedBackup({ entries: entries(), recurring: rawRecurring });
+      const sInst = sanitized.recurring.find(r => r.id === inst.id);
+      check('rata: sanitizeImportedBackup čuva debtId/until', !!sInst && sInst.debtId === rd.id && sInst.until === curM, JSON.stringify(sInst));
+    }
+    if (typeof window.__buildWorkbook === 'function') {
+      const wbRata = window.__buildWorkbook();
+      const wbRecRow = XLSX.utils.sheet_to_json(wbRata.Sheets['Ponavljajuce']).find(x => x.ID === inst.id);
+      check('rata: Excel "Ponavljajuce" ima DugID/Do', !!wbRecRow && wbRecRow.DugID === rd.id && wbRecRow.Do === curM, JSON.stringify(wbRecRow));
+    }
     window.__deleteEntriesById(['rec-' + inst.id + '-' + curM]); await sleep(60);
     check('rata: brisanje rate vraća ostatak i uklanja until', !JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until);
+
+    // Rata: markRecurringPaid ne sme da "prepuni" dug — ako je dug u međuvremenu izmiren drugim
+    // putem (npr. ručna uplata), placanje rate ne sme ništa da napravi (vraća null).
+    window.__setDebtAmount(rd.id, 0); await sleep(60);
+    const beforeSettledCount = entries().length;
+    const settledResult = window.__markRecurringPaid(inst.id, 500);
+    check('rata: plaćanje rate na već izmiren dug ne pravi ništa', settledResult === null && entries().length === beforeSettledCount
+      && !entries().some(e => e.id === 'rec-' + inst.id + '-' + curM),
+      JSON.stringify({ settledResult, before: beforeSettledCount, after: entries().length }));
+    window.__setDebtAmount(rd.id, 3000); await sleep(60);
+
+    // Rata: brisanje ponavljajuće stavke NE sme da obriše već plaćene rate (istorija otplate duga) —
+    // samo se uklanja sama stavka; plaćeni rashod ostaje i u entries i u debtPaid.
+    window.__markRecurringPaid(inst.id, 1000); await sleep(60);
+    const keptEntryId = 'rec-' + inst.id + '-' + curM;
+    check('rata: rata ponovo plaćena (priprema za brisanje)', entries().some(e => e.id === keptEntryId));
+    go('ponavljajuce'); await sleep(60);
+    const instDelBtn = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(inst.id)}"] .del-btn`);
+    check('rata: dugme za brisanje rate postoji', !!instDelBtn);
+    if (instDelBtn) {
+      instDelBtn.click(); await sleep(280);
+      check('rata: brisanje rate zadržava već plaćeni rashod', entries().some(e => e.id === keptEntryId));
+      check('rata: brisanje rate ne menja otplaćeni iznos duga', window.BudzetCore.debtPaid(JSON.parse(localStorage.getItem('budzet-dugovi-v1')).find(d => d.id === rd.id), entries()) === 1000);
+      check('rata: ponavljajuća stavka rate je uklonjena', !JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).some(r => r.id === inst.id));
+      check('rata: poruka o brisanju objašnjava da plaćene rate ostaju', ($('undoMessage').textContent || '').includes('Rata se briše'), $('undoMessage').textContent);
+      $('undoBtn').click(); await sleep(80);
+      check('rata: undo posle brisanja rate vraća ponavljajuću stavku', JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).some(r => r.id === inst.id));
+      check('rata: undo ne duplicira već zadržani plaćeni rashod', entries().filter(e => e.id === keptEntryId).length === 1);
+    }
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
