@@ -3946,6 +3946,30 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     }
     requestAnimationFrame(step);
   }
+  // Otplaceno/ostatak duga: rucne uplate + placene rate (rashodi sa debtId). overallBalance i dalje koristi samo d.paidAmount.
+  const debtRemaining = d => Math.max(0, C.round2(d.amount - C.debtPaid(d, entries)));
+  const debtInstallment = d => recurring.find(r => r.debtId === d.id);
+  // Rata prestaje kad je dug izmiren (until = tekuci mesec); kad dug ponovo ima ostatak, nastavlja se
+  function syncDebtInstallments(){
+    let changed = false;
+    recurring.forEach(r=>{
+      if(!r.debtId) return;
+      const d = debts.find(x=> x.id === r.debtId);
+      if(!d) return;
+      const done = debtRemaining(d) <= 0;
+      if(done && !r.until){ r.until = currentMonthKey(); changed = true; }
+      else if(!done && r.until){ delete r.until; changed = true; }
+    });
+    if(changed) saveRecurring();
+  }
+  function createDebtInstallment(d, o){
+    const r = { id: newId(), type: 'expense', desc: 'Rata: ' + d.person, amount: o.amount, category: o.category, day: C.clampRecurringDay(o.day), frequency: 'monthly', anchorMonth: 1, isSubscription: false, autoPay: false, debtId: d.id };
+    recurring.push(r); saveRecurring(); renderAll();
+    return r;
+  }
+  window.__createDebtInstallment = (id, o) => { const d = debts.find(x=> x.id === id); return d ? createDebtInstallment(d, o) : null; };
+  window.__markRecurringPaid = (rid, amount) => { const r = recurring.find(x=> x.id === rid); if(!r) return null; const id = markRecurringPaid(r, currentMonthKey(), amount); saveApplied(); saveEntries(); renderAll(); return id; };
+
   // Dugovi gde JA dugujem ('i_owe') se racunaju u ukupne cifre isto kao obican rashod: uplaceni
   // deo (paidAmount) je "stvarno potroseno" -> RASHODI, a preostali deo je obaveza koja tek treba
   // da se plati -> NA CEKANJU. Dugovi gde NEKO DRUGI duguje meni ('owed_to_me') se ne racunaju
@@ -3953,8 +3977,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function debtExpenseTotals(){
     const owedByMe = debts.filter(d => d.direction === 'i_owe');
     const paid = owedByMe.reduce((s,d)=> s + Math.min(d.paidAmount||0, d.amount), 0);
-    const pending = owedByMe.reduce((s,d)=> s + Math.max(0, d.amount - (d.paidAmount||0)), 0);
-    const pendingCount = owedByMe.filter(d => (d.amount - (d.paidAmount||0)) > 0).length;
+    const pending = owedByMe.reduce((s,d)=> s + debtRemaining(d), 0);
+    const pendingCount = owedByMe.filter(d => debtRemaining(d) > 0).length;
     return { paid, pending, pendingCount };
   }
   // Zbirovi za jedan mesec — jedini izvor brojki za sazetak, Pregled, upozorenja i analizu.
@@ -4126,7 +4150,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     return r.amount;
   }
   function recurringEntry(r, mKey, amount){
-    const e = { id: recurringEntryId(r, mKey), type: r.type, desc: r.desc, amount: amount != null ? amount : recurringAmountNow(r), category: r.category, date: C.dueDateFor(r, mKey) };
+    let amt = amount;
+    if(amt == null && r.debtId){
+      const d = debts.find(x=> x.id === r.debtId);
+      const rem = d ? debtRemaining(d) : 0;
+      amt = rem > 0 ? Math.min(recurringAmountNow(r), rem) : recurringAmountNow(r);
+    }
+    const e = { id: recurringEntryId(r, mKey), type: r.type, desc: r.desc, amount: amt != null ? amt : recurringAmountNow(r), category: r.category, date: C.dueDateFor(r, mKey) };
+    if(r.debtId) e.debtId = r.debtId;
     if(r.spreadPeriod && (r.frequency === 'quarterly' || r.frequency === 'yearly')){ e.spreadMonths = r.frequency === 'yearly' ? 12 : 3; e.spreadStart = mKey; }
     if(r.accountId) e.accountId = r.accountId;
     if(r.currency && r.currency !== 'RSD' && r.origAmount && fx.rates[r.currency]){
@@ -5619,7 +5650,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     // Dugovi/pozajmice sa prosetlim rokom
     const todayStr = toISODateLocal(new Date());
     if(isCurrent) debts.forEach(d=>{
-      const remaining = d.amount - (d.paidAmount||0);
+      const remaining = debtRemaining(d);
       if(remaining <= 0 || !d.due || d.due >= todayStr) return;
       const verb = d.direction === 'owed_to_me' ? 'da ti vrati' : 'da vratiš';
       warnings.push({level:'caution', icon:'🤝', txt: t(d.direction === 'owed_to_me' ? '<b>{0}</b> je trebalo da ti vrati {1} — rok je prošao.' : '<b>{0}</b> je trebalo da vratiš {1} — rok je prošao.', escapeHtml(d.person), fmt(remaining))});
@@ -5698,7 +5729,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     });
     const todayStr = toISODateLocal(new Date());
     debts.forEach(d=>{
-      const remaining = d.amount - (d.paidAmount||0);
+      const remaining = debtRemaining(d);
       if(remaining <= 0 || !d.due || d.due >= todayStr) return;
       sendNotificationOnce(`debt-${d.id}-${d.due}`, t('Dug/pozajmica kasni'), t('{0}: rok za {1} je prošao.', d.person, fmt(remaining)), { screen: 'dugovi', rowId: d.id });
     });
@@ -5733,7 +5764,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const budgetParts = [catScore, budgetCapScore].filter(v=>v!=null);
     const budgetScore = budgetParts.length ? budgetParts.reduce((s,v)=>s+v,0)/budgetParts.length : 100;
 
-    const activeDebts = debts.filter(d => (d.amount - (d.paidAmount||0)) > 0);
+    const activeDebts = debts.filter(d => debtRemaining(d) > 0);
     const overdueDebts = activeDebts.filter(d => d.due && d.due < todayStr);
     const debtScore = activeDebts.length ? Math.max(0, 100 - (overdueDebts.length/activeDebts.length*100)) : 100;
 
@@ -6415,7 +6446,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   window.__renameCategory = (a, b) => renameCategory(a, b);
   window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
   // Samo za automatske provere: uklanja stavke po id-u (npr. da bi se izbrisala test kategorija posle).
-  window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); invalidate(); };
+  window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); syncDebtInstallments(); invalidate(); };
   window.__setEntryItems = (id, items) => { const e = entries.find(x=> x.id === id); if(e){ e.items = items.slice(); saveEntries(); invalidate(); } };
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();
@@ -6804,11 +6835,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Snowball: sortira dugove (samo 'i_owe') po preostalom iznosu rastuce, pa svakog meseca
   // najmanji dobija prioritet — kad se otplati, njegov deo kapaciteta "prelazi" na sledeci.
   function computeDebtPayoffPlan(monthlyCapacity){
-    return C.debtPayoffPlan(debts.filter(d => d.direction === 'i_owe').map(d => ({ id: d.id, person: d.person, remaining: d.amount - (d.paidAmount||0) })), monthlyCapacity);
+    return C.debtPayoffPlan(debts.filter(d => d.direction === 'i_owe').map(d => ({ id: d.id, person: d.person, remaining: debtRemaining(d) })), monthlyCapacity);
   }
   function renderDebtPlan(){
     const panel = document.getElementById('debtPlanPanel');
-    const owed = debts.filter(d => d.direction === 'i_owe' && (d.amount - (d.paidAmount||0)) > 0);
+    const owed = debts.filter(d => d.direction === 'i_owe' && debtRemaining(d) > 0);
     if(owed.length === 0){ panel.style.display = 'none'; return; }
     panel.style.display = 'block';
     const input = document.getElementById('debtMonthlyCapacity');
@@ -6838,7 +6869,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     emptyEl.style.display='none';
     const todayStr = toISODateLocal(new Date());
     list.innerHTML = debts.map(d=>{
-      const remaining = Math.max(0, d.amount - (d.paidAmount||0));
+      const paidTotal = C.debtPaid(d, entries);
+      const remaining = debtRemaining(d);
       const settled = remaining <= 0;
       const dirLabel = d.direction === 'owed_to_me' ? 'Duguje mi' : 'Dugujem';
       const dueTxt = d.due ? parseLocalDate(d.due).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
@@ -6847,6 +6879,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const fxDiff = fxNow != null ? C.round2(fxNow - d.amount) : 0;
       const fxHtml = (fxNow != null && Math.abs(fxDiff) >= 1)
         ? `<div class="goal-meta debt-fx"><span>${t('Danas ≈ {0} ({1} od unosa)', fmt(fxNow), (fxDiff > 0 ? '+' : '−') + fmt(Math.abs(fxDiff)))}</span><button class="btn-secondary debt-revalue" data-id="${d.id}">${t('Preračunaj')}</button></div>` : '';
+      const inst = (d.direction === 'i_owe' && !settled) ? debtInstallment(d) : null;
+      const instHtml = (d.direction === 'i_owe' && !settled)
+        ? (inst
+          ? `<div class="goal-meta">${t('Mesečna rata: {0} · sledeća {1}', fmt(inst.amount), nextInstallmentDueLabel(inst))}</div>`
+          : `<button class="btn-secondary debt-installment-btn" data-id="${d.id}">${t('Napravi mesečnu ratu')}</button>`)
+        : '';
       return `<div class="goal-card" data-debt-id="${d.id}" data-row-id="${d.id}">
         <div class="goal-head">
           <span class="goal-name">${escapeHtml(d.person)} <span class="rtype ${d.direction==='owed_to_me'?'income':'expense'}" data-toggle-dir="${d.id}" title="Klikni da promeniš smer" style="margin-left:0.5em; cursor:pointer;">${dirLabel}</span></span>
@@ -6855,13 +6893,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <button class="del-btn" data-id="${d.id}" title="Obriši">✕</button>
           </span>
         </div>
-        <div class="goal-amounts">${fmt(d.paidAmount||0)} / ${fmt(d.amount)}${origTag(d)}${settled?' — izmireno ✓':''}</div>
+        <div class="goal-amounts">${fmt(paidTotal)} / ${fmt(d.amount)}${origTag(d)}${settled?' — izmireno ✓':''}</div>
         ${fxHtml}
-        <div class="bar-track"><div class="bar-fill ${settled?'ok':''}" data-target="${Math.min(100,((d.paidAmount||0)/d.amount*100)).toFixed(1)}%"></div></div>
+        <div class="bar-track"><div class="bar-fill ${settled?'ok':''}" data-target="${Math.min(100,(paidTotal/d.amount*100)).toFixed(1)}%"></div></div>
         <div class="goal-meta">
           <span>${d.note ? escapeHtml(d.note) : ''}</span>
           <span style="${overdue?'color:var(--rust-text);':''}">${dueTxt ? t('Rok: {0}', dueTxt) : ''}</span>
         </div>
+        ${instHtml}
         ${!settled ? `<div class="goal-contribute">
           <input type="number" placeholder="Iznos uplate (RSD)" min="1" data-debt="${d.id}" class="debt-add-input">
           <button class="add" data-debt="${d.id}">Dodaj uplatu</button>
@@ -6870,6 +6909,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     }).join('');
     growBars(list);
     list.querySelectorAll('.debt-revalue').forEach(b=> b.addEventListener('click', ()=> revalueDebt(b.dataset.id)));
+    list.querySelectorAll('.debt-installment-btn').forEach(b=> b.addEventListener('click', ()=> openDebtInstallmentModal(b.dataset.id)));
     list.querySelectorAll('[data-toggle-dir]').forEach(el=>{
       el.addEventListener('click', ()=>{
         const d = debts.find(x=>x.id === el.dataset.toggleDir);
@@ -6893,7 +6933,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         d.person = vals.person.trim(); applyAmountEdit(d, vals.amount);
         d.paidAmount = isNaN(vals.paidAmount) ? (d.paidAmount||0) : Math.max(0, vals.paidAmount);
         d.due = vals.due || ''; d.note = (vals.note||'').trim();
-        saveDebts(); renderDebts(); renderSummary();
+        saveDebts(); renderAll();
       }
     });
     wireDeleteButton(list, {
@@ -6908,8 +6948,31 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       if(!d) return;
       d.paidAmount = (d.paidAmount||0) + val;
       saveDebts();
-      if(d.paidAmount >= d.amount) playSuccessSound();
-      renderDebts(); renderSummary();
+      if(debtRemaining(d) <= 0) playSuccessSound();
+      renderAll();
+    });
+  }
+  // Sledeci datum dospeca rate: tekuci mesec ako jos nije placena, inace sledeci mesec.
+  function nextInstallmentDueLabel(r){
+    const mKeyNow = currentMonthKey();
+    const mKey = isPaid(r, mKeyNow) ? C.addMonths(mKeyNow, 1) : mKeyNow;
+    return parseLocalDate(C.dueDateFor(r, mKey)).toLocaleDateString(LOCALE, {day:'2-digit', month:'2-digit'});
+  }
+  function openDebtInstallmentModal(id){
+    const d = debts.find(x=> x.id === id);
+    if(!d) return;
+    const remaining = debtRemaining(d);
+    const capacity = parseFloat(localStorage.getItem(DEBT_CAPACITY_KEY));
+    const defaultAmount = (!isNaN(capacity) && capacity > 0) ? Math.min(remaining, capacity) : remaining;
+    const defaultDay = d.due ? parseLocalDate(d.due).getDate() : 1;
+    const defaultCategory = expenseCats.includes('Ostalo') ? 'Ostalo' : expenseCats[0];
+    openEditModal(t('Mesečna rata'), [
+      {key:'amount', label: t('Iznos rate (RSD)'), type:'number', value: defaultAmount},
+      {key:'day', label: t('Dan u mesecu'), type:'number', value: defaultDay},
+      {key:'category', label: t('Kategorija'), type:'select', value: defaultCategory, options: expenseCats},
+    ], (vals)=>{
+      if(!(vals.amount > 0)) return;
+      createDebtInstallment(d, { amount: vals.amount, day: vals.day || 1, category: vals.category });
     });
   }
   function revalueDebt(id){
@@ -7506,7 +7569,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       if(isDueThisMonth(r, curMonthKey) && !isPaid(r, curMonthKey) && !isSkipped(r, curMonthKey) && dueDayNow(r) < todayDay) n++;
     });
     const todayStr = toISODateLocal(new Date());
-    debts.forEach(d=>{ if(d.amount - (d.paidAmount||0) > 0 && d.due && d.due < todayStr) n++; });
+    debts.forEach(d=>{ if(debtRemaining(d) > 0 && d.due && d.due < todayStr) n++; });
     return n;
   }
   // Desktop: crveni bedz sa brojem kasnih plaćanja preko ikonice na taskbaru
@@ -7556,6 +7619,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }, true);
 
   function renderAll(){
+    syncDebtInstallments();
     renderSummary();
     // Stvari koje moraju da se dese i kad Pregled nije otvoren
     processEnvelopeRollover();

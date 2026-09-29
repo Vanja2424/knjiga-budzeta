@@ -493,6 +493,24 @@
       check('obaveštenje za obrisanu stavku samo otvara ekran', $('screen-dugovi').classList.contains('active'));
     } else check('obaveštenje: hook postoji', false);
 
+    // Rata duga: pravljenje, placanje smanjuje ostatak (stanje samo jednom), izmirenje -> until, brisanje rate -> ostatak nazad
+    go('dugovi'); await sleep(40);
+    setVal('debtPerson', 'Smoke rata'); setVal('debtAmount', '3000'); setVal('debtCurrency', 'RSD'); setVal('debtDirection', 'i_owe');
+    $('debtForm').requestSubmit(); await sleep(80);
+    const rd = JSON.parse(localStorage.getItem('budzet-dugovi-v1') || '[]').find(d => d.person === 'Smoke rata');
+    const cat0 = window.__desktopBridge.getQuickAddData().expenseCats[0];
+    const inst = rd && window.__createDebtInstallment(rd.id, { amount: 1000, day: 1, category: cat0 });
+    check('rata: ponavljajuća stavka sa debtId', !!inst && inst.debtId === rd.id && inst.desc === 'Rata: Smoke rata');
+    const balBefore = $('balanceSub').textContent;
+    window.__markRecurringPaid(inst.id, 1000); await sleep(60);
+    const rEntry = entries().find(e => e.id === 'rec-' + inst.id + '-' + curM);
+    check('rata: plaćanje pravi rashod sa debtId', !!rEntry && rEntry.debtId === rd.id && rEntry.amount === 1000);
+    check('rata: ostatak duga se smanjio', window.BudzetCore.debtPaid(JSON.parse(localStorage.getItem('budzet-dugovi-v1')).find(d => d.id === rd.id), entries()) === 1000);
+    window.__deleteEntriesById([rEntry.id]); window.__markRecurringPaid(inst.id, 3000); await sleep(60);
+    check('rata: izmiren dug -> until', JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until === curM);
+    window.__deleteEntriesById(['rec-' + inst.id + '-' + curM]); await sleep(60);
+    check('rata: brisanje rate vraća ostatak i uklanja until', !JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')).find(r => r.id === inst.id).until);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
