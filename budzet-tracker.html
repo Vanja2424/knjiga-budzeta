@@ -1691,6 +1691,19 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .row-flash{ animation: rowFlash 1.6s ease-out; border-radius: 8px; }
 @media (prefers-reduced-motion: reduce){ .row-flash{ animation: none; background: color-mix(in srgb, var(--accent) 18%, transparent); } }
 .debt-fx{ align-items:center; gap:0.6em; } .debt-fx .btn-secondary{ padding:3px 10px; font-size:12.5px; }
+/* ---- Izgled i tastatura (v1.16) ---- */
+.th-mini{ font-size:11px; font-weight:500; color:var(--ink-tertiary); white-space:nowrap; }
+.row-actions .del-btn{ margin-left:0.5em; }
+@media (hover: hover){
+  td.row-actions > button{ opacity:0; transition:opacity var(--dur-fast, .15s) ease; }
+  tr:hover td.row-actions > button, tr:focus-within td.row-actions > button{ opacity:1; }
+}
+footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
+.footer-keys kbd, .shortcut-grid kbd{ font:600 11px/1 var(--font); padding:2px 5px; border-radius:4px; background:var(--fill); border:1px solid var(--paper-line); }
+#dialogBody .shortcut-grid{ max-height:60vh; overflow:auto; text-align:left; }
+.pregled-start{ text-align:left; }
+.pregled-empty .needs-data, .pregled-empty #patternsPanel, .pregled-empty #tagBreakdownPanel{ display:none !important; }
+.pregled-start .actions{ display:flex; flex-wrap:wrap; gap:0.6em; margin-top:0.9em; }
 /* ---- Mesec iza tebe, mesecna uplata u cilj (v1.15) ---- */
 .month-review-head{ display:flex; justify-content:space-between; align-items:flex-start; gap:1em; }
 .month-review-close{ border:none; background:transparent; color:var(--ink-soft); font-size:15px; width:28px; height:28px; border-radius:50%; cursor:default; flex-shrink:0; }
@@ -1783,12 +1796,22 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       <div class="month-review-actions" id="monthReviewActions"></div>
     </div>
 
+    <div class="panel pregled-start" id="pregledStart" style="display:none; margin-bottom:1.8em;">
+      <h2>Počni ovde</h2>
+      <p class="hint" style="margin:0;">Još nema nijednog prihoda ni rashoda. Upiši prvu stavku ili dodaj ponavljajuće (plata, kirija, računi) — grafikoni i analiza se pojavljuju čim ima podataka.</p>
+      <div class="actions">
+        <button class="submit-btn neutral" id="pregledStartExpense" style="width:auto; margin-top:0;">Novi rashod</button>
+        <button class="btn-secondary" id="pregledStartIncome">Novi prihod</button>
+        <button class="btn-secondary" id="pregledStartRecurring">Ponavljajuće stavke</button>
+      </div>
+    </div>
+
     <div class="panel" id="accountsOverviewPanel" style="display:none; margin-bottom:1.8em;">
       <h2>Stanje na računima</h2>
       <div class="accounts-grid" id="accountsOverview"></div>
     </div>
 
-    <div class="panel" style="margin-bottom:1.8em;">
+    <div class="panel needs-data" style="margin-bottom:1.8em;">
       <h2>Finansijsko zdravlje</h2>
       <div class="health-score-row">
         <div class="health-score-wrap">
@@ -1810,7 +1833,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       <button class="btn-secondary" id="envelopeSweepBtn" style="display:none; margin-top:1em;">Prebaci višak u cilj</button>
     </div>
 
-    <div class="layout" style="margin-bottom:1.8em;">
+    <div class="layout needs-data" style="margin-bottom:1.8em;">
       <div class="panel">
         <h2 id="monthCalendarTitle">Kalendar</h2>
         <div class="mcal-grid compact" id="monthCalendarGrid"></div>
@@ -1838,12 +1861,12 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       </div>
     </div>
 
-    <div class="panel chart-panel" style="margin-top:1.5em;">
+    <div class="panel chart-panel needs-data" style="margin-top:1.5em;">
       <h2>Kretanje salda</h2>
       <svg id="balanceChart" class="trend-svg" viewBox="0 0 760 130" preserveAspectRatio="xMidYMid meet"></svg>
     </div>
 
-    <div class="layout">
+    <div class="layout needs-data">
       <div class="panel">
         <h2 id="breakdownTitle">Rashodi po kategorijama</h2>
         <div class="donut-wrap">
@@ -1862,7 +1885,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       </div>
     </div>
 
-    <div class="panel" style="margin-top:1.5em;">
+    <div class="panel needs-data" style="margin-top:1.5em;">
       <h2 id="recentTitle">Poslednje stavke</h2>
       <div class="table-scroll"><table>
         <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th></tr></thead>
@@ -1922,7 +1945,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
           <button class="btn-secondary" id="incomeBulkDeleteBtn">Obriši izabrano</button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th><input type="checkbox" id="selectAllIncome" title="Izaberi sve"></th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th></th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAllIncome" title="Izaberi sve"></th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th><span class="sr-only">Radnje</span></th></tr></thead>
           <tbody id="incomeBody"></tbody>
         </table></div>
         <div id="incomeEmpty" class="empty" style="display:none;">Još nema unesenih prihoda.</div>
@@ -1990,7 +2013,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
           <button class="btn-secondary" id="expenseBulkDeleteBtn">Obriši izabrano</button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th><input type="checkbox" id="selectAllExpenses" title="Izaberi sve"></th><th></th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th></th></tr></thead>
+          <thead><tr><th><input type="checkbox" id="selectAllExpenses" title="Izaberi sve"></th><th class="th-mini">Plaćeno</th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th><span class="sr-only">Radnje</span></th></tr></thead>
           <tbody id="expenseBody"></tbody>
         </table></div>
         <div id="expenseEmpty" class="empty" style="display:none;">Nema rashoda za prikaz.</div>
@@ -2541,11 +2564,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <span><kbd>Ctrl</kbd> + <kbd>N</kbd></span><span>Novi rashod (prozor za unos)</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span><span>Novi prihod</span>
             <span id="deskShortcutKeys"></span><span>Brzi unos iz bilo kog programa</span>
-            <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>7</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
+            <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>8</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
             <span><kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd></span><span>Prethodni / sledeći mesec u sažetku</span>
             <span><kbd>Ctrl</kbd> + <kbd>,</kbd></span><span>Podešavanja</span>
             <span><kbd>Ctrl</kbd> + <kbd>F</kbd></span><span>Pretraga stavki</span>
             <span><kbd>/</kbd></span><span>Fokus na polje za unos na trenutnom ekranu</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span><span>Poništi poslednju radnju (brisanje, plaćanje…)</span>
+            <span><kbd>Esc</kbd></span><span>Zatvori prozor ili poruku</span>
+            <span><kbd>?</kbd></span><span>Prikaži ove prečice</span>
             <span><kbd>Ctrl</kbd> + <kbd>P</kbd></span><span>Odštampaj izveštaj</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></span><span>Sačuvaj izveštaj kao PDF</span>
             <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd></span><span>Svetla / tamna tema</span>
@@ -3167,6 +3193,48 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(document.getElementById('dayDetailOverlay').classList.contains('show')){ closeDayDetail(); return; }
     if(document.getElementById('undoToast').classList.contains('show')){ dismissTopUndo(); }
   });
+  // Ctrl+Z = "Poništi" iz poruke (vrh steka); u polju za tekst i u otvorenom prozoru pripada polju.
+  const typingIn = el => { const tag = (el && el.tagName || '').toLowerCase(); return tag === 'input' || tag === 'textarea' || tag === 'select' || !!(el && el.isContentEditable); };
+  function undoTop(){
+    if(!undoStack.length) return false;
+    const top = undoStack.pop();
+    clearTimeout(top.timer);
+    top.undoFn();
+    renderUndoToast();
+    return true;
+  }
+  window.__undoTop = undoTop;
+  document.addEventListener('keydown', (e)=>{
+    if(!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== 'z' && e.key !== 'Z' && e.code !== 'KeyZ')) return;
+    if(typingIn(e.target) || document.querySelector('.modal-overlay.show')) return;
+    if(undoTop()) e.preventDefault();
+  });
+  // "?" = prozor sa precicama (samo desktop, tamo spisak ima smisla)
+  function openShortcutsDialog(){
+    const grid = document.querySelector('#desktopShortcuts .shortcut-grid');
+    if(!grid) return;
+    openDialog(t('Prečice na tastaturi'), `<div class="shortcut-grid">${grid.innerHTML}</div>`, { html: true, alertOnly: true, okText: t('Zatvori') });
+  }
+  window.__openShortcuts = openShortcutsDialog;
+  // Dugmad samo sa ikonicom/znakom dobijaju aria-label iz title (citaci ekrana inace procitaju "✕").
+  function labelIconButtons(root){
+    (root || document).querySelectorAll('button[title]:not([aria-label])').forEach(b=>{
+      if(b.textContent.trim().length <= 2) b.setAttribute('aria-label', b.getAttribute('title'));
+    });
+  }
+  labelIconButtons();
+  let labelQueued = false;
+  new MutationObserver(()=>{
+    if(labelQueued) return;
+    labelQueued = true;
+    requestAnimationFrame(()=>{ labelQueued = false; labelIconButtons(); });
+  }).observe(document.body, { childList: true, subtree: true });
+  document.addEventListener('keydown', (e)=>{
+    if(e.key !== '?' || e.ctrlKey || e.altKey || e.metaKey || !window.desktop) return;
+    if(typingIn(e.target) || document.querySelector('.modal-overlay.show')) return;
+    e.preventDefault();
+    openShortcutsDialog();
+  });
 
   // ---- Animirano brisanje reda (fade pa tek onda ukloni iz podataka) ----
   // Dok red "iščezava" (180ms), bilo koji drugi renderAll() (npr. čekiranje drugog reda) inace
@@ -3374,7 +3442,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   let activeScreen = 'pregled';
   // Iscrtavanje po ekranu — posle izmene se odmah crta samo vidljivi ekran, ostali pri otvaranju.
   const SCREEN_RENDER = {
-    pregled: ()=>{ renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
+    pregled: ()=>{ renderPregledStart(); renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
     prihodi: ()=> renderIncome(),
     rashodi: ()=> renderExpenses(),
     racuni: ()=> renderAccounts(),
@@ -4516,6 +4584,16 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     });
   }
 
+  // ---- Pregled za novog korisnika: bez ijednog prihoda/rashoda prazni grafikoni se skrivaju ----
+  function renderPregledStart(){
+    const empty = !entries.some(e=> e.type === 'income' || e.type === 'expense');
+    document.getElementById('pregledStart').style.display = empty ? 'block' : 'none';
+    document.getElementById('screen-pregled').classList.toggle('pregled-empty', empty);
+  }
+  document.getElementById('pregledStartExpense').addEventListener('click', ()=> openNewEntry('expense'));
+  document.getElementById('pregledStartIncome').addEventListener('click', ()=> openNewEntry('income'));
+  document.getElementById('pregledStartRecurring').addEventListener('click', ()=> showScreen('ponavljajuce'));
+
   // ---- Mesec iza tebe (kartica na Pregledu, prvih 10 dana meseca) ----
   const MONTH_REVIEW_KEY = 'budzet-mesecni-pregled-zatvoren-v1';
   function dismissMonthReview(mKey){
@@ -4757,6 +4835,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     sel.innerHTML = months.map(m=> `<option value="${m}"${m === month ? ' selected' : ''}>${monthYearLabelSr(m)}</option>`).join('');
     document.querySelectorAll('.analiza-period-btn').forEach(b=> b.classList.toggle('active', Number(b.dataset.n) === analizaState.n));
     const b = C.categoryBreakdown(entries, month, analizaState.n);
+    analizaState.enough = b.enough;
     const sum = document.getElementById('analizaSummary');
     sum.dataset.n = String(analizaState.n);
     if(b.total <= 0) sum.textContent = t('{0} — {1}', monthYearLabelSr(month), t('Nema plaćenih troškova u ovom mesecu'));
@@ -4839,7 +4918,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     }).join('');
     const avgLine = st.enough ? `<line x1="${padL}" x2="${W - padR}" y1="${yFor(st.avg).toFixed(1)}" y2="${yFor(st.avg).toFixed(1)}" stroke="var(--ink-soft)" stroke-width="1.5" stroke-dasharray="5 4"/>` : '';
     svg.innerHTML = bars + avgLine;
-    note.textContent = st.enough ? t('Isprekidana linija: prosek {0} ({1})', fmt(st.avg), analizaPeriodTxt(analizaState.n)) : t('Za poređenje su potrebna bar 2 meseca podataka');
+    // poruka o 2 meseca stoji samo u sazetku na vrhu
+    note.textContent = st.enough ? t('Isprekidana linija: prosek {0} ({1})', fmt(st.avg), analizaPeriodTxt(analizaState.n)) : '';
   }
   function renderAnalizaFixed(month){
     const s = C.splitFixedVariable(entries, month, fixedCategories);
@@ -4867,8 +4947,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <span${g.label === C.NO_DESC ? '' : ' translate="no"'}>${escapeHtml(g.label)}</span><span class="muted">${t('~{0}× mesečno · prosečno {1}', Math.round(g.perMonth), fmt(g.avgPurchase))}</span><b>${t('{0} mesečno · {1} godišnje', fmt(g.monthly), fmt(g.yearly))}</b></div>`).join('')}</div>`);
     if(s.subscriptions.length) parts.push(`<div class="analiza-subs"><h3>${t('Pretplate i ponavljajuće')}</h3>${s.subscriptions.map(r=> `<div class="analiza-save-row">
         <span translate="no">${escapeHtml(r.desc)}</span><span class="muted">${r.creep ? `<span class="analiza-creep">${t('↑ poskupelo {0}%', r.creepPct)}</span>` : ''}</span><b>${t('{0} godišnje', fmt(r.yearly))}</b></div>`).join('')}</div>`);
-    if(!s.enough && !s.subscriptions.length) parts.push(`<div class="empty">${t('Za poređenje su potrebna bar 2 meseca podataka')}</div>`);
-    else if(!parts.length) parts.push(`<div class="empty">${t('Nema ništa upadljivo — potrošnja je u okviru proseka.')}</div>`);
+    if(s.enough && !parts.length) parts.push(`<div class="empty">${t('Nema ništa upadljivo — potrošnja je u okviru proseka.')}</div>`);
     document.getElementById('analizaSaveBody').innerHTML = parts.join('');
     renderAnalizaWhatIf(month);
   }
@@ -4881,7 +4960,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const res = document.getElementById('analizaWhatIfResult');
     const act = document.getElementById('analizaWhatIfAction');
     act.innerHTML = '';
-    if(avg <= 0){ res.textContent = t('Za poređenje su potrebna bar 2 meseca podataka'); return; }
+    slider.closest('.analiza-whatif').style.display = analizaState.enough === false ? 'none' : '';
+    if(avg <= 0){ res.textContent = t('Nema promenljivih troškova za poređenje.'); return; }
     res.innerHTML = t('Ušteda: {0} mesečno · {1} godišnje', fmt(w.monthly), `<b>${fmt(w.yearly)}</b>`) +
       (w.goal ? `<div class="analiza-goal">${t('Cilj „{0}“ stižeš {1} ranije', escapeHtml(w.goal.name), monthsTxt(w.goal.sooner))}</div>` : '');
     const amount = C.planAmount(w.monthly);
@@ -8263,7 +8343,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
     const bad = workbookShapeError(wb);
-    if(bad) throw new Error(bad);
+    if(bad){ const err = new Error(bad); err.shape = true; throw err; }
     parseWorkbook(wb);
     persistAllToLocalStorage(); reconcileAppliedEntries();
     lastKnownFileModified = file.lastModified;
@@ -8325,8 +8405,13 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         await readExcelFileIntoLocal(excelHandle);
         updateExcelStatus(`Povezano: ${excelHandle.name} — preuzete izmene sa drugog uređaja u ${new Date().toLocaleTimeString(LOCALE)}`);
       }
-    } catch(e){ /* fajl mozda nedostupan trenutno - probaj ponovo na sledecoj provateri */ }
+    } catch(e){
+      // Pogresan oblik fajla: reci korisniku (podaci nisu dirani); ostalo je verovatno privremeno — probaj ponovo
+      if(e && e.shape){ excelShapeStatus = e.message; updateExcelStatus(e.message); }
+    }
   }
+  let excelShapeStatus = '';
+  window.__excelShapeStatus = () => excelShapeStatus;
 
   async function connectNewExcelFile(){
     try{
@@ -8717,7 +8802,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     byId('deskOpenDataBtn').addEventListener('click', ()=> desktop.data.open());
 
     // Tekstovi koji u browseru govore o browseru
-    document.querySelector('footer').textContent = 'Podaci se čuvaju u fajlu na ovom računaru — nikamo se ne šalju.';
+    document.querySelector('footer').innerHTML = `<span>${t('Podaci se čuvaju u fajlu na ovom računaru — nikamo se ne šalju.')}</span><span class="footer-keys">${t('Pritisni {0} za prečice na tastaturi', '<kbd>?</kbd>')}</span>`;
     byId('enableNotifBtn').style.display = 'none';
     byId('notifStatus').textContent = 'Notifikacije su uključene — podsetnici za kasna plaćanja i dugove stižu i kad je prozor zatvoren (dok aplikacija radi u tray-u).';
     // Excel: samo rucni izvoz/uvoz (podaci vise ne zavise od Excel fajla)
@@ -8887,7 +8972,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         checking: 'Proveravam da li postoji nova verzija…',
         current: 'Imaš najnoviju verziju. Nove verzije se instaliraju automatski.',
         downloading: t('Preuzimam verziju {0}… {1}', s.version || '', s.percent ? s.percent + '%' : ''),
-        ready: s.postponed
+        ready: s.saveFailed
+          ? t('Verzija {0} čeka: podaci nisu mogli da se sačuvaju (fajl je zauzet), pa je instalacija odložena. Pokušaću ponovo za 5 minuta.', s.version)
+          : s.postponed
           ? t('Verzija {0} je spremna — instaliraće se čim skloniš prozor (tray ili minimizuj) ili zatvoriš aplikaciju.', s.version)
           : t('Verzija {0} je spremna i instaliraće se automatski za nekoliko trenutaka.', s.version),
         installing: t('Instaliram verziju {0}…', s.version),
@@ -8906,7 +8993,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         else if(st.installAt){
           const secs = Math.max(0, Math.ceil((st.installAt - Date.now()) / 1000));
           label = t('Verzija {0} se instalira za {1} s', st.version, secs);
-        } else label = t('Verzija {0} je spremna', st.version);
+        } else if(st.saveFailed) label = t('Ažuriranje odloženo — podaci nisu sačuvani');
+        else label = t('Verzija {0} je spremna', st.version);
         byId('tbUpdateText').textContent = label;
       };
       tick();

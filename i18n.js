@@ -366,6 +366,14 @@
     'Ukupno: {0} {1}': 'Total: {0} {1}', ' (iznos gore: {0})': ' (amount above: {0})', '≈ {0} · ': '≈ {0} · ',
     'Sačuvano {0}': 'Saved {0}', 'Prebaci višak ({0}) u cilj': 'Move surplus ({0}) to a goal', 'Predlog na osnovu proseka: {0}': 'Suggestion: {0}',
     'Uplata u cilj: {0}': 'Goal contribution: {0}', 'Pokreni automatski ': 'Start automatically',
+    // ---- v1.16: izgled i tastatura ----
+    'Radnje': 'Actions', 'Poništi poslednju radnju (brisanje, plaćanje…)': 'Undo the last action (delete, payment…)',
+    'Zatvori prozor ili poruku': 'Close a dialog or message', 'Prikaži ove prečice': 'Show these shortcuts',
+    'Pritisni {0} za prečice na tastaturi': 'Press {0} for keyboard shortcuts', 'Nema promenljivih troškova za poređenje.': 'No variable expenses to compare.',
+    'Počni ovde': 'Start here',
+    'Još nema nijednog prihoda ni rashoda. Upiši prvu stavku ili dodaj ponavljajuće (plata, kirija, računi) — grafikoni i analiza se pojavljuju čim ima podataka.': 'There is no income or expense yet. Add your first entry or set up recurring items (salary, rent, bills) — charts and insights appear as soon as there is data.',
+    'Verzija {0} čeka: podaci nisu mogli da se sačuvaju (fajl je zauzet), pa je instalacija odložena. Pokušaću ponovo za 5 minuta.': 'Version {0} is waiting: your data could not be saved (the file is busy), so the install was postponed. I will try again in 5 minutes.',
+    'Ažuriranje odloženo — podaci nisu sačuvani': 'Update postponed — data not saved',
     // ---- v1.15: mesec iza tebe, mesecna uplata u cilj ----
     'Mesec iza tebe': 'Last month', 'Mesec iza tebe: {0}': 'Last month: {0}', 'Stopa štednje': 'Savings rate',
     'Potrošnja je {0}% veća od proseka ({1}).': 'Spending was {0}% above average ({1}).', 'Potrošnja je {0}% manja od proseka ({1}).': 'Spending was {0}% below average ({1}).',

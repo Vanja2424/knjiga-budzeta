@@ -283,6 +283,7 @@ const windowIsAway = () => !mainWindow || !mainWindow.isVisible() || mainWindow.
 function scheduleAutoInstall() {
   clearTimeout(updateTimer);
   if (updateState.status !== 'ready') return;
+  if (updateState.saveFailed) setUpdate({ saveFailed: false }); // novi pokusaj
   if (windowIsAway()) { installUpdateNow({ hidden: !mainWindow || !mainWindow.isVisible() }); return; }
   if (updateState.postponed) return;
   setUpdate({ installAt: Date.now() + UPDATE_COUNTDOWN_MS });
@@ -334,7 +335,7 @@ function setupUpdater() {
   autoUpdater.on('update-downloaded', (i) => {
     settings.releaseNotes = { version: i.version, text: releaseNotesText(i) };
     saveSettingsNow();
-    setUpdate({ status: 'ready', version: i.version, postponed: false });
+    setUpdate({ status: 'ready', version: i.version, postponed: false, saveFailed: false });
     scheduleAutoInstall();
   });
   autoUpdater.on('error', (err) => {
@@ -357,7 +358,7 @@ async function installUpdateNow(opts) {
   if (!saved.ok) {
     // Ne instaliraj dok podaci nisu upisani: odlozi 5 minuta i javi korisniku
     installing = false;
-    setUpdate({ status: 'ready', installAt: null });
+    setUpdate({ status: 'ready', installAt: null, saveFailed: true });
     // Ne ponavljaj installUpdateNow direktno (opts bi ostao "zamrznut") — vrati se u normalno
     // zakazivanje da se stanje prozora / odlaganje / odbrojavanje ponovo procene.
     updateTimer = setTimeout(scheduleAutoInstall, 5 * 60 * 1000);

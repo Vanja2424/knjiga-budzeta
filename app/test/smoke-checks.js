@@ -690,6 +690,35 @@
       window.__deleteEntriesById(wiIds);
     }
 
+    // Paket 5: tastatura i izgled
+    {
+      const key = (k, opts = {}) => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, ...opts }));
+      window.__goals().push({ id: 'p5-goal', name: 'P5 cilj', target: 1000, current: 0, deadline: '' }); window.__saveGoals();
+      go('ciljevi'); await sleep(80);
+      const gDel = document.querySelector('.goal-card[data-goal-id="p5-goal"] .del-btn');
+      gDel && gDel.click(); await sleep(400);
+      if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); }
+      check('Ctrl+Z: cilj je obrisan', !window.__goals().some(g => g.id === 'p5-goal'));
+      key('z', { ctrlKey: true, code: 'KeyZ' }); await sleep(80);
+      check('Ctrl+Z vraća obrisano', window.__goals().some(g => g.id === 'p5-goal'));
+      window.__goals().splice(window.__goals().findIndex(g => g.id === 'p5-goal'), 1); window.__saveGoals(); await sleep(40);
+      key('?', { shiftKey: true }); await sleep(80);
+      check('? otvara prečice na tastaturi', $('dialogOverlay').classList.contains('show') && /Ctrl/.test($('dialogBody').textContent) && /Ctrl \+ Z|CtrlZ|Ctrl\s*\+\s*Z/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 120));
+      key('Escape'); await sleep(80);
+      check('Esc zatvara prečice', !$('dialogOverlay').classList.contains('show'));
+      check('spisak prečica: Ctrl+1…8', /8/.test(document.querySelector('#desktopShortcuts .shortcut-grid').textContent));
+      go('rashodi'); await sleep(80);
+      const noLabel = [...document.querySelectorAll('button[title]')].filter(b => b.textContent.trim().length <= 2 && !b.getAttribute('aria-label'));
+      check('dugmad sa ikonicom imaju aria-label', noLabel.length === 0, noLabel.slice(0, 3).map(b => b.outerHTML.slice(0, 80)).join(' | '));
+      check('Rashodi: kolona "Plaćeno" ima naziv', /Plaćeno/.test(document.querySelector('#screen-rashodi thead').textContent));
+      go('analiza'); await sleep(80);
+      const twoMonth = ($('screen-analiza').textContent.match(/bar 2 meseca podataka/g) || []).length;
+      check('Analiza: poruka o 2 meseca najviše jednom', twoMonth <= 1, twoMonth);
+      go('pregled'); await sleep(60);
+      check('Pregled: "Počni ovde" skriven kad ima podataka', $('pregledStart').style.display === 'none' && !$('screen-pregled').classList.contains('pregled-empty'));
+      check('Excel: status oblika fajla postoji', typeof window.__excelShapeStatus === 'function');
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
