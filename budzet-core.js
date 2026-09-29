@@ -708,7 +708,7 @@
     const dismissed = (shopping && shopping.dismissed) || {};
     const dates = new Map(), names = new Map();
     (entries || []).forEach(e => {
-      if(!isPaidExp(e) || !Array.isArray(e.items) || e.items.length !== 1) return;
+      if(!isPaidExp(e) || !Array.isArray(e.items)) return;
       e.items.forEach(label => {
         const key = purchasedItemKey(label);
         if(!key) return;

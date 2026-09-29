@@ -663,7 +663,7 @@ test('restockSuggestions: medijan intervala, prag, needed, dismissed, najvise 5'
   const buy = (id, date, items) => ({ id, type: 'expense', date, amount: 100, category: 'Hrana', desc: 'x', items });
   const entries = [
     buy('m1', '2026-09-01', ['Mleko (1 l)']), buy('m2', '2026-09-08', ['mleko']), buy('m3', '2026-09-15', ['Mleko']),
-    buy('m4', '2026-09-22', ['Mleko', 'Hleb']), buy('m5', '2026-09-22', ['Mleko']),       // isti dan se broji jednom
+    buy('m4', '2026-09-22', ['Mleko', 'Jogurt']), buy('m5', '2026-09-22', ['Mleko']),     // isti dan se broji jednom; kupovina sa vise stvari se broji
     buy('h1', '2026-09-10', ['Hleb']), buy('h2', '2026-09-20', ['Hleb']), buy('h3', '2026-09-25', ['Hleb']),
     buy('j1', '2026-09-01', ['Jaja']), buy('j2', '2026-09-10', ['Jaja']),
     buy('k1', '2026-08-01', ['Kafa']), buy('k2', '2026-08-15', ['Kafa']), buy('k3', '2026-08-29', ['Kafa']),
