@@ -1679,6 +1679,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .pay-overdue-row{ display:grid; grid-template-columns: 22px minmax(0,1fr) auto 7.5em; gap:0.7em; align-items:center; padding:0.4em 0; border-bottom:1px solid var(--paper-line); }
 .pay-overdue-desc{ min-width:0; overflow-wrap:anywhere; }
 .pay-overdue-row input[type="number"]{ min-height:0; padding:4px 8px; }
+@keyframes rowFlash{ 0%{ background: color-mix(in srgb, var(--accent) 28%, transparent); } 100%{ background: transparent; } }
+.row-flash{ animation: rowFlash 1.6s ease-out; border-radius: 8px; }
+@media (prefers-reduced-motion: reduce){ .row-flash{ animation: none; background: color-mix(in srgb, var(--accent) 18%, transparent); } }
 </style>
 </head>
 <body>
@@ -5652,7 +5655,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   const NOTIFIED_KEY = 'budzet-notif-poslato-v1';
   let notifiedLog = JSON.parse(localStorage.getItem(NOTIFIED_KEY) || 'null') || { date: '', keys: [] };
   const saveNotifiedLog = () => localStorage.setItem(NOTIFIED_KEY, JSON.stringify(notifiedLog));
-  function sendNotificationOnce(key, title, body){
+  function sendNotificationOnce(key, title, body, target){
     const todayStr = toISODateLocal(new Date());
     if(notifiedLog.date !== todayStr){ notifiedLog = { date: todayStr, keys: [] }; }
     if(notifiedLog.keys.includes(key)) return;
@@ -5660,9 +5663,23 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     saveNotifiedLog();
     try{
       const n = new Notification(title, { body, tag: key });
-      if(window.desktop) n.onclick = ()=> window.desktop.showWindow();
+      n.onclick = ()=>{ if(window.desktop) window.desktop.showWindow(); openNotificationTarget(target); };
     } catch(e){ /* Notification API nedostupan/blokiran - ignorisano */ }
   }
+  // Klik na obavestenje: otvori ekran, skroluj do reda i kratko ga istakni (red mozda vise ne postoji)
+  function openNotificationTarget(target){
+    if(!target || !target.screen) return;
+    showScreen(target.screen);
+    if(!target.rowId) return;
+    setTimeout(()=>{
+      const el = document.querySelector(`#screen-${target.screen} [data-row-id="${CSS.escape(target.rowId)}"]`);
+      if(!el) return;
+      el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      el.classList.remove('row-flash'); void el.offsetWidth; el.classList.add('row-flash');
+      setTimeout(()=> el.classList.remove('row-flash'), 1600);
+    }, 60);
+  }
+  window.__openNotificationTarget = openNotificationTarget;
   function checkAndSendNotifications(){
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
     const todayDay = new Date().getDate();
@@ -5672,17 +5689,17 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const diff = dueDayNow(r) - todayDay;
       if(diff < 0){
         const verb = r.type === 'income' ? 'naplaćeno' : 'plaćeno';
-        sendNotificationOnce(`rec-${r.id}-${curMonthKey}`, t('Kasni plaćanje'), t(r.type === 'income' ? '{0} je trebalo da bude naplaćeno pre {1}.' : '{0} je trebalo da bude plaćeno pre {1}.', r.desc, daysTxt(Math.abs(diff))));
+        sendNotificationOnce(`rec-${r.id}-${curMonthKey}`, t('Kasni plaćanje'), t(r.type === 'income' ? '{0} je trebalo da bude naplaćeno pre {1}.' : '{0} je trebalo da bude plaćeno pre {1}.', r.desc, daysTxt(Math.abs(diff))), { screen: 'ponavljajuce', rowId: r.id });
       } else if(diff <= 1 && r.type === 'expense' && !r.autoPay){
         // Podsetnik unapred: dan pre i na dan dospeca
-        sendNotificationOnce(`due-${r.id}-${curMonthKey}-${diff}`, diff === 0 ? 'Danas dospeva' : 'Sutra dospeva', `${r.desc} — ${fmt(r.amount)}.`);
+        sendNotificationOnce(`due-${r.id}-${curMonthKey}-${diff}`, diff === 0 ? t('Danas dospeva') : t('Sutra dospeva'), `${r.desc} — ${fmt(r.amount)}.`, { screen: 'ponavljajuce', rowId: r.id });
       }
     });
     const todayStr = toISODateLocal(new Date());
     debts.forEach(d=>{
       const remaining = d.amount - (d.paidAmount||0);
       if(remaining <= 0 || !d.due || d.due >= todayStr) return;
-      sendNotificationOnce(`debt-${d.id}-${d.due}`, t('Dug/pozajmica kasni'), t('{0}: rok za {1} je prošao.', d.person, fmt(remaining)));
+      sendNotificationOnce(`debt-${d.id}-${d.due}`, t('Dug/pozajmica kasni'), t('{0}: rok za {1} je prošao.', d.person, fmt(remaining)), { screen: 'dugovi', rowId: d.id });
     });
   }
   document.getElementById('enableNotifBtn').addEventListener('click', async ()=>{

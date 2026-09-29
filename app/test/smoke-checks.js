@@ -472,6 +472,17 @@
       check('plati sve: poništavanje vraća na neplaćeno', !entries().some(e => e.id === eid) && !(JSON.parse(localStorage.getItem('budzet-primenjeno-v1') || '{}')[curM] || []).includes(lateRec.id));
     }
 
+    // Obavestenje vodi na stavku (i ne rusi se kad stavka vise ne postoji)
+    const anyRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]')[0];
+    if (anyRec && typeof window.__openNotificationTarget === 'function') {
+      go('pregled'); await sleep(40);
+      window.__openNotificationTarget({ screen: 'ponavljajuce', rowId: anyRec.id }); await sleep(150);
+      const row = document.querySelector(`#screen-ponavljajuce [data-row-id="${CSS.escape(anyRec.id)}"]`);
+      check('obaveštenje otvara stavku', $('screen-ponavljajuce').classList.contains('active') && !!row && row.classList.contains('row-flash'));
+      window.__openNotificationTarget({ screen: 'dugovi', rowId: 'nepostojeci-id' }); await sleep(150);
+      check('obaveštenje za obrisanu stavku samo otvara ekran', $('screen-dugovi').classList.contains('active'));
+    } else check('obaveštenje: hook postoji', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
