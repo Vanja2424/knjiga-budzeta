@@ -26,9 +26,11 @@ Aplikacija nije kupljena preko Apple-a, pa će macOS pitati da li si sigurna. To
 2. Otvori **System Settings → Privacy & Security** i skroluj skroz dole.
 3. Pored poruke *„Knjiga budzeta" was blocked…* klikni **Open Anyway**, upiši lozinku Mac-a, pa ponovo **Open**.
 
-**macOS 14 (Sonoma) i stariji:**
+**macOS 12, 13 i 14 (Monterey, Ventura, Sonoma):**
 1. U **Applications** drži taster **Control** i klikni na **Knjiga budzeta** (ili desni klik) → **Open**.
 2. U poruci ponovo klikni **Open**.
+
+Ako to ne pomogne: pokušaj da otvoriš aplikaciju dvostrukim klikom i zatvori poruku. Zatim otvori **System Preferences → Security & Privacy**, klikni katanac dole levo i upiši lozinku. Na kartici **General** (ne *Privacy*) klikni **Open Anyway** pored poruke o aplikaciji Knjiga budzeta.
 
 Posle toga se aplikacija otvara normalno, dvostrukim klikom ili iz Launchpad-a.
 
