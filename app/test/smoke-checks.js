@@ -703,7 +703,9 @@
       check('Ctrl+Z vraća obrisano', window.__goals().some(g => g.id === 'p5-goal'));
       window.__goals().splice(window.__goals().findIndex(g => g.id === 'p5-goal'), 1); window.__saveGoals(); await sleep(40);
       key('?', { shiftKey: true }); await sleep(80);
-      check('? otvara prečice na tastaturi', $('dialogOverlay').classList.contains('show') && /Ctrl/.test($('dialogBody').textContent) && /Ctrl \+ Z|CtrlZ|Ctrl\s*\+\s*Z/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 120));
+      check('? otvara prečice na tastaturi', $('dialogOverlay').classList.contains('show') && /(Ctrl|⌘)\s*\+\s*Z/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 120));
+      // Mac: tasteri se prikazuju kao ⌘ ⌥ ⇧ (ne Ctrl)
+      if (document.documentElement.classList.contains('mac')) check('Mac: prečice sa ⌘', /⌘/.test($('dialogBody').textContent) && !/Ctrl/.test($('dialogBody').textContent) && /⌘N/.test(($('newEntryBtn') || {}).title || ''), ($('newEntryBtn') || {}).title);
       key('Escape'); await sleep(80);
       check('Esc zatvara prečice', !$('dialogOverlay').classList.contains('show'));
       check('spisak prečica: Ctrl+1…7', /1\s*…\s*7/.test(document.querySelector('#desktopShortcuts .shortcut-grid').textContent));
