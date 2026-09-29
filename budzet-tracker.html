@@ -3828,6 +3828,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
 
   // ---- Plati sve zakasnele ----
+  let payOverdueLastFocus = null;
   const overdueNow = () => C.overdueRecurring(recurring, applied, skipped, currentMonthKey(), new Date().getDate());
   function updatePayOverdueBtn(){
     const btn = document.getElementById('payOverdueBtn');
@@ -3838,6 +3839,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function openPayOverdue(){
     const items = overdueNow(); if(!items.length) return;
     const mKey = currentMonthKey();
+    payOverdueLastFocus = document.activeElement;
+    // Klik na labelu (opis/datum) čekira/otčekira kućicu; broj-polje samo obrađuje svoj klik (input ne prosleđuje klik labeli).
     document.getElementById('payOverdueList').innerHTML = items.map(r=> `<label class="pay-overdue-row">
         <input type="checkbox" class="pay-overdue-check" data-id="${r.id}" checked>
         <span class="pay-overdue-desc" translate="no">${escapeHtml(r.desc)}</span>
@@ -3854,7 +3857,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     document.getElementById('payOverdueOverlay').classList.add('show');
     setTimeout(()=> document.getElementById('payOverdueSave').focus(), 0);
   }
-  function closePayOverdue(){ document.getElementById('payOverdueOverlay').classList.remove('show'); }
+  function closePayOverdue(){
+    document.getElementById('payOverdueOverlay').classList.remove('show');
+    if(payOverdueLastFocus && typeof payOverdueLastFocus.focus === 'function') payOverdueLastFocus.focus();
+    payOverdueLastFocus = null;
+  }
   // opts (smoke): { ids: [...] } plati te stavke po predlozenom iznosu bez modala
   function confirmPayOverdue(opts){
     const mKey = currentMonthKey();
