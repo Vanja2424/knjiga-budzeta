@@ -444,6 +444,16 @@
       window.__deleteEntriesById(['rec-' + apRec.id + '-' + m1, 'rec-' + apRec.id + '-' + m2]);
     }
 
+    // Sigurnost: flush vraca rezultat, uvoz pogresnog Excela je odbijen, opcije kategorija zasticene od prevoda
+    const fr = await window.__desktopBridge.flush();
+    check('flush vraća rezultat čuvanja', !!fr && fr.ok === true, JSON.stringify(fr));
+    if (typeof window.__workbookShapeError === 'function') {
+      const badWb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(badWb, XLSX.utils.aoa_to_sheet([['Datum', 'Opis', 'Iznos']]), 'Sheet1');
+      check('pogrešan Excel je odbijen', typeof window.__workbookShapeError(badWb) === 'string');
+      check('naš Excel prolazi proveru', window.__workbookShapeError(window.__buildWorkbook()) === null);
+    } else check('provera Excel fajla postoji', false);
+    check('opcije kategorija imaju vrednost i nisu za prevod', [...$('expCategory').options].every(o => o.hasAttribute('value') && o.getAttribute('translate') === 'no'));
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

@@ -55,9 +55,11 @@
       }
       function flushSync(){
         clearTimeout(timer);
-        if(!dirty) return;
+        if(!dirty) return true;
         const r = window.desktop.data.saveSync(serialize());
-        if(r && r.ok){ dirty = false; status.savedAt = r.savedAt; status.error = null; } else status.error = r && r.error;
+        if(r && r.ok){ dirty = false; status.savedAt = r.savedAt; status.error = null; return true; }
+        status.error = r && r.error;
+        return false;
       }
       function changed(){ dirty = true; clearTimeout(timer); timer = setTimeout(saveNow, 300); }
       const mirror = (fn)=>{ try{ fn(); } catch(e){ /* rezervni primerak moze da prekoraci kvotu — nebitno */ } };
@@ -2857,6 +2859,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     div.textContent = str;
     return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
   }
+  // Opcija sa korisnickim podatkom: eksplicitna vrednost + bez prevoda (prevod bi inace promenio sacuvanu vrednost)
+  const userOption = (v, selected) => `<option value="${escapeHtml(v)}" translate="no"${selected ? ' selected' : ''}>${escapeHtml(v)}</option>`;
   function sanitizeHexColor(v){
     return (typeof v === 'string' && /^#[0-9a-fA-F]{3,8}$/.test(v)) ? v : null;
   }
@@ -5824,11 +5828,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function populateExpenseCategorySelect(){
     const sel = document.getElementById('expCategory');
     const prev = sel.value;
-    sel.innerHTML = expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+    sel.innerHTML = expenseCats.map(c=>userOption(c)).join('');
     if(expenseCats.includes(prev)) sel.value = prev;
     const incSel = document.getElementById('incCategory');
     const prevInc = incSel.value;
-    incSel.innerHTML = incomeCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+    incSel.innerHTML = incomeCats.map(c=>userOption(c)).join('');
     if(incomeCats.includes(prevInc)) incSel.value = prevInc;
   }
 
@@ -5857,9 +5861,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const sel = document.getElementById('recCategory');
     const prev = sel.value;
     if(currentRecType === 'expense'){
-      sel.innerHTML = expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+      sel.innerHTML = expenseCats.map(c=>userOption(c)).join('');
     } else {
-      sel.innerHTML = incomeCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+      sel.innerHTML = incomeCats.map(c=>userOption(c)).join('');
     }
     if([...sel.options].some(o=>o.value===prev)) sel.value = prev;
   }
@@ -5876,7 +5880,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const catSel = document.getElementById('filterCategory');
     fillListMonthSelect(monthSel, expenseOnly, expListMonth);
     const prevCat = catSel.value;
-    catSel.innerHTML = '<option value="">Sve kategorije</option>' + expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+    catSel.innerHTML = '<option value="">Sve kategorije</option>' + expenseCats.map(c=>userOption(c)).join('');
     if(expenseCats.includes(prevCat)) catSel.value = prevCat;
   }
 
@@ -6041,7 +6045,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // ---- Podela rashoda na vise kategorija ----
   function splitRowHtml(){
     return `<div class="split-row">
-      <select class="split-cat">${expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('')}</select>
+      <select class="split-cat">${expenseCats.map(c=>userOption(c)).join('')}</select>
       <input type="number" class="split-amount" placeholder="Iznos" min="0" step="1">
       <button type="button" class="del-btn split-remove-row" title="Ukloni">✕</button>
     </div>`;
@@ -7152,7 +7156,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   }
   function renderCatRules(){
     const sel = document.getElementById('newRuleCategory');
-    sel.innerHTML = expenseCats.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+    sel.innerHTML = expenseCats.map(c=>userOption(c)).join('');
     const list = document.getElementById('catRulesList');
     list.innerHTML = catRules.map((r,i)=>`<li><span class="name">"${escapeHtml(r.keyword)}" → ${escapeHtml(r.category)}</span>
       <button class="del-btn" data-rule-idx="${i}" title="Obriši pravilo">✕</button></li>`).join('')
@@ -7195,7 +7199,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function buildBackupData(){
     return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, exportedAt: new Date().toISOString() };
   }
-  document.getElementById('backupExportBtn').addEventListener('click', ()=>{
+  // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
+  function downloadBackupJson(){
     const data = buildBackupData();
     const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
     const url = URL.createObjectURL(blob);
@@ -7204,7 +7209,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     URL.revokeObjectURL(url);
     localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
     renderBackupReminder();
-  });
+  }
+  document.getElementById('backupExportBtn').addEventListener('click', downloadBackupJson);
 
   function isPlainObject(v){ return v !== null && typeof v === 'object' && !Array.isArray(v); }
 
@@ -7311,6 +7317,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         const raw = JSON.parse(evt.target.result);
         // Desktop: kopija celog fajla sa podacima (iz foldera "Rezervne kopije") vraca SVE podatke odjednom.
         if(window.__desktopData && raw && raw.app === 'Knjiga budzeta' && isPlainObject(raw.data)){
+          const shape = C.checkDataFileShape(raw.data);
+          if(!shape.ok){ appAlert(t('Kopija je oštećena ili nije iz Knjige budžeta ({0}). Podaci nisu promenjeni.', shape.problems.join(', '))); return; }
           const when = raw.savedAt ? new Date(raw.savedAt).toLocaleString(LOCALE, {dateStyle:'medium', timeStyle:'short'}) : 'nepoznato';
           if(!(await appConfirm(t('Vratiti sve podatke iz ove kopije (sačuvana: {0})?\n\nTrenutni podaci biće zamenjeni. Pre toga se automatski pravi kopija trenutnog stanja.', when), { title: t('Vraćanje kopije'), okText: t('Vrati kopiju') }))) return;
           await window.__desktopData.saveNow();
@@ -7555,6 +7563,15 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     return rows.length ? (parseInt(rows[0].PoslednjaIzmena, 10) || 0) : 0;
   }
 
+  // Pre zamene svih podataka: da li Excel izgleda kao nas izvoz (null = u redu, inace poruka za korisnika)
+  function workbookShapeError(wb){
+    const ws = wb.Sheets['Stavke'];
+    const header = ws ? (XLSX.utils.sheet_to_json(ws, { header: 1 })[0] || []) : [];
+    const chk = C.checkWorkbookShape(wb.SheetNames, header);
+    return chk.ok ? null : t('Ovo ne izgleda kao Excel fajl Knjige budžeta (nedostaje: {0}). Podaci nisu promenjeni.', chk.missing.join(', '));
+  }
+  window.__workbookShapeError = workbookShapeError;
+
   function parseWorkbook(wb){
     const sheetRows = (name) => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''}) : [];
 
@@ -7729,6 +7746,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const file = await handle.getFile();
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(buf, {type:'array'});
+    const bad = workbookShapeError(wb);
+    if(bad) throw new Error(bad);
     parseWorkbook(wb);
     persistAllToLocalStorage(); reconcileAppliedEntries();
     lastKnownFileModified = file.lastModified;
@@ -7909,8 +7928,11 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         reader.onload = async (evt)=>{
           try{
             const wb = XLSX.read(evt.target.result, {type:'array'});
+            const bad = workbookShapeError(wb);
+            if(bad){ appAlert(bad); return; }
             if(!(await appConfirm('Uvoz iz Excel fajla ZAMENJUJE stavke, kategorije, ponavljajuće stavke, ciljeve i dugove u aplikaciji podacima iz fajla. Nastaviti?', { title: 'Uvoz iz Excela', okText: 'Zameni podatke', danger: true }))) return;
             if(window.__desktopData){ await window.__desktopData.saveNow(); try{ await window.desktop.backupNow(); } catch(e){ /* prva upotreba — nema jos fajla */ } }
+            else downloadBackupJson();
             parseWorkbook(wb);
             persistAllToLocalStorage(); reconcileAppliedEntries();
             populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
@@ -7954,7 +7976,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       case 4: return `
         <p class="hint" style="margin-top:0;">Postavi mesečni budžet za jednu kategoriju (npr. Hrana) da na Pregledu vidiš koliko ti je preostalo tokom meseca.</p>
         <label for="obEnvelopeCat">Kategorija</label>
-        <select id="obEnvelopeCat">${onboardingState.candidateCats.filter(c=>onboardingState.checkedCats.has(c)).map(c=>`<option>${escapeHtml(c)}</option>`).join('')}</select>
+        <select id="obEnvelopeCat">${onboardingState.candidateCats.filter(c=>onboardingState.checkedCats.has(c)).map(c=>userOption(c)).join('')}</select>
         <label for="obEnvelopeAmount">Mesečni budžet (RSD)</label>
         <input type="number" id="obEnvelopeAmount" min="0" step="1" placeholder="0" value="${onboardingState.envelopeAmount}">
         <div class="hint">Opciono — može se podesiti i kasnije na tabu "Budžet".</div>`;
@@ -8451,8 +8473,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : '') };
       },
       async flush(){
-        dataStore.flushSync();
-        return true;
+        const ok = dataStore.flushSync();
+        return { ok: ok !== false, error: ok === false ? (dataStore.status && dataStore.status.error) || 'save failed' : null };
       }
     };
   }

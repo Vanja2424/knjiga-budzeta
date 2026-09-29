@@ -338,6 +338,8 @@
     'Vratiti sve podatke iz ove kopije (sačuvana: {0})?\n\nTrenutni podaci biće zamenjeni. Pre toga se automatski pravi kopija trenutnog stanja.': 'Restore all data from this backup (saved: {0})?\n\nThe current data will be replaced. A backup of the current state is made first.',
     'Vratiti sve podatke na stanje od {0}?\n\nSve izmene posle tog trenutka biće zamenjene. Pre vraćanja se automatski čuva kopija trenutnog stanja, pa se i ovo može poništiti.': 'Restore all data to {0}?\n\nAll changes after that moment will be replaced. The current state is backed up first, so this can be undone too.',
     'Popravljeno: dopunjeno {0} nedostajućih stavki. Brojke su ažurirane.': 'Fixed: filled in {0} missing items. The totals are updated.',
+    'Ovo ne izgleda kao Excel fajl Knjige budžeta (nedostaje: {0}). Podaci nisu promenjeni.': 'This does not look like a Budget Book Excel file (missing: {0}). Your data was not changed.',
+    'Kopija je oštećena ili nije iz Knjige budžeta ({0}). Podaci nisu promenjeni.': 'The backup is damaged or not from Budget Book ({0}). Your data was not changed.',
     'Nema stavki starijih od {0} — ništa nije arhivirano.': 'No items older than {0} — nothing was archived.',
     'Preuzeće se rezervni JSON fajl sa {0} stavki starijih od {1}, a zatim će biti uklonjene iz aktivnog spiska. Nastaviti?': 'A JSON backup with {0} items older than {1} will be downloaded, then they’ll be removed from the active list. Continue?',
     'Arhivirano i uklonjeno {0} stavki (fajl je preuzet).': 'Archived and removed {0} items (the file was downloaded).',

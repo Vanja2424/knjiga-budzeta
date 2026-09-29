@@ -41,6 +41,10 @@ const EN = {
   'Podsetnici za plaćanja i dalje stižu. Aplikacija je u system tray-u (pored sata).': 'Payment reminders still arrive. The app is in the system tray (next to the clock).',
   'Novi rashod': 'New expense', 'Novi prihod': 'New income',
   'Pregled': 'Overview', 'Transakcije': 'Transactions', 'Budžet': 'Budget', 'Ponavljajuće': 'Recurring', 'Ciljevi i dugovi': 'Goals & debts', 'Izveštaji': 'Reports', 'Kursevi': 'Exchange rates', 'Nabavka': 'Shopping', 'Podešavanja': 'Settings',
+  'Ažuriranje je odloženo: podaci nisu mogli da se sačuvaju (fajl je zauzet). Pokušaću ponovo za 5 minuta.': 'Update postponed: your data could not be saved (the file is busy). I will try again in 5 minutes.',
+  'Podaci nisu sačuvani.': 'Your data was not saved.',
+  'Fajl sa podacima je možda zauzet (OneDrive, antivirus). Poslednje izmene mogu da se izgube.': 'The data file may be busy (OneDrive, antivirus). Your latest changes may be lost.',
+  'Pokušaj ponovo': 'Try again', 'Izađi bez čuvanja': 'Quit without saving', 'Otkaži': 'Cancel',
 };
 const T = (sr, ...args) => (LANG === 'en' && EN[sr] !== undefined ? EN[sr] : sr).replace(/\{(\d+)\}/g, (m, i) => args[i] !== undefined ? args[i] : m);
 
@@ -339,7 +343,16 @@ async function installUpdateNow(opts) {
   installing = true;
   clearTimeout(updateTimer);
   setUpdate({ status: 'installing', installAt: null });
-  await flushRenderer();
+  let saved = await flushRenderer();
+  if (!saved.ok) { await new Promise(r => setTimeout(r, 2000)); saved = await flushRenderer(); }
+  if (!saved.ok) {
+    // Ne instaliraj dok podaci nisu upisani: odlozi 5 minuta i javi korisniku
+    installing = false;
+    setUpdate({ status: 'ready', installAt: null });
+    updateTimer = setTimeout(() => installUpdateNow(opts), 5 * 60 * 1000);
+    if (Notification.isSupported()) new Notification({ title: T('Knjiga budžeta'), body: T('Ažuriranje je odloženo: podaci nisu mogli da se sačuvaju (fajl je zauzet). Pokušaću ponovo za 5 minuta.'), icon: ICON_PATH }).show();
+    return;
+  }
   isQuitting = true;
   // Ako je aplikacija bila u tray-u, posle instalacije se vraca u tray (ne iskace prozor).
   settings.restartHidden = !!(opts && opts.hidden);
@@ -783,17 +796,29 @@ function showMain() {
 // Pre izlaska: upisi poslednje izmene u fajl sa podacima (cuvanje ide sa kratkim zakasnjenjem).
 async function flushRenderer() {
   try {
-    await Promise.race([
+    const res = await Promise.race([
       runInMain('window.__desktopBridge ? window.__desktopBridge.flush() : null'),
-      new Promise(r => setTimeout(r, 3000))
+      new Promise(r => setTimeout(() => r({ ok: false, error: 'timeout' }), 3000))
     ]);
-  } catch { /* ignorisano */ }
+    if (res == null) return { ok: true, error: null };
+    return { ok: !!res.ok, error: res.error || null };
+  } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
 }
 async function quitApp() {
   if (isQuitting) return;
   isQuitting = true;
   saveSettingsNow();
-  await flushRenderer();
+  let saved = await flushRenderer();
+  while (!saved.ok) {
+    const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+      type: 'warning', title: T('Knjiga budžeta'), message: T('Podaci nisu sačuvani.'),
+      detail: T('Fajl sa podacima je možda zauzet (OneDrive, antivirus). Poslednje izmene mogu da se izgube.') + (saved.error ? '\n\n' + saved.error : ''),
+      buttons: [T('Pokušaj ponovo'), T('Izađi bez čuvanja'), T('Otkaži')], defaultId: 0, cancelId: 2, noLink: true
+    });
+    if (response === 0) { saved = await flushRenderer(); continue; }
+    if (response === 2) { isQuitting = false; return; }
+    break;
+  }
   // Preuzeta nova verzija se tiho instalira pri izlasku (bez ponovnog pokretanja).
   if (updateState.status === 'ready' && autoUpdater) { autoUpdater.quitAndInstall(true, false); return; }
   app.exit(0);
