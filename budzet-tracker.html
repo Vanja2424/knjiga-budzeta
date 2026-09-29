@@ -3722,6 +3722,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // U proslim mesecima upisuje sve dospelo; u tekucem samo ono ciji je dan prosao.
   const AUTOPAY_LAST_KEY = 'budzet-autoupis-poslednji-mesec-v1';
   function processAutoPay(){
+    syncDebtInstallments();
     const cur = currentMonthKey();
     const today = new Date().getDate();
     const months = C.monthsToProcess(localStorage.getItem(AUTOPAY_LAST_KEY), cur, 24);
@@ -3729,6 +3730,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const backfilled = [];
     months.forEach(mKey=>{
       C.autoPayDue(recurring, { applied, skipped, optOut: autoPayOptOut }, mKey, mKey === cur ? today : null).forEach(r=>{
+        if(r.debtId){ const d = debts.find(x=> x.id === r.debtId); if(d && debtRemaining(d) <= 0) return; }
         if(!applied[mKey]) applied[mKey] = [];
         applied[mKey].push(r.id);
         const id = recurringEntryId(r, mKey);
@@ -3949,21 +3951,23 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   // Otplaceno/ostatak duga: rucne uplate + placene rate (rashodi sa debtId). overallBalance i dalje koristi samo d.paidAmount.
   const debtRemaining = d => Math.max(0, C.round2(d.amount - C.debtPaid(d, entries)));
   const debtInstallment = d => recurring.find(r => r.debtId === d.id);
-  // Rata prestaje kad je dug izmiren (until = tekuci mesec); kad dug ponovo ima ostatak, nastavlja se
+  // Rata prestaje kad je dug izmiren (until = tekuci mesec ako je rata za taj mesec vec placena,
+  // inace prethodni mesec — da autoplaćanje ne naplati ratu za vec izmiren dug); kad dug ponovo ima ostatak, nastavlja se.
   function syncDebtInstallments(){
     let changed = false;
+    const cur = currentMonthKey();
     recurring.forEach(r=>{
       if(!r.debtId) return;
       const d = debts.find(x=> x.id === r.debtId);
       if(!d) return;
       const done = debtRemaining(d) <= 0;
-      if(done && !r.until){ r.until = currentMonthKey(); changed = true; }
+      if(done && !r.until){ r.until = isPaid(r, cur) ? cur : C.addMonths(cur, -1); changed = true; }
       else if(!done && r.until){ delete r.until; changed = true; }
     });
     if(changed) saveRecurring();
   }
   function createDebtInstallment(d, o){
-    const r = { id: newId(), type: 'expense', desc: 'Rata: ' + d.person, amount: o.amount, category: o.category, day: C.clampRecurringDay(o.day), frequency: 'monthly', anchorMonth: 1, isSubscription: false, autoPay: false, debtId: d.id };
+    const r = { id: newId(), type: 'expense', desc: 'Rata: ' + d.person, amount: Math.round(o.amount), category: o.category, day: C.clampRecurringDay(o.day), frequency: 'monthly', anchorMonth: 1, isSubscription: false, autoPay: false, debtId: d.id };
     recurring.push(r); saveRecurring(); renderAll();
     return r;
   }
@@ -4001,11 +4005,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const direct = entries.filter(e=> e.type==='expense' && !isExpensePaid(e) && (mKey === cur ? monthKey(e.date) <= mKey : monthKey(e.date) === mKey));
     const recItems = pendingRecurring(mKey);
     const debt = mKey === cur ? debtExpenseTotals() : { pending: 0, pendingCount: 0 };
-    const expense = direct.reduce((s,e)=>s+e.amount,0) + recItems.filter(r=>r.type==='expense').reduce((s,r)=>s+r.amount,0) + debt.pending;
+    // Tekuci mesec: rate (r.debtId) su vec u debt.pending (C.debtPaid/debtRemaining), ne dodaj ih i ovde.
+    const recExpenseItems = recItems.filter(r=> r.type==='expense' && !(mKey === cur && r.debtId));
+    const expense = direct.reduce((s,e)=>s+e.amount,0) + recExpenseItems.reduce((s,r)=>s+r.amount,0) + debt.pending;
     const income = recItems.filter(r=>r.type==='income').reduce((s,r)=>s+r.amount,0);
-    const count = direct.length + recItems.filter(r=>r.type==='expense').length + debt.pendingCount;
+    const count = direct.length + recExpenseItems.length + debt.pendingCount;
     return { expense, income, count };
   }
+  window.__pendingForMonth = pendingForMonth;
   function renderSummary(){
     const cur = currentMonthKey();
     const mt = monthTotals(viewMonth);
@@ -6939,7 +6946,15 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     wireDeleteButton(list, {
       rowSelector: '.goal-card',
       find: id => debts.find(d=>d.id === id),
-      onDelete: (d, b)=>{ debts = debts.filter(x=>x.id !== b.dataset.id); saveDebts(); },
+      onDelete: (d, b)=>{
+        debts = debts.filter(x=>x.id !== b.dataset.id); saveDebts();
+        // Obrisan dug: njegova rata (ako postoji) prestaje odmah — bez ovoga bi ostala "obesena"
+        // i i dalje dospevala u punom iznosu (syncDebtInstallments je ovde nema cemu da preskoci).
+        const cutoff = C.addMonths(currentMonthKey(), -1);
+        let changed = false;
+        recurring.forEach(r=>{ if(r.debtId === d.id && r.until !== cutoff){ r.until = cutoff; changed = true; } });
+        if(changed) saveRecurring();
+      },
       undoLabel: d => t('Obrisano: "{0}"', d.person),
       onUndo: d => { debts.push(d); saveDebts(); }
     });
