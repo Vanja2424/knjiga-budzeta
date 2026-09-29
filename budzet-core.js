@@ -618,6 +618,48 @@
     return rows.map((r, idx) => ({ category: r.category, amount: amounts[idx], items: r.items }));
   }
 
+  // ---------- Mesec i ponavljajuce (premesteno iz stranice radi testova) ----------
+  const round2 = x => Math.round(x * 100) / 100;
+  // Mesecni zbir: prihodi + placeni rashodi, raspodeljene stavke mesecnim delom; sve zaokruzeno na pare.
+  function monthTotals(entries, mKey){
+    let income = 0, expense = 0;
+    const byCat = {};
+    entries.forEach(e => {
+      if(e.type !== 'income' && !isPaidExp(e)) return;
+      const share = shareInMonth(e, mKey);
+      if(!share) return;
+      if(e.type === 'income') income += share;
+      else { expense += share; byCat[e.category] = (byCat[e.category] || 0) + share; }
+    });
+    Object.keys(byCat).forEach(k => { byCat[k] = round2(byCat[k]); });
+    income = round2(income); expense = round2(expense);
+    return { income, expense, net: round2(income - expense), byCat, catEntries: Object.entries(byCat).sort((a, b) => b[1] - a[1]) };
+  }
+  const isRecurringPaid = (applied, r, mKey) => ((applied || {})[mKey] || []).includes(r.id);
+  const isRecurringSkipped = (skipped, r, mKey) => ((skipped || {})[mKey] || []).includes(r.id);
+  const recurringEntryId = (r, mKey) => 'rec-' + r.id + '-' + mKey;
+  // Ponavljajuce koje u mesecu (tekucem ili buducem) tek dospevaju: nisu placene, preskocene ni upisane.
+  function pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonth){
+    if(mKey < currentMonth) return [];
+    const ids = new Set(entries.map(e => e.id));
+    return recurring.filter(r => isDueInMonth(r, mKey) && !isRecurringPaid(applied, r, mKey) && !isRecurringSkipped(skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey)));
+  }
+  // Meseci za automatsko upisivanje: od (poslednji obradjen + 1) do tekuceg, najvise `max` unazad; bez kljuca samo tekuci.
+  function monthsToProcess(last, current, max){
+    if(!/^\d{4}-\d{2}$/.test(last || '') || last >= current) return [current];
+    const oldest = addMonths(current, -((max || 24) - 1));
+    const from = addMonths(last, 1);
+    return monthRange(from > oldest ? from : oldest, current);
+  }
+  // Stavke sa "Automatski upisi" dospele u mesecu; dayLimit = danasnji dan za tekuci mesec, null za prosle mesece.
+  function autoPayDue(recurring, state, mKey, dayLimit){
+    const s = state || {};
+    return (recurring || []).filter(r => r.autoPay && isDueInMonth(r, mKey)
+      && !isRecurringPaid(s.applied, r, mKey) && !isRecurringSkipped(s.skipped, r, mKey)
+      && !(((s.optOut || {})[mKey]) || []).includes(r.id)
+      && (dayLimit == null || effectiveDay(r.day, mKey) <= dayLimit));
+  }
+
   return {
     pad2, toISODate, monthKeyOf, addMonths, daysInMonth, monthRange,
     effectiveDay, dueDateFor, clampRecurringDay, isDueInMonth,
@@ -633,6 +675,7 @@
     splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary,
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
-    NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase
+    NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
+    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue
   };
 });

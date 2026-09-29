@@ -498,3 +498,72 @@ test('splitPurchase: jedna kategorija, srazmerno, bez cene, zaokruzivanje', () =
   const dec = C.splitPurchase([{ name: 'A', category: 'A' }, { name: 'B', category: 'B' }, { name: 'C', category: 'C' }], 1000.5);
   assert.deepEqual(dec.map(r => r.amount), [333, 333, 334.5]);
 });
+
+// ---------- Mesec i ponavljajuce ----------
+test('monthTotals: prihodi, placeni rashodi, raspodela, zaokruzivanje na pare', () => {
+  const entries = [
+    { id: 'i', type: 'income', date: '2026-09-05', amount: 100000.1, category: 'Plata' },
+    { id: 'a', type: 'expense', date: '2026-09-06', amount: 0.1, category: 'Hrana' },
+    { id: 'b', type: 'expense', date: '2026-09-07', amount: 0.2, category: 'Hrana' },
+    { id: 'c', type: 'expense', date: '2026-09-08', amount: 500, category: 'Prevoz', paid: false },
+    { id: 'd', type: 'expense', date: '2026-08-10', amount: 3000, category: 'Stan', spreadMonths: 3, spreadStart: '2026-08' },
+    { id: 't', type: 'transfer', date: '2026-09-09', amount: 999, fromAccount: 'x', toAccount: 'y' }
+  ];
+  const m = C.monthTotals(entries, '2026-09');
+  assert.equal(m.income, 100000.1);
+  assert.equal(m.expense, 1000.3);   // 0,1 + 0,2 + 1000 (deo raspodele), tacno na pare
+  assert.equal(m.net, 98999.8);
+  assert.deepEqual(m.byCat, { Hrana: 0.3, Stan: 1000 });
+  assert.deepEqual(m.catEntries.map(x => x[0]), ['Stan', 'Hrana']);
+  assert.deepEqual(C.monthTotals([], '2026-09'), { income: 0, expense: 0, net: 0, byCat: {}, catEntries: [] });
+  assert.equal(C.round2(0.1 + 0.2), 0.3);
+});
+
+test('pendingRecurringItems: nije placeno, preskoceno ni upisano; prosli mesec prazan', () => {
+  const recurring = [
+    { id: 'k', desc: 'Kirija', amount: 18000, type: 'expense', frequency: 'monthly' },
+    { id: 'n', desc: 'Netflix', amount: 1292, type: 'expense', frequency: 'monthly' },
+    { id: 'p', desc: 'Porez', amount: 8000, type: 'expense', frequency: 'monthly' },
+    { id: 'o', desc: 'Osiguranje', amount: 24000, type: 'expense', frequency: 'yearly', anchorMonth: 3 },
+    { id: 's', desc: 'Plata', amount: 100000, type: 'income', frequency: 'monthly' }
+  ];
+  const entries = [{ id: 'rec-p-2026-10', type: 'expense', date: '2026-10-01', amount: 8000 }];
+  const applied = { '2026-10': ['k'] }, skipped = { '2026-10': ['n'] };
+  assert.deepEqual(C.pendingRecurringItems(recurring, entries, applied, skipped, '2026-10', '2026-09').map(r => r.id), ['s']);
+  assert.deepEqual(C.pendingRecurringItems(recurring, entries, applied, skipped, '2026-11', '2026-09').map(r => r.id), ['k', 'n', 'p', 's']);
+  assert.deepEqual(C.pendingRecurringItems(recurring, entries, applied, skipped, '2026-08', '2026-09'), []);
+  assert.equal(C.isRecurringPaid(applied, { id: 'k' }, '2026-10'), true);
+  assert.equal(C.isRecurringSkipped(skipped, { id: 'k' }, '2026-10'), false);
+  assert.equal(C.recurringEntryId({ id: 'k' }, '2026-10'), 'rec-k-2026-10');
+});
+
+test('monthsToProcess: bez kljuca, propusteni meseci, prelaz godine, ogranicenje', () => {
+  assert.deepEqual(C.monthsToProcess(null, '2026-09', 24), ['2026-09']);
+  assert.deepEqual(C.monthsToProcess('smece', '2026-09', 24), ['2026-09']);
+  assert.deepEqual(C.monthsToProcess('2026-09', '2026-09', 24), ['2026-09']);
+  assert.deepEqual(C.monthsToProcess('2026-08', '2026-09', 24), ['2026-09']);
+  assert.deepEqual(C.monthsToProcess('2026-11', '2027-02', 24), ['2026-12', '2027-01', '2027-02']);
+  assert.deepEqual(C.monthsToProcess('2027-05', '2026-09', 24), ['2026-09']); // sat unazad
+  const long = C.monthsToProcess('2020-01', '2026-09', 24);
+  assert.equal(long.length, 24);
+  assert.equal(long[0], '2024-10');
+  assert.equal(long[23], '2026-09');
+});
+
+test('autoPayDue: samo autoPay, dospelo, nije placeno/preskoceno/iskljuceno, dan za tekuci mesec', () => {
+  const recurring = [
+    { id: 'a', autoPay: true, day: 5, frequency: 'monthly' },
+    { id: 'b', autoPay: true, day: 20, frequency: 'monthly' },
+    { id: 'c', autoPay: false, day: 1, frequency: 'monthly' },
+    { id: 'd', autoPay: true, day: 1, frequency: 'monthly' },
+    { id: 'e', autoPay: true, day: 1, frequency: 'monthly' },
+    { id: 'f', autoPay: true, day: 1, frequency: 'monthly' },
+    { id: 'g', autoPay: true, day: 1, frequency: 'quarterly', anchorMonth: 1 }
+  ];
+  const state = { applied: { '2026-08': ['d'] }, skipped: { '2026-08': ['e'] }, optOut: { '2026-08': ['f'] } };
+  assert.deepEqual(C.autoPayDue(recurring, state, '2026-08', null).map(r => r.id), ['a', 'b']);   // prosli mesec: bez obzira na dan; avgust nije kvartal od januara
+  assert.deepEqual(C.autoPayDue(recurring, state, '2026-10', 10).map(r => r.id), ['a', 'd', 'e', 'f', 'g']); // tekuci: dan <= 10
+  assert.deepEqual(C.autoPayDue(recurring, state, '2026-10', 31).map(r => r.id), ['a', 'b', 'd', 'e', 'f', 'g']);
+  assert.deepEqual(C.autoPayDue([], state, '2026-10', 31), []);
+  assert.deepEqual(C.autoPayDue(recurring, undefined, '2026-08', null).map(r => r.id), ['a', 'b', 'd', 'e', 'f']);
+});
