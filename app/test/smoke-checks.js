@@ -426,6 +426,7 @@
     check('rashodi: očekivane ponavljajuće u budućem mesecu', upRows.length === expectUp.length && (expectUp.length === 0 || $('expenseUpcoming').style.display !== 'none'), `${upRows.length}/${expectUp.length}`);
     $('periodToday').click(); await sleep(60);
     $('periodPrev').click(); await sleep(60);
+    check('rashodi: "izaberi sve" je mali kvadratić kao u redovima', getComputedStyle($('selectAllExpenses')).height === '17px', getComputedStyle($('selectAllExpenses')).height);
     check('rashodi: prošli mesec nema očekivanih', document.querySelectorAll('#expenseUpcoming .upcoming-row').length === 0);
     $('periodToday').click(); await sleep(60);
 
