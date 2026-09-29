@@ -456,6 +456,22 @@
     } else check('provera Excel fajla postoji', false);
     check('opcije kategorija imaju vrednost i nisu za prevod', [...$('expCategory').options].every(o => o.hasAttribute('value') && o.getAttribute('translate') === 'no'));
 
+    // Plati sve zakasnele (radi osim prvog dana u mesecu, kad nista sa danom 1 nije zakasnelo)
+    if (new Date().getDate() > 1) {
+      go('ponavljajuce'); await sleep(50);
+      setVal('recDesc', 'Smoke kasni'); setVal('recAmount', '321'); setVal('recDay', '1');
+      $('recAutoPay').checked = false;
+      $('recurringForm').requestSubmit(); await sleep(100);
+      const lateRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoke kasni');
+      const btn = $('payOverdueBtn');
+      check('plati sve: dugme se vidi', !!btn && btn.style.display !== 'none' && /\(\d+\)/.test(btn.textContent), btn && btn.textContent);
+      const res = window.__payOverdue({ ids: [lateRec.id] });
+      const eid = 'rec-' + lateRec.id + '-' + curM;
+      check('plati sve: izabrana stavka plaćena', res && entries().some(e => e.id === eid && e.amount === 321));
+      $('undoBtn').click(); await sleep(80);
+      check('plati sve: poništavanje vraća na neplaćeno', !entries().some(e => e.id === eid) && !(JSON.parse(localStorage.getItem('budzet-primenjeno-v1') || '{}')[curM] || []).includes(lateRec.id));
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
