@@ -67,6 +67,10 @@ let mainWindow = null;
 let quickAddWindow = null;
 let tray = null;
 let isQuitting = false;
+// Windows se gasi/odjavljuje (session-end / powerMonitor 'shutdown') — u tom trenutku niko ne
+// moze da odgovori na dijalog u quitApp() pa Windows posle kratkog roka prisilno ubija app.
+// Kad je ovo true, quitApp preskace dijalog i samo jednom pokusa da sacuva pa izadje.
+let systemShuttingDown = false;
 let appTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 
 // ---------- Podesavanja (userData/settings.json) ----------
@@ -783,6 +787,8 @@ function createWindow(startHidden) {
     }
   });
   mainWindow.on('closed', () => { mainWindow = null; });
+  // Windows odjava/gašenje (WM_ENDSESSION) — nema korisnika koji bi odgovorio na dijalog u quitApp().
+  mainWindow.on('session-end', () => { systemShuttingDown = true; });
   mainWindow.loadURL(APP_URL);
 }
 
@@ -809,15 +815,21 @@ async function quitApp() {
   isQuitting = true;
   saveSettingsNow();
   let saved = await flushRenderer();
-  while (!saved.ok) {
-    const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
-      type: 'warning', title: T('Knjiga budžeta'), message: T('Podaci nisu sačuvani.'),
-      detail: T('Fajl sa podacima je možda zauzet (OneDrive, antivirus). Poslednje izmene mogu da se izgube.') + (saved.error ? '\n\n' + saved.error : ''),
-      buttons: [T('Pokušaj ponovo'), T('Izađi bez čuvanja'), T('Otkaži')], defaultId: 0, cancelId: 2, noLink: true
-    });
-    if (response === 0) { saved = await flushRenderer(); continue; }
-    if (response === 2) { isQuitting = false; return; }
-    break;
+  if (!saved.ok && systemShuttingDown) {
+    // Windows se gasi/odjavljuje — niko nije tu da odgovori na dijalog ispod, a Windows i onako
+    // prisilno ubija app posle kratkog roka. Jos jedan (tihi) pokusaj pa izlazak bez obzira na ishod.
+    saved = await flushRenderer();
+  } else {
+    while (!saved.ok) {
+      const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+        type: 'warning', title: T('Knjiga budžeta'), message: T('Podaci nisu sačuvani.'),
+        detail: T('Fajl sa podacima je možda zauzet (OneDrive, antivirus). Poslednje izmene mogu da se izgube.') + (saved.error ? '\n\n' + saved.error : ''),
+        buttons: [T('Pokušaj ponovo'), T('Izađi bez čuvanja'), T('Otkaži')], defaultId: 0, cancelId: 2, noLink: true
+      });
+      if (response === 0) { saved = await flushRenderer(); continue; }
+      if (response === 2) { isQuitting = false; return; }
+      break;
+    }
   }
   // Preuzeta nova verzija se tiho instalira pri izlasku (bez ponovnog pokretanja).
   if (updateState.status === 'ready' && autoUpdater) { autoUpdater.quitAndInstall(true, false); return; }
@@ -873,6 +885,11 @@ function init() {
   const restartHidden = settings.restartHidden;
   settings.restartHidden = false;
   saveSettingsNow();
+
+  // Isto gasenje sistema, drugi signal (radi i bez fokusiranog prozora); powerMonitor sme da
+  // se koristi tek posle app.whenReady(), pa je init() (pozvan iz .then(init)) bezbedno mesto —
+  // try/catch je samo dodatna zastita ako platforma/verzija Electron-a ne podrzi dogadjaj.
+  try { powerMonitor.on('shutdown', () => { systemShuttingDown = true; }); } catch (e) { /* ignorisano */ }
 
   const startHidden = process.argv.includes('--hidden') || restartHidden;
   createWindow(startHidden || process.argv.some(a => a.startsWith('--quick-add')));
