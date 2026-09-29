@@ -103,6 +103,8 @@
     // ---- Transakcije ----
     'Dodaj prihod': 'Add income', 'Dodaj rashod': 'Add expense', 'Još nema unesenih prihoda.': 'No income entered yet.', 'Nema rashoda za prikaz.': 'No expenses to show.',
     'Nema rashoda u ovom mesecu.': 'No expenses this month.', 'Nema prihoda u ovom mesecu.': 'No income this month.',
+    'Očekuje se {0} ponavljajućih ({1}) — vidi ispod.': '{0} recurring items expected ({1}) — see below.',
+    'Očekuje se (ponavljajuće) · {0} · {1}': 'Expected (recurring) · {0} · {1}', 'Otvori Ponavljajuće': 'Open Recurring',
     'Svi prihodi': 'All income', 'Svi rashodi': 'All expenses', 'Svi meseci': 'All months', 'Sve kategorije': 'All categories',
     'Plaćeno i na čekanju': 'Paid and pending', 'Samo na čekanju': 'Pending only', 'Samo plaćeno': 'Paid only', 'Obeleži sve vidljivo kao plaćeno': 'Mark all visible as paid',
     'Podeli na više kategorija': 'Split into several categories', '+ Dodaj kategoriju': '+ Add category', 'Već plaćeno': 'Already paid',

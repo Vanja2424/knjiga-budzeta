@@ -417,6 +417,17 @@
     check('prihodi: ručno Svi meseci', document.querySelectorAll('#incomeBody tr[data-row-id]').length === entries().filter(e => e.type === 'income').length);
     $('periodToday').click(); await sleep(80);
     check('prihodi: povratak na tekući mesec vraća filter', $('incFilterMonth').value === curM);
+    // Buduci mesec: ponavljajuce stavke koje tek dospevaju vide se u listi rashoda kao "ocekuje se"
+    const upM = window.BudzetCore.addMonths(curM, 1);
+    const recs = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]');
+    const expectUp = recs.filter(r => r.type !== 'income' && window.BudzetCore.isDueInMonth(r, upM) && !entries().some(e => e.id === 'rec-' + r.id + '-' + upM));
+    go('rashodi'); $('periodNext').click(); await sleep(80);
+    const upRows = document.querySelectorAll('#expenseUpcoming .upcoming-row');
+    check('rashodi: očekivane ponavljajuće u budućem mesecu', upRows.length === expectUp.length && (expectUp.length === 0 || $('expenseUpcoming').style.display !== 'none'), `${upRows.length}/${expectUp.length}`);
+    $('periodToday').click(); await sleep(60);
+    $('periodPrev').click(); await sleep(60);
+    check('rashodi: prošli mesec nema očekivanih', document.querySelectorAll('#expenseUpcoming .upcoming-row').length === 0);
+    $('periodToday').click(); await sleep(60);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
