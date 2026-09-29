@@ -633,6 +633,8 @@ test('purchasedItemName / purchasedItemKey', () => {
   assert.equal(C.purchasedItemName('  Hleb '), 'Hleb');
   assert.equal(C.purchasedItemName('Mleko 2,8% (1 l)'), 'Mleko 2,8%');
   assert.equal(C.purchasedItemName('Sok (narandža) (1 l)'), 'Sok (narandža)');
+  assert.equal(C.purchasedItemName('Hleb (crni)'), 'Hleb (crni)');           // zagrada bez kolicine je deo naziva
+  assert.equal(C.purchasedItemKey('Hleb (crni) (1 kom)'), C.purchasedItemKey('Hleb (crni)'));
   assert.equal(C.purchasedItemKey('MLEKO  (2 kom)'), 'mleko');
   assert.equal(C.purchasedItemKey(undefined), '');
 });

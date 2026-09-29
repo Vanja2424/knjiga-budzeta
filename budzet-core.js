@@ -676,7 +676,8 @@
   }
 
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
-  const purchasedItemName = label => String(label == null ? '' : label).replace(/\s*\([^()]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+  // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/\s*\(\d[^()]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
   const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
   // Po stvari: broj kupovina i deo stvarnog iznosa racuna (srazmerno cenama sa liste; bez cene = prosek iz tog racuna)
   function purchasedItemStats(entries, months, category){

@@ -4804,7 +4804,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
         <button class="del-btn shop-suggest-hide" data-key="${escapeHtml(s.key)}" title="${t('Sakrij do sledeće kupovine')}">✕</button></div>`).join('');
     box.querySelectorAll('.shop-suggest-add').forEach(b=> b.addEventListener('click', ()=>{
       const s = list.find(x=> x.key === b.dataset.key); if(!s) return;
-      addShoppingFromInput(s.name);
+      // Postojeca stavka iz spiska: samo "treba" (bez ponovnog citanja naziva kao unosa, npr. "Pivo 0,5")
+      const existing = s.itemId && shopping.items.find(i=> i.id === s.itemId);
+      if(existing){ existing.needed = true; saveShopping(); } else addShoppingFromInput(s.name);
       renderShopping();
     }));
     box.querySelectorAll('.shop-suggest-hide').forEach(b=> b.addEventListener('click', ()=>{
