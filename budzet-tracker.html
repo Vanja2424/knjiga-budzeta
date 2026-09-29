@@ -1610,6 +1610,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .analiza-groups{ width:100%; margin:0 0 0.7em; font-size:13px; }
 .analiza-groups td{ padding:0.25em 0; } .analiza-groups td.num{ text-align:right; font-variant-numeric:tabular-nums; }
 .analiza-groups td.muted{ color:var(--ink-soft); padding-left:0.8em; }
+.analiza-bought{ margin:0 0 0.8em; }
+.analiza-bought-title{ font:600 12px/1.3 var(--font); color:var(--ink-soft); margin:0.2em 0 0.35em; }
+.analiza-bought-item{ display:inline-block; margin:0 0.5em 0.35em 0; padding:2px 8px; border-radius:6px; background:var(--fill); font-size:12.5px; }
 .analiza-bar-col{ fill:var(--fill-strong); } .analiza-bar-sel{ fill:var(--ledger); }
 #screen-analiza .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0; text-align:left; }
 #screen-analiza .btn-link:hover{ text-decoration:underline; }
@@ -1661,6 +1664,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-estimate{ font-size:14.5px; }
 .shop-budget-row{ font-size:13px; color:var(--ink-soft); margin-top:0.35em; }
 .shop-budget-row.over{ color:var(--warn-text); font-weight:600; }
+.shop-on-list{ font-size:12px; color:var(--ink-soft); margin-left:0.5em; }
+.shop-on-list.over{ color:var(--warn-text); font-weight:600; }
 .finish-split-row{ display:flex; align-items:center; justify-content:space-between; gap:0.8em; margin:0.35em 0; }
 .finish-split-row input{ max-width:9em; }
 #finishSplitLeft.bad{ color:var(--warn-text); font-weight:600; }
@@ -4608,6 +4613,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
             <td class="muted">${t('{0}×', g.count)} · ${t('prosečno {0}', fmt(g.avgPurchase))}</td>
             <td class="num">${fmt(g.total)}</td></tr>`).join('')}</table>
           ${all.length > 5 ? `<button class="btn-link analiza-more" data-cat="${escapeHtml(r.cat)}">${analizaState.showAll.has(r.cat) ? t('prikaži manje') : t('prikaži sve')}</button>` : ''}`;
+        const bought = C.purchasedItemStats(entries, [b.month], r.cat).slice(0, 8);
+        if(bought.length) groups += `<div class="analiza-bought"><div class="analiza-bought-title">${t('Kupljene stvari')}</div>${bought.map(s=>
+          `<span class="analiza-bought-item"><span translate="no">${escapeHtml(s.name)}</span> ×${s.count}${s.amount != null ? ' · ~' + fmt(s.amount) : ''}</span>`).join('')}</div>`;
       }
       return `<div class="analiza-cat${open ? ' open' : ''}">
         <button class="analiza-cat-head" data-cat="${escapeHtml(r.cat)}">
@@ -4934,7 +4942,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     const store = (opts.total != null ? C.mostCommonStore(checked) : document.getElementById('finishShopStore').value).trim();
     const accountId = accounts.length ? (accounts.length >= 2 && opts.total == null ? document.getElementById('finishShopAccount').value : defaultAccountId()) : undefined;
     const made = rows.map(r=>{
-      const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: r.amount, category: r.category, date, paid: true, tags: ['nabavka'], items: r.items.map(C.purchaseItemLabel) };
+      const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: r.amount, category: r.category, date, paid: true, tags: ['nabavka'], items: r.items.map(C.purchaseItemLabel), itemPrices: r.items.map(i=> i.price > 0 ? i.price : null) };
       if(accountId) e.accountId = accountId;
       entries.push(e); applyRoundUpSaving(r.amount);
       return e;
@@ -6083,6 +6091,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function duplicateEntry(entry){
     const copy = Object.assign({}, entry, { id: newId(), date: toISODateLocal(new Date()) });
     if(Array.isArray(copy.items)) copy.items = copy.items.slice();
+    if(Array.isArray(copy.itemPrices)) copy.itemPrices = copy.itemPrices.slice();
     entries.push(copy);
     newEntryId = copy.id;
     saveEntries(); renderAll();
@@ -6352,6 +6361,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(document.activeElement !== monthlyBudgetInput) monthlyBudgetInput.value = monthlyBudget > 0 ? monthlyBudget : '';
     const usedCats = new Set(entries.filter(e=>e.type==='expense').map(e=>e.category));
     const usedInRecurring = new Set(recurring.filter(r=>r.type==='expense').map(r=>r.category));
+    const shopEst = C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY }))).byCategory;
     const list = document.getElementById('catList');
     list.innerHTML = expenseCats.map((c,i)=>{
       const inUse = usedCats.has(c) || usedInRecurring.has(c) || shoppingCategoryInUse(c);
@@ -6362,7 +6372,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       const suggestBtn = (!limitVal && suggestion > 0)
         ? `<button class="envelope-suggest-btn" data-cat="${escapeHtml(c)}" data-suggest="${suggestion}" title="${t('Predlog na osnovu proseka poslednja 3 meseca: {0}', fmt(suggestion))}">💡</button>`
         : '<span class="envelope-suggest-btn" style="visibility:hidden;" aria-hidden="true">💡</span>';
-      return `<li><span class="name">${escapeHtml(c)}</span>
+      const onList = shopEst[c] > 0 ? `<span class="shop-on-list${(()=>{ const env = envelopeRemainingThisMonth(c); return env && shopEst[c] > env.remaining ? ' over' : ''; })()}">${t('na listi ~{0}', fmt(shopEst[c]))}</span>` : '';
+      return `<li><span class="name">${escapeHtml(c)}</span>${onList}
         ${categorySparklineSvg(c)}
         <input type="color" class="cat-color-input" data-cat="${escapeHtml(c)}" value="${colorVal}" title="Boja kategorije">
         <button class="edit-btn cat-color-reset" data-cat="${escapeHtml(c)}" title="Vrati automatsku boju" ${catColors[c]?'':'style="visibility:hidden;"'}>⟲</button>
@@ -7470,6 +7481,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
     ).map(e => { const o = Object.assign({}, e, { desc: String(e.desc == null ? '' : e.desc), category: String(e.category || 'Ostalo'), tags: Array.isArray(e.tags) ? e.tags.map(String) : [] });
       if(Array.isArray(e.items)) o.items = e.items.map(String); else delete o.items;
+      if(Array.isArray(o.items) && Array.isArray(e.itemPrices) && e.itemPrices.length === o.items.length) o.itemPrices = e.itemPrices.map(p=> (typeof p === 'number' && isFinite(p) && p >= 0) ? p : null); else delete o.itemPrices;
       return o; });
     // Isti tip/opseg koercija kao rucni unos (recurringForm submit) i Excel uvoz (parseWorkbook) —
     // JSON backup ne sme biti jedini put uvoza koji propusti npr. day:31 ili day:0 nekoercirano.

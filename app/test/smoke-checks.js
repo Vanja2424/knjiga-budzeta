@@ -577,6 +577,25 @@
       } else check('rata: dugme za smer duga postoji', false);
     }
 
+    // Paket 3: kupovina pamti cene po stvari; Analiza pokazuje kupljene stvari; Budzet pokazuje "na listi"
+    const catsP3 = window.__desktopBridge.getQuickAddData().expenseCats;
+    const shP3 = window.__shopping();
+    shP3.items.push({ id: 'p3-a', name: 'P3 mleko', section: 'Mlečni', store: '', category: catsP3[0], price: 150, qty: '', needed: true, checked: true },
+                    { id: 'p3-b', name: 'P3 hleb', section: 'Pekara', store: '', category: catsP3[0], price: 50, qty: '', needed: true, checked: true },
+                    { id: 'p3-c', name: 'P3 jogurt', section: 'Mlečni', store: '', category: catsP3[0], price: 120, qty: '', needed: true, checked: false });
+    window.__saveShopping(); await sleep(40);
+    go('kategorije'); await sleep(60);
+    check('budžet: "na listi" za kategoriju sa stavkama', [...document.querySelectorAll('#catList li')].some(li => li.textContent.includes(catsP3[0]) && /na listi/.test(li.textContent)));
+    window.__finishPurchase({ total: 400 }); await sleep(60);
+    const p3e = entries().find(e => (e.items || []).includes('P3 mleko'));
+    check('kupovina pamti cene po stvari', !!p3e && JSON.stringify(p3e.itemPrices) === JSON.stringify([150, 50]), p3e && JSON.stringify(p3e.itemPrices));
+    go('analiza'); await sleep(80);
+    const catHead = [...document.querySelectorAll('#analizaWhereList .analiza-cat-head')].find(b => b.dataset.cat === catsP3[0]);
+    if (catHead) { if (!catHead.closest('.analiza-cat').classList.contains('open')) catHead.click(); await sleep(60); }
+    check('analiza: kupljene stvari', /P3 mleko/.test($('analizaWhereList').textContent) && /×1/.test($('analizaWhereList').textContent));
+    window.__deleteEntriesById([p3e.id]);
+    window.__shopping().items = window.__shopping().items.filter(i => !/^p3-/.test(i.id)); window.__saveShopping();
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

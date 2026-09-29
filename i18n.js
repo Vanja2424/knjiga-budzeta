@@ -44,6 +44,7 @@
     ' · mesec još traje (dan {0} od {1})': ' · the month isn’t over yet (day {0} of {1})',
     'Neplaćene ponavljajuće stavke još nisu uračunate.': 'Unpaid recurring items aren’t included yet.',
     '{0}×': '{0}×', 'prosečno {0}': 'avg. {0}', 'Isprekidana linija: prosek {0} ({1})': 'Dashed line: average {0} ({1})',
+    'Kupljene stvari': 'Items bought',
     'Fiksno: {0} ({1}%)': 'Fixed: {0} ({1}%)', 'Promenljivo: {0} ({1}%)': 'Variable: {0} ({1}%)',
     '{0} naspram proseka {1}': '{0} vs. average {1}', '~{0}× mesečno · prosečno {1}': '~{0}× a month · avg. {1}',
     '{0} mesečno · {1} godišnje': '{0} a month · {1} a year', '{0} godišnje': '{0} a year', '↑ poskupelo {0}%': '↑ up {0}%',
@@ -78,6 +79,7 @@
     'Zbir po kategorijama mora da bude jednak iznosu sa računa.': 'The category amounts must add up to the receipt total.',
     'Rashod {0} dodat ({1} stavki)': 'Expense {0} added ({1} items)',
     'Kategorija se koristi u postojećim rashodima, ponavljajućim stavkama ili listi za nabavku': 'The category is used by expenses, recurring items or the shopping list',
+    'na listi ~{0}': 'on list ~{0}',
 
     // ---- Pregled ----
     'Finansijsko zdravlje': 'Financial health', 'Finansijsko zdravlje: ': 'Financial health: ', 'Kretanje salda': 'Balance over time',
