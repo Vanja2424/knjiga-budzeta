@@ -565,7 +565,10 @@
         checked: !!i.checked
       });
     });
-    return { items, sections };
+    const dismissed = {};
+    if(src.dismissed && typeof src.dismissed === 'object' && !Array.isArray(src.dismissed))
+      Object.keys(src.dismissed).forEach(k => { const v = src.dismissed[k]; if(typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v)) dismissed[k] = v; });
+    return { items, sections, dismissed };
   }
 
   const NO_STORE = 'Bez prodavnice', NO_CATEGORY = 'Bez kategorije';
@@ -672,6 +675,66 @@
     return round2((d.paidAmount || 0) + linked);
   }
 
+  // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/\s*\([^()]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+  const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
+  // Po stvari: broj kupovina i deo stvarnog iznosa racuna (srazmerno cenama sa liste; bez cene = prosek iz tog racuna)
+  function purchasedItemStats(entries, months, category){
+    const map = new Map();
+    (entries || []).forEach(e => {
+      if(!isPaidExp(e) || !Array.isArray(e.items) || !e.items.length) return;
+      if(months && !months.includes(e.date.slice(0, 7))) return;
+      if(category && e.category !== category) return;
+      const prices = Array.isArray(e.itemPrices) && e.itemPrices.length === e.items.length ? e.itemPrices : null;
+      const priced = prices ? prices.filter(p => p > 0) : [];
+      const avg = priced.length ? priced.reduce((s, p) => s + p, 0) / priced.length : 0;
+      const weights = priced.length ? prices.map(p => p > 0 ? p : avg) : null;
+      const W = weights ? weights.reduce((s, w) => s + w, 0) : 0;
+      e.items.forEach((label, i) => {
+        const key = purchasedItemKey(label);
+        if(!key) return;
+        if(!map.has(key)) map.set(key, { key, name: purchasedItemName(label), count: 0, amount: null, withAmount: 0 });
+        const g = map.get(key);
+        g.count++;
+        if(weights && W > 0){ g.amount = round2((g.amount || 0) + e.amount * weights[i] / W); g.withAmount++; }
+      });
+    });
+    return [...map.values()].sort((a, b) => (b.amount || 0) - (a.amount || 0) || b.count - a.count || a.name.localeCompare(b.name));
+  }
+  const dayNumber = iso => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000);
+  // "Vreme je da kupis": stvari kupljene bar 3 dana, medijan razmaka, proslo >= interval; bez needed i sakrivenih
+  function restockSuggestions(entries, shopping, todayISO){
+    const items = (shopping && shopping.items) || [];
+    const dismissed = (shopping && shopping.dismissed) || {};
+    const dates = new Map(), names = new Map();
+    (entries || []).forEach(e => {
+      if(!isPaidExp(e) || !Array.isArray(e.items) || e.items.length !== 1) return;
+      e.items.forEach(label => {
+        const key = purchasedItemKey(label);
+        if(!key) return;
+        if(!dates.has(key)){ dates.set(key, new Set()); names.set(key, purchasedItemName(label)); }
+        dates.get(key).add(e.date);
+      });
+    });
+    const today = dayNumber(todayISO);
+    const out = [];
+    dates.forEach((set, key) => {
+      const ds = [...set].sort();
+      if(ds.length < 3) return;
+      const gaps = ds.slice(1).map((d, i) => dayNumber(d) - dayNumber(ds[i])).sort((a, b) => a - b);
+      const mid = gaps.length >> 1;
+      const interval = gaps.length % 2 ? gaps[mid] : (gaps[mid - 1] + gaps[mid]) / 2;
+      const last = ds[ds.length - 1];
+      const since = today - dayNumber(last);
+      if(interval <= 0 || since < interval) return;
+      if(dismissed[key] && dismissed[key] >= last) return;
+      const item = items.find(i => normShoppingName(i.name) === key);
+      if(item && item.needed) return;
+      out.push({ name: item ? item.name : names.get(key), key, intervalDays: Math.round(interval), daysSince: since, itemId: item ? item.id : null });
+    });
+    return out.sort((a, b) => (b.daysSince / b.intervalDays) - (a.daysSince / a.intervalDays) || a.name.localeCompare(b.name)).slice(0, 5);
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -713,6 +776,7 @@
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
+    purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     checkWorkbookShape, checkDataFileShape
   };
 });

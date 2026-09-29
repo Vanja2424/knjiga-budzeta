@@ -626,3 +626,69 @@ test('debtPaid: rucne uplate + placene rate tog duga', () => {
   assert.equal(C.debtPaid({ id: 'd3', amount: 5 }, entries), 0);
   assert.equal(C.debtPaid({ id: 'd1', amount: 5, paidAmount: 0.1 }, [{ type: 'expense', amount: 0.2, debtId: 'd1' }]), 0.3);
 });
+
+// ---------- Kupljene stvari ----------
+test('purchasedItemName / purchasedItemKey', () => {
+  assert.equal(C.purchasedItemName('Mleko (2 kom)'), 'Mleko');
+  assert.equal(C.purchasedItemName('  Hleb '), 'Hleb');
+  assert.equal(C.purchasedItemName('Mleko 2,8% (1 l)'), 'Mleko 2,8%');
+  assert.equal(C.purchasedItemName('Sok (narandža) (1 l)'), 'Sok (narandža)');
+  assert.equal(C.purchasedItemKey('MLEKO  (2 kom)'), 'mleko');
+  assert.equal(C.purchasedItemKey(undefined), '');
+});
+
+test('purchasedItemStats: srazmerno cenama, bez cene = prosek, bez cena = samo broj', () => {
+  const ex2 = (id, date, amount, category, items, itemPrices, extra = {}) => ({ id, type: 'expense', date, amount, category, desc: 'x', items, itemPrices, ...extra });
+  const entries = [
+    ex2('e1', '2026-09-05', 1000, 'Hrana', ['Mleko (2 kom)', 'Hleb'], [300, 100]),   // 750 / 250
+    ex2('e2', '2026-09-12', 500, 'Hrana', ['mleko', 'Jaja'], [200, null]),           // 250 / 250
+    ex2('e3', '2026-09-20', 800, 'Hrana', ['Hleb', 'Kafa'], undefined),               // samo broj
+    ex2('e4', '2026-09-21', 999, 'Hrana', ['Mleko'], [100], { paid: false }),          // neplaceno
+    ex2('e5', '2026-08-30', 120, 'Hrana', ['Mleko'], [100]),                           // drugi mesec
+    ex2('e6', '2026-09-22', 400, 'Kozmetika', ['Sapun'], [400])
+  ];
+  const s = C.purchasedItemStats(entries, ['2026-09'], 'Hrana');
+  assert.deepEqual(s.map(x => [x.name, x.count, x.amount, x.withAmount]), [
+    ['Mleko', 2, 1000, 2], ['Hleb', 2, 250, 1], ['Jaja', 1, 250, 1], ['Kafa', 1, null, 0]
+  ]);
+  assert.deepEqual(C.purchasedItemStats(entries, ['2026-09']).map(x => x.name), ['Mleko', 'Sapun', 'Hleb', 'Jaja', 'Kafa']);
+  const all = C.purchasedItemStats(entries).find(x => x.key === 'mleko');
+  assert.deepEqual([all.count, all.amount, all.withAmount], [3, 1120, 3]);
+  assert.deepEqual(C.purchasedItemStats([], ['2026-09']), []);
+  // itemPrices pogresne duzine se ignorise (samo broj)
+  assert.deepEqual(C.purchasedItemStats([ex2('b', '2026-09-01', 100, 'Hrana', ['A', 'B'], [10])]).map(x => x.amount), [null, null]);
+});
+
+test('restockSuggestions: medijan intervala, prag, needed, dismissed, najvise 5', () => {
+  const buy = (id, date, items) => ({ id, type: 'expense', date, amount: 100, category: 'Hrana', desc: 'x', items });
+  const entries = [
+    buy('m1', '2026-09-01', ['Mleko (1 l)']), buy('m2', '2026-09-08', ['mleko']), buy('m3', '2026-09-15', ['Mleko']),
+    buy('m4', '2026-09-22', ['Mleko', 'Hleb']), buy('m5', '2026-09-22', ['Mleko']),       // isti dan se broji jednom
+    buy('h1', '2026-09-10', ['Hleb']), buy('h2', '2026-09-20', ['Hleb']), buy('h3', '2026-09-25', ['Hleb']),
+    buy('j1', '2026-09-01', ['Jaja']), buy('j2', '2026-09-10', ['Jaja']),
+    buy('k1', '2026-08-01', ['Kafa']), buy('k2', '2026-08-15', ['Kafa']), buy('k3', '2026-08-29', ['Kafa']),
+    buy('s1', '2026-09-01', ['Sir']), buy('s2', '2026-09-08', ['Sir']), buy('s3', '2026-09-15', ['Sir']),
+    buy('o1', '2026-09-01', ['Sok']), buy('o2', '2026-09-08', ['Sok']), buy('o3', '2026-09-15', ['Sok']),
+    Object.assign(buy('x1', '2026-09-26', ['Mleko']), { paid: false })                        // neplaceno se ne broji
+  ];
+  const shopping = { items: [{ id: 'm', name: 'Mleko', needed: false }, { id: 's', name: 'Sir', needed: true }], dismissed: { sok: '2026-09-15' } };
+  const r = C.restockSuggestions(entries, shopping, '2026-09-29');
+  assert.deepEqual(r, [
+    { name: 'Kafa', key: 'kafa', intervalDays: 14, daysSince: 31, itemId: null },
+    { name: 'Mleko', key: 'mleko', intervalDays: 7, daysSince: 7, itemId: 'm' }
+  ]);
+  // sakriveno se vraca posle novije kupovine
+  const r2 = C.restockSuggestions(entries.concat([buy('o4', '2026-09-20', ['Sok'])]), shopping, '2026-10-10');
+  assert.ok(r2.some(x => x.key === 'sok'));
+  // najvise 5
+  const many = [];
+  ['A', 'B', 'C', 'D', 'E', 'F', 'G'].forEach((n, i) => ['2026-08-01', '2026-08-08', '2026-08-15'].forEach((d, j) => many.push(buy(n + j, d, [n]))));
+  assert.equal(C.restockSuggestions(many, { items: [] }, '2026-09-29').length, 5);
+  assert.deepEqual(C.restockSuggestions([], null, '2026-09-29'), []);
+});
+
+test('normalizeShopping cuva dismissed (samo kljuc -> datum)', () => {
+  const n = C.normalizeShopping({ items: [], dismissed: { mleko: '2026-09-22', los: 5, 'x': 'nije datum' } }, () => 'id');
+  assert.deepEqual(n.dismissed, { mleko: '2026-09-22' });
+  assert.deepEqual(C.normalizeShopping(null, () => 'id').dismissed, {});
+});
