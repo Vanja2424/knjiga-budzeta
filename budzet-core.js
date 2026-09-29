@@ -644,12 +644,12 @@
     const ids = new Set(entries.map(e => e.id));
     return recurring.filter(r => isDueInMonth(r, mKey) && !isRecurringPaid(applied, r, mKey) && !isRecurringSkipped(skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey)));
   }
-  // Meseci za automatsko upisivanje: od (poslednji obradjen + 1) do tekuceg, najvise `max` unazad; bez kljuca samo tekuci.
+  // Meseci za automatsko upisivanje: od poslednjeg obradjenog (ukljucno, da se ne izgubi rep tog meseca)
+  // do tekuceg, najvise `max` unazad; bez kljuca samo tekuci.
   function monthsToProcess(last, current, max){
     if(!/^\d{4}-\d{2}$/.test(last || '') || last >= current) return [current];
     const oldest = addMonths(current, -((max || 24) - 1));
-    const from = addMonths(last, 1);
-    return monthRange(from > oldest ? from : oldest, current);
+    return monthRange(last > oldest ? last : oldest, current);
   }
   // Stavke sa "Automatski upisi" dospele u mesecu; dayLimit = danasnji dan za tekuci mesec, null za prosle mesece.
   function autoPayDue(recurring, state, mKey, dayLimit){

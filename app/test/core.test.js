@@ -541,8 +541,8 @@ test('monthsToProcess: bez kljuca, propusteni meseci, prelaz godine, ogranicenje
   assert.deepEqual(C.monthsToProcess(null, '2026-09', 24), ['2026-09']);
   assert.deepEqual(C.monthsToProcess('smece', '2026-09', 24), ['2026-09']);
   assert.deepEqual(C.monthsToProcess('2026-09', '2026-09', 24), ['2026-09']);
-  assert.deepEqual(C.monthsToProcess('2026-08', '2026-09', 24), ['2026-09']);
-  assert.deepEqual(C.monthsToProcess('2026-11', '2027-02', 24), ['2026-12', '2027-01', '2027-02']);
+  assert.deepEqual(C.monthsToProcess('2026-08', '2026-09', 24), ['2026-08', '2026-09']);
+  assert.deepEqual(C.monthsToProcess('2026-11', '2027-02', 24), ['2026-11', '2026-12', '2027-01', '2027-02']);
   assert.deepEqual(C.monthsToProcess('2027-05', '2026-09', 24), ['2026-09']); // sat unazad
   const long = C.monthsToProcess('2020-01', '2026-09', 24);
   assert.equal(long.length, 24);

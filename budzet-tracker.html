@@ -3643,8 +3643,10 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
   function optOutAutoPay(rid, mKey){
     if(!autoPayOptOut[mKey]) autoPayOptOut[mKey] = [];
     if(!autoPayOptOut[mKey].includes(rid)) autoPayOptOut[mKey].push(rid);
-    // Cuvaj samo poslednjih nekoliko meseci
-    Object.keys(autoPayOptOut).sort().slice(0, -3).forEach(k=> delete autoPayOptOut[k]);
+    // Cuvaj po starosti (ne po broju): processAutoPay sad ume da obradi i "last" mesec ponovo,
+    // pa brisanje po pukom brojanju moze da izbrise bas taj opt-out i vrati stavku koju je korisnik namerno sklonio.
+    const oldest = C.addMonths(currentMonthKey(), -25);
+    Object.keys(autoPayOptOut).forEach(k=> { if(k < oldest) delete autoPayOptOut[k]; });
     localStorage.setItem(AUTOPAY_OFF_KEY, JSON.stringify(autoPayOptOut));
   }
   // Suprotno od unmarkRecurringEntry — koristi se pri undo brisanja da vrati applied trag.
@@ -3717,12 +3719,23 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     if(localStorage.getItem(AUTOPAY_LAST_KEY) !== cur) localStorage.setItem(AUTOPAY_LAST_KEY, cur);
     if(changed){ saveApplied(); saveEntries(); }
     if(backfilled.length){
-      showUndoToast(t('Automatski upisano za propuštene mesece: {0}', backfilled.length), ()=>{
+      const showBackfillToast = ()=> showUndoToast(t('Automatski upisano za propuštene mesece: {0}', backfilled.length), ()=>{
         const ids = new Set(backfilled.map(b=> b.id));
         entries = entries.filter(e=> !ids.has(e.id));
         backfilled.forEach(b=>{ applied[b.mKey] = (applied[b.mKey] || []).filter(x=> x !== b.rid); });
         saveApplied(); saveEntries(); renderAll();
       });
+      // Autostart --hidden pokrece stranicu dok prozor jos nije vidljiv: toast bi tad bio nevidljiv i
+      // (u nekim slucajevima) automatski propusten. Sacekaj da stranica stvarno postane vidljiva.
+      if(document.visibilityState !== 'visible'){
+        document.addEventListener('visibilitychange', function onVis(){
+          if(document.visibilityState !== 'visible') return;
+          document.removeEventListener('visibilitychange', onVis);
+          showBackfillToast();
+        });
+      } else {
+        showBackfillToast();
+      }
     }
     return changed;
   }
@@ -8084,6 +8097,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
     document.getElementById('ratesRefreshRow').style.display = 'none';
   }
   reconcileAppliedEntries();
+  // Ispravnost nadoknade (backfill) meseci u monthsToProcess zavisi od toga da je sve pre ovog poziva
+  // sinhrono izvrseno (recurring/applied/skipped vec ucitani) — ne pomerati iza async koda.
   processAutoPay();
   // Aplikacija moze danima da radi u tray-u — proveri automatske uplate i prelazak dana/meseca.
   let lastSeenDay = toISODateLocal(new Date());

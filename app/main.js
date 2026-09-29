@@ -71,6 +71,10 @@ let isQuitting = false;
 // moze da odgovori na dijalog u quitApp() pa Windows posle kratkog roka prisilno ubija app.
 // Kad je ovo true, quitApp preskace dijalog i samo jednom pokusa da sacuva pa izadje.
 let systemShuttingDown = false;
+// Postavlja se pre poziva quitApp() kad izlazak treba da zavrsi ponovnim pokretanjem (npr. promena
+// jezika). app.relaunch() se poziva tek kad quitApp stvarno krene da izadje — ako korisnik izabere
+// "Otkazi" u dijalogu neuspelog cuvanja, izlazak (i time ponovno pokretanje) se ne desava.
+let relaunchAfterQuit = null;
 let appTheme = nativeTheme.shouldUseDarkColors ? 'dark' : 'light';
 
 // ---------- Podesavanja (userData/settings.json) ----------
@@ -343,6 +347,7 @@ function setupUpdater() {
 }
 let installing = false;
 async function installUpdateNow(opts) {
+  if (isQuitting) return; // izlazak (i eventualni dijalog neuspelog cuvanja) je vec u toku — tajmer ne sme da upada
   if (updateState.status !== 'ready' || installing) return;
   installing = true;
   clearTimeout(updateTimer);
@@ -353,7 +358,9 @@ async function installUpdateNow(opts) {
     // Ne instaliraj dok podaci nisu upisani: odlozi 5 minuta i javi korisniku
     installing = false;
     setUpdate({ status: 'ready', installAt: null });
-    updateTimer = setTimeout(() => installUpdateNow(opts), 5 * 60 * 1000);
+    // Ne ponavljaj installUpdateNow direktno (opts bi ostao "zamrznut") — vrati se u normalno
+    // zakazivanje da se stanje prozora / odlaganje / odbrojavanje ponovo procene.
+    updateTimer = setTimeout(scheduleAutoInstall, 5 * 60 * 1000);
     if (Notification.isSupported()) new Notification({ title: T('Knjiga budžeta'), body: T('Ažuriranje je odloženo: podaci nisu mogli da se sačuvaju (fajl je zauzet). Pokušaću ponovo za 5 minuta.'), icon: ICON_PATH }).show();
     return;
   }
@@ -485,8 +492,9 @@ ipcMain.handle('settings:set', (_e, key, value) => {
   if (key === 'lang') {
     settings.lang = value === 'en' ? 'en' : 'sr';
     saveSettingsNow();
-    // Jezik menja i Chromium (datumi u poljima), pa se aplikacija ponovo pokrece
-    if (settings.lang !== LANG) { app.relaunch({ args: process.argv.slice(1).filter(a => a !== '--hidden') }); quitApp(); }
+    // Jezik menja i Chromium (datumi u poljima), pa se aplikacija ponovo pokrece — ali tek kad
+    // quitApp() stvarno krene da izadje (vidi relaunchAfterQuit), ne odmah ovde.
+    if (settings.lang !== LANG) { relaunchAfterQuit = { args: process.argv.slice(1).filter(a => a !== '--hidden') }; quitApp(); }
   }
   rebuildTrayMenu();
   return { ok: true, quickAddShortcutOk: shortcutRegistered };
@@ -801,6 +809,10 @@ function showMain() {
 
 // Pre izlaska: upisi poslednje izmene u fajl sa podacima (cuvanje ide sa kratkim zakasnjenjem).
 async function flushRenderer() {
+  // Prozor je vec zatvoren/unisten (npr. tray-quit posle window-all-closed) — stranica je svoj
+  // beforeunload flush vec odradila, nema koga da se pita; drugacije bi tray-quit prikazivao
+  // lazan dijalog "nije sacuvano", a instalacija azuriranja bi cekala zauvek.
+  if (!mainWindow || mainWindow.isDestroyed()) return { ok: true, error: null };
   try {
     const res = await Promise.race([
       runInMain('window.__desktopBridge ? window.__desktopBridge.flush() : null'),
@@ -821,16 +833,17 @@ async function quitApp() {
     saved = await flushRenderer();
   } else {
     while (!saved.ok) {
-      const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined, {
+      const { response } = await dialog.showMessageBox(mainWindow && !mainWindow.isDestroyed() && mainWindow.isVisible() ? mainWindow : undefined, {
         type: 'warning', title: T('Knjiga budžeta'), message: T('Podaci nisu sačuvani.'),
         detail: T('Fajl sa podacima je možda zauzet (OneDrive, antivirus). Poslednje izmene mogu da se izgube.') + (saved.error ? '\n\n' + saved.error : ''),
         buttons: [T('Pokušaj ponovo'), T('Izađi bez čuvanja'), T('Otkaži')], defaultId: 0, cancelId: 2, noLink: true
       });
       if (response === 0) { saved = await flushRenderer(); continue; }
-      if (response === 2) { isQuitting = false; return; }
+      if (response === 2) { isQuitting = false; relaunchAfterQuit = null; return; }
       break;
     }
   }
+  if (relaunchAfterQuit) { app.relaunch(relaunchAfterQuit); relaunchAfterQuit = null; }
   // Preuzeta nova verzija se tiho instalira pri izlasku (bez ponovnog pokretanja).
   if (updateState.status === 'ready' && autoUpdater) { autoUpdater.quitAndInstall(true, false); return; }
   app.exit(0);

@@ -435,13 +435,15 @@
     check('autoupis: ključ poslednjeg meseca postoji', localStorage.getItem(apKey) === curM, localStorage.getItem(apKey));
     const apRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoke pretplata');
     if (apRec && typeof window.__processAutoPay === 'function') {
-      const m1 = window.BudzetCore.addMonths(curM, -2), m2 = window.BudzetCore.addMonths(curM, -1);
-      localStorage.setItem(apKey, window.BudzetCore.addMonths(curM, -3));
+      // monthsToProcess sad obradjuje i sam kljuc poslednjeg meseca (ne samo od +1), pa je pri kljucu
+      // cur-3 ocekivan i taj mesec, ne samo cur-2/cur-1.
+      const m0 = window.BudzetCore.addMonths(curM, -3), m1 = window.BudzetCore.addMonths(curM, -2), m2 = window.BudzetCore.addMonths(curM, -1);
+      localStorage.setItem(apKey, m0);
       window.__processAutoPay(); await sleep(60);
       const ids = entries().map(e => e.id);
-      check('autoupis: propušteni meseci su upisani', ids.includes('rec-' + apRec.id + '-' + m1) && ids.includes('rec-' + apRec.id + '-' + m2), JSON.stringify([m1, m2]));
+      check('autoupis: propušteni meseci su upisani', ids.includes('rec-' + apRec.id + '-' + m0) && ids.includes('rec-' + apRec.id + '-' + m1) && ids.includes('rec-' + apRec.id + '-' + m2), JSON.stringify([m0, m1, m2]));
       check('autoupis: ključ je posle obrade tekući mesec', localStorage.getItem(apKey) === curM);
-      window.__deleteEntriesById(['rec-' + apRec.id + '-' + m1, 'rec-' + apRec.id + '-' + m2]);
+      window.__deleteEntriesById(['rec-' + apRec.id + '-' + m0, 'rec-' + apRec.id + '-' + m1, 'rec-' + apRec.id + '-' + m2]);
     }
 
     // Sigurnost: flush vraca rezultat, uvoz pogresnog Excela je odbijen, opcije kategorija zasticene od prevoda
