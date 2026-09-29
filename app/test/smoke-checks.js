@@ -596,6 +596,30 @@
     window.__deleteEntriesById([p3e.id]);
     window.__shopping().items = window.__shopping().items.filter(i => !/^p3-/.test(i.id)); window.__saveShopping();
 
+    // Paket 3: predlozi "Vreme je da kupis" posle tri kupovine iste stvari
+    const cat3 = window.__desktopBridge.getQuickAddData().expenseCats[0];
+    const dAgo = n => { const d = new Date(); d.setDate(d.getDate() - n); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+    const rsIds = [];
+    for (const n of [30, 20, 10]) {
+      const r = window.__desktopBridge.addEntry({ type: 'expense', desc: 'P3 radnja', amount: 100, currency: 'RSD', category: cat3, date: dAgo(n) });
+      const e = entries().filter(x => x.desc === 'P3 radnja' && x.date === dAgo(n)).pop();
+      if (r.ok && e) { window.__setEntryItems(e.id, ['P3 kafa (1 kom)']); rsIds.push(e.id); }
+    }
+    go('nabavka'); await sleep(80);
+    const sug = [...document.querySelectorAll('#shopSuggest .shop-suggest-row')].find(r => /P3 kafa/.test(r.textContent));
+    check('nabavka: predlog posle tri kupovine', !!sug, $('shopSuggest') && $('shopSuggest').textContent);
+    if (sug) {
+      sug.querySelector('.shop-suggest-add').click(); await sleep(60);
+      const it = window.BudzetCore.findShoppingItem(window.__shopping().items, 'P3 kafa');
+      check('nabavka: "Dodaj" stavlja stvar na listu', !!it && it.needed === true);
+      it.needed = false; window.__saveShopping(); await sleep(60);
+      const sug2 = [...document.querySelectorAll('#shopSuggest .shop-suggest-row')].find(r => /P3 kafa/.test(r.textContent));
+      sug2 && sug2.querySelector('.shop-suggest-hide').click(); await sleep(60);
+      check('nabavka: "✕" sakriva predlog', ![...document.querySelectorAll('#shopSuggest .shop-suggest-row')].some(r => /P3 kafa/.test(r.textContent)));
+      window.__shopping().items = window.__shopping().items.filter(i => i.id !== it.id); window.__saveShopping();
+    }
+    window.__deleteEntriesById(rsIds);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

@@ -80,6 +80,9 @@
     'Rashod {0} dodat ({1} stavki)': 'Expense {0} added ({1} items)',
     'Kategorija se koristi u postojećim rashodima, ponavljajućim stavkama ili listi za nabavku': 'The category is used by expenses, recurring items or the shopping list',
     'na listi ~{0}': 'on list ~{0}',
+    'Vreme je da kupiš': 'Time to buy',
+    'kupuješ na ~{0} dana, poslednji put pre {1}': 'you buy it every ~{0} days, last time {1} ago',
+    'Sakrij do sledeće kupovine': 'Hide until the next purchase',
 
     // ---- Pregled ----
     'Finansijsko zdravlje': 'Financial health', 'Finansijsko zdravlje: ': 'Financial health: ', 'Kretanje salda': 'Balance over time',

@@ -1666,6 +1666,9 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-budget-row.over{ color:var(--warn-text); font-weight:600; }
 .shop-on-list{ font-size:12px; color:var(--ink-soft); margin-left:0.5em; }
 .shop-on-list.over{ color:var(--warn-text); font-weight:600; }
+.shop-suggest-row{ display:grid; grid-template-columns:minmax(0,1fr) auto auto auto; gap:0.7em; align-items:center; padding:0.4em 0; border-bottom:1px solid var(--paper-line); }
+.shop-suggest-row .btn-secondary{ padding:3px 10px; font-size:12.5px; }
+@media (max-width: 600px){ .shop-suggest-row{ grid-template-columns:1fr auto auto; } .shop-suggest-row .shop-meta{ grid-column:1 / -1; order:3; } }
 .finish-split-row{ display:flex; align-items:center; justify-content:space-between; gap:0.8em; margin:0.35em 0; }
 .finish-split-row input{ max-width:9em; }
 #finishSplitLeft.bad{ color:var(--warn-text); font-weight:600; }
@@ -2390,6 +2393,7 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       </div>
       <div id="shopSectionsPanel" class="shop-sections" style="display:none;"></div>
     </div>
+    <div class="panel shop-suggest" id="shopSuggest" style="display:none; margin-top:1.5em;"></div>
     <div class="panel" style="margin-top:1.5em;">
       <div id="shopList"></div>
     </div>
@@ -4784,7 +4788,32 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
       shopping.items = shopping.items.filter(x=> x.id !== it.id); saveShopping(); renderShopping();
     }));
     renderShoppingSections();
+    renderShoppingSuggestions();
     renderShoppingFooter();
+  }
+  // "Vreme je da kupis": stvari koje kupujes u pravilnim razmacima, a proslo je vise od uobicajenog
+  function renderShoppingSuggestions(){
+    const box = document.getElementById('shopSuggest');
+    const list = C.restockSuggestions(entries, shopping, toISODateLocal(new Date()));
+    if(!list.length){ box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    box.innerHTML = `<h3 class="shop-group-title">${t('Vreme je da kupiš')}</h3>` + list.map(s=> `<div class="shop-suggest-row" data-key="${escapeHtml(s.key)}">
+        <span class="shop-name" translate="no">${escapeHtml(s.name)}</span>
+        <span class="shop-meta">${t('kupuješ na ~{0} dana, poslednji put pre {1}', s.intervalDays, daysTxt(s.daysSince))}</span>
+        <button class="btn-secondary shop-suggest-add" data-key="${escapeHtml(s.key)}">${t('Dodaj')}</button>
+        <button class="del-btn shop-suggest-hide" data-key="${escapeHtml(s.key)}" title="${t('Sakrij do sledeće kupovine')}">✕</button></div>`).join('');
+    box.querySelectorAll('.shop-suggest-add').forEach(b=> b.addEventListener('click', ()=>{
+      const s = list.find(x=> x.key === b.dataset.key); if(!s) return;
+      addShoppingFromInput(s.name);
+      renderShopping();
+    }));
+    box.querySelectorAll('.shop-suggest-hide').forEach(b=> b.addEventListener('click', ()=>{
+      const key = b.dataset.key;
+      const last = entries.filter(e=> e.type === 'expense' && e.paid !== false && Array.isArray(e.items) && e.items.some(l=> C.purchasedItemKey(l) === key)).map(e=> e.date).sort().pop();
+      if(!shopping.dismissed) shopping.dismissed = {};
+      shopping.dismissed[key] = last || toISODateLocal(new Date());
+      saveShopping(); renderShopping();
+    }));
   }
   function editShoppingItem(id){
     const it = shopping.items.find(x=> x.id === id); if(!it) return;
