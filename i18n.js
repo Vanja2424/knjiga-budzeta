@@ -503,6 +503,17 @@
     'Rashod ide u mesec': 'Expense goes to month', 'Izaberi mesec u koji ide rashod.': 'Choose the month the expense goes to.',
     'Obriši kućni račun': 'Delete household bill',
     'Otvori račun iz prodavnice': 'Open store receipt', 'Prilog nije pronađen u folderu Prilozi.': 'The attachment wasn’t found in the Prilozi folder.',
+    // ---- Racun iz prodavnice (v1.21) ----
+    'Račun iz prodavnice': 'Store receipt', 'Prethodni deo': 'Previous part', 'Sledeći deo': 'Next part', 'Dodaj još sliku': 'Add another photo',
+    'Pokušaj ponovo': 'Try again', 'Ukupno sa računa (RSD)': 'Receipt total (RSD)', '+ stavka': '+ item',
+    'Dodaj razliku kao Ostalo': 'Add the difference as Other', 'Sačuvaj rashode': 'Save expenses', 'Ubaci račun iz prodavnice…': 'Add store receipt…',
+    'Slika ili PDF računa: stavke, cene i kategorije se popune same.': 'Photo or PDF of a receipt: items, prices and categories fill in by themselves.',
+    'Deo {0} od {1}': 'Part {0} of {1}', 'Stavka': 'Item', 'sa liste ✓': 'from list ✓', 'Cena': 'Price', 'Ukloni stavku': 'Remove item',
+    'Deo {0} nije pročitan ({1})': 'Part {0} wasn’t read ({1})', 'Ovaj račun je možda već unet ({0}).': 'This receipt may already be entered ({0}).',
+    'Stavke ukupno: {0}': 'Items total: {0}', 'Razlika: {0}': 'Difference: {0}', 'Razlika do ukupnog': 'Difference to total',
+    'Upiši bar jednu stavku sa cenom ili ukupan iznos.': 'Enter at least one item with a price, or the total.',
+    'Ovaj račun je možda već unet ({0}). Ipak dodati?': 'This receipt may already be entered ({0}). Add it anyway?',
+    'Račun iz prodavnice dodat ({0} stavki)': 'Store receipt added ({0} items)',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

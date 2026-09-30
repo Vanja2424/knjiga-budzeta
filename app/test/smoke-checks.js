@@ -1005,6 +1005,60 @@
       window.__deleteEntriesById(['smoke-rcpt-1']);
     } else check('račun: hook __addEntriesRaw', false);
 
+    // Fiskalni racun: 2 dela sa preklapanjem, lista od 3 stavke, rashodi po kategorijama, prilozi, duplikat, undo
+    if (typeof window.__addReceiptFiles === 'function') {
+      go('nabavka'); await sleep(60);
+      check('račun: dugme u Nabavci', !!$('shopReceiptBtn'));
+      const sh = window.__shopping();
+      const mk = (name, category) => ({ id: 'smoke-sl-' + name, name, section: 'Ostalo', store: '', category, price: null, qty: '', needed: true, checked: false });
+      window.__addExpenseCategory('Smoke higijena');
+      sh.items.push(mk('Mleko', 'Hrana'), mk('Hleb', 'Hrana'), mk('Sapun', 'Smoke higijena')); window.__saveShopping();
+      const rDate = monthKey(new Date()) + '-02';
+      const part1 = { store: 'Smoke Maxi', date: rDate, total: null, items: [{ raw: 'MLEKO 1L', name: 'Mleko', price: 129.99, category: 'Hrana' }, { raw: 'HLEB SAVA', name: 'Hleb', price: 89, category: 'Hrana' }, { raw: 'JAJA 10', name: 'Jaja', price: 250, category: 'Hrana' }] };
+      const part2 = { total: 700, items: [{ raw: 'JAJA 10', name: 'Jaja', price: 250, category: 'Hrana' }, { raw: 'SAPUN DOVE', name: 'Sapun', price: 150, category: '' }, { raw: 'POPUST', price: -10, discount: 1 }, { raw: 'KESA', name: 'Kesa', price: 60.5, category: '' }] };
+      const seen = [];
+      window.__fakeReceiptReading = (req, i) => { seen.push({ i, n: req.images.length }); return { ok: true, content: JSON.stringify(i === 0 ? part1 : part2) }; };
+      const img = await new Promise(r => { const c = document.createElement('canvas'); c.width = 300; c.height = 600; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 600); g.fillStyle = '#000'; g.fillRect(10, 10, 20, 20); c.toBlob(r, 'image/jpeg'); });
+      const p = window.__addReceiptFiles([new File([img], 'r1.jpg', { type: 'image/jpeg' }), new File([img], 'r2.jpg', { type: 'image/jpeg' })]);
+      await sleep(2500);
+      const st = window.__receiptState();
+      check('račun: dva dela, dva poziva po jedna slika', seen.length === 2 && seen.every(x => x.n === 1), JSON.stringify(seen));
+      check('račun: preklapanje spojeno, popust primenjen', !!st && st.items.map(x => x.name).join() === 'Mleko,Hleb,Jaja,Sapun,Kesa' && st.items[3].price === 140, st && JSON.stringify(st.items.map(x => [x.name, x.price])));
+      check('račun: sapun dobija kategoriju sa liste', !!st && st.items[3].category === 'Smoke higijena', st && st.items[3].category);
+      check('račun: uparene stavke označene', document.querySelectorAll('#receiptItems .rc-matched').length === 3);
+      check('račun: razlika prikazana', /Razlika/.test($('receiptDiff').textContent) && $('receiptAddDiff').style.display !== 'none', $('receiptDiff').textContent);
+      $('receiptAddDiff').click(); await sleep(50);
+      const n0 = entries().length;
+      $('receiptSave').click(); await p; await sleep(200);
+      const made = entries().slice(n0);
+      const sum = Math.round(made.reduce((s2, e) => s2 + e.amount, 0) * 100);
+      check('račun: rashodi po kategorijama, zbir = ukupno', made.length >= 2 && sum === 70000 && made.every(e => e.receiptId && e.receiptId === made[0].receiptId && e.tags.includes('nabavka') && e.itemPrices.length === e.items.length && e.date === rDate), JSON.stringify(made.map(e => [e.category, e.amount, e.date])));
+      check('račun: prilozi sačuvani', made.length > 0 && made.every(e => Array.isArray(e.attachments) && e.attachments.length === 2), JSON.stringify(made[0] && made[0].attachments));
+      const sl = window.__shopping().items.filter(i => i.id.startsWith('smoke-sl-'));
+      check('račun: stavke sa liste skinute i dobile cenu', sl.length === 3 && sl.every(i => !i.needed) && sl.find(i => i.name === 'Mleko').price === 129.99, JSON.stringify(sl.map(i => [i.name, i.needed, i.price])));
+      // duplikat
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke Maxi', date: rDate, total: 700, items: [{ name: 'X', price: 700, category: 'Hrana' }] }) });
+      const p2 = window.__addReceiptFiles([new File([img], 'r3.jpg', { type: 'image/jpeg' })]); await sleep(1500);
+      check('račun: duplikat upozorenje', /već unet/.test($('receiptStatus').textContent), $('receiptStatus').textContent);
+      $('receiptCancel').click(); await p2;
+      // undo
+      window.__undoTop(); await sleep(150);
+      check('račun: undo briše rashode i vraća listu', made.length > 0 && !entries().some(e => e.receiptId === made[0].receiptId) && window.__shopping().items.filter(i => i.id.startsWith('smoke-sl-')).every(i => i.needed));
+      // deo koji nije procitan: poruka + ponovi
+      let calls = 0;
+      window.__fakeReceiptReading = (req, i) => { calls++; return i === 1 && calls === 2 ? { ok: false, kind: 'limit', status: 429 } : { ok: true, content: JSON.stringify(i === 0 ? part1 : part2) }; };
+      const p3 = window.__addReceiptFiles([new File([img], 'a.jpg', { type: 'image/jpeg' }), new File([img], 'b.jpg', { type: 'image/jpeg' })]); await sleep(2000);
+      check('račun: deo 2 nije pročitan — poruka i dugme ponovi', /Deo 2/.test($('receiptStatus').textContent) && window.__receiptState().items.length === 3, $('receiptStatus').textContent);
+      $('receiptNext').click(); await sleep(50);
+      check('račun: dugme Pokušaj ponovo za deo 2', $('receiptRetry').style.display !== 'none');
+      $('receiptRetry').click(); await sleep(800);
+      check('račun: posle ponavljanja svih 5 stavki', window.__receiptState().items.length === 5 && !/Deo 2/.test($('receiptStatus').textContent), JSON.stringify(window.__receiptState().items.map(x => x.name)));
+      $('receiptCancel').click(); await p3;
+      window.__shopping().items = window.__shopping().items.filter(i => !i.id.startsWith('smoke-sl-')); window.__saveShopping();
+      window.__deleteExpenseCategory('Smoke higijena');
+      window.__fakeReceiptReading = null;
+    } else check('račun: hook __addReceiptFiles', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
