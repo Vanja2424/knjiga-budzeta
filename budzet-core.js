@@ -940,6 +940,50 @@
     return out.sort((a, b) => (b.daysSince / b.intervalDays) - (a.daysSince / a.intervalDays) || a.name.localeCompare(b.name)).slice(0, 5);
   }
 
+  // ---------- Kucni racuni (struja, plin, voda… po lokacijama) ----------
+  const BILL_KEYS = { locations: 'budzet-lokacije-v1', types: 'budzet-vrste-racuna-v1', bills: 'budzet-kucni-racuni-v1' };
+  // Poredjenje naziva bez velikih slova i dijakritika ("Struja" == "struja", "Potrošnja" == "potrosnja")
+  const foldText = s => String(s == null ? '' : s).toLowerCase().replace(/đ/g, 'dj').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  const isStr = v => typeof v === 'string' && v.trim() !== '';
+  function defaultBillTypes(locationId, category, newId){
+    const mk = (name, metrics) => ({ id: newId(), locationId, name, category, metrics });
+    return [
+      mk('Struja', [{ key: 'm1', name: 'Skupa', unit: 'kWh' }, { key: 'm2', name: 'Jeftina', unit: 'kWh' }]),
+      mk('Plin', [{ key: 'm1', name: 'Potrošnja', unit: 'm³' }]),
+      mk('Voda', [{ key: 'm1', name: 'Potrošnja', unit: 'm³' }]),
+      mk('Internet', [])
+    ];
+  }
+  function cleanLocations(arr, currencies){
+    return (Array.isArray(arr) ? arr : []).filter(l => l && isStr(l.id) && isStr(l.name))
+      .map(l => ({ id: l.id, name: l.name.trim().slice(0, 60), currency: (currencies || []).includes(l.currency) ? l.currency : 'RSD' }));
+  }
+  function cleanBillTypes(arr, locationIds){
+    return (Array.isArray(arr) ? arr : []).filter(t => t && isStr(t.id) && isStr(t.name) && (locationIds || []).includes(t.locationId))
+      .map(t => ({ id: t.id, locationId: t.locationId, name: t.name.trim().slice(0, 60), category: isStr(t.category) ? t.category : 'Ostalo',
+        metrics: (Array.isArray(t.metrics) ? t.metrics : []).filter(m => m && isStr(m.key) && isStr(m.name))
+          .map(m => ({ key: m.key, name: m.name.trim().slice(0, 40), unit: String(m.unit || '').trim().slice(0, 12) })) }));
+  }
+  const isoDateOk = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+  function cleanBills(arr, typeIds){
+    return (Array.isArray(arr) ? arr : []).filter(b => b && isStr(b.id) && (typeIds || []).includes(b.billTypeId) && /^\d{4}-(0[1-9]|1[0-2])$/.test(b.month || ''))
+      .map(b => {
+        const amount = parseAmount(b.amount);
+        const values = {};
+        const src = b.values && typeof b.values === 'object' ? b.values : {};
+        Object.keys(src).forEach(k => { const v = parseAmount(src[k]); if(Number.isFinite(v) && v >= 0) values[k] = v; });
+        const out = { id: b.id, billTypeId: b.billTypeId, month: b.month, amount: Number.isFinite(amount) && amount > 0 ? round2(amount) : 0,
+          currency: /^[A-Z]{3}$/.test(b.currency || '') ? b.currency : 'RSD', values, source: ['ai', 'qr', 'manual', 'excel'].includes(b.source) ? b.source : 'manual' };
+        if(isoDateOk(b.periodFrom)) out.periodFrom = b.periodFrom;
+        if(isoDateOk(b.periodTo)) out.periodTo = b.periodTo;
+        if(isoDateOk(b.dueDate)) out.dueDate = b.dueDate;
+        const payee = b.payee && cleanPayee(b.payee); if(payee) out.payee = payee;
+        ['entryId', 'recurringId'].forEach(k => { if(isStr(b[k])) out[k] = b[k]; });
+        if(isStr(b.file) && !/[\/]/.test(b.file)) out.file = b.file;
+        return out;
+      });
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -952,7 +996,8 @@
     return { ok: !missing.length, missing };
   }
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
-  const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1'];
+  const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
+    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1'];
   const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -984,6 +1029,7 @@
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
+    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills,
     checkWorkbookShape, checkDataFileShape
   };
 });

@@ -856,3 +856,36 @@ test('ipsQrString: cirilica u latinicu, nedozvoljeni znakovi se menjaju', () => 
   const s = C.ipsQrString({ account: '845000000040484987', name: 'Инфостан Београд — Љубе Ђ.', amount: 1, purpose: 'Račun é№€ za struju' });
   assert.equal(s, 'K:PR|V:01|C:1|R:845000000040484987|N:Infostan Beograd - Ljube Đ.|I:RSD1,00|SF:189|S:Račun e za struju');
 });
+
+test('kucni racuni: podrazumevane vrste i ciscenje', () => {
+  let n = 0; const id = () => 'id' + (++n);
+  const types = C.defaultBillTypes('L1', 'Stanovanje', id);
+  assert.deepEqual(types.map(t => t.name), ['Struja', 'Plin', 'Voda', 'Internet']);
+  assert.deepEqual(types[0].metrics, [{ key: 'm1', name: 'Skupa', unit: 'kWh' }, { key: 'm2', name: 'Jeftina', unit: 'kWh' }]);
+  assert.deepEqual(types[1].metrics, [{ key: 'm1', name: 'Potrošnja', unit: 'm³' }]);
+  assert.deepEqual(types[3].metrics, []);
+  assert.ok(types.every(t => t.locationId === 'L1' && t.category === 'Stanovanje' && t.id));
+
+  const locs = C.cleanLocations([{ id: 'L1', name: ' Stan ', currency: 'RSD' }, { id: 'L2', name: 'Drvar', currency: 'XYZ' }, { name: '' }, null], ['RSD', 'BAM']);
+  assert.deepEqual(locs, [{ id: 'L1', name: 'Stan', currency: 'RSD' }, { id: 'L2', name: 'Drvar', currency: 'RSD' }]);
+
+  const bt = C.cleanBillTypes([{ id: 'T1', locationId: 'L1', name: 'Struja', category: 'Stanovanje', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }, { key: '', name: 'x' }] }, { id: 'T2', locationId: 'NEMA', name: 'Plin' }], ['L1']);
+  assert.equal(bt.length, 1);
+  assert.deepEqual(bt[0].metrics, [{ key: 'm1', name: 'Skupa', unit: 'kWh' }]);
+
+  const bills = C.cleanBills([
+    { id: 'B1', billTypeId: 'T1', month: '2025-01', amount: '4456.16', currency: 'RSD', values: { m1: 215, m2: 'x' }, file: 'a.pdf', source: 'ai', entryId: 'e1' },
+    { id: 'B2', billTypeId: 'T9', month: '2025-01', amount: 1 },
+    { id: 'B3', billTypeId: 'T1', month: '2025-13', amount: 1 }
+  ], ['T1']);
+  assert.equal(bills.length, 1);
+  assert.equal(bills[0].amount, 4456.16);
+  assert.deepEqual(bills[0].values, { m1: 215 });
+  assert.equal(bills[0].file, 'a.pdf');
+  assert.equal(C.foldText('Čćžšđ Struja'), 'cczsdj struja');
+});
+
+test('kucni racuni: provera oblika fajla kopije pozna nove kljuceve', () => {
+  assert.equal(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-kucni-racuni-v1': [] }).ok, true);
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-lokacije-v1': {} }).problems, ['budzet-lokacije-v1']);
+});
