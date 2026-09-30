@@ -1064,6 +1064,46 @@
     return r;
   }
 
+  function findBillDuplicate(bills, billTypeId, month, exceptId){
+    return (bills || []).find(b => b.billTypeId === billTypeId && b.month === month && b.id !== exceptId) || null;
+  }
+  // Ponavljajuca stavka za racun: ista kategorija, opis sadrzi naziv vrste ("EPS – Struja" ~ Struja), u mesecu jos nije placena
+  function findRecurringForBill(recurring, billType, month, state){
+    if(!billType || !month) return null;
+    const s = state || {};
+    const ids = new Set((s.entries || []).map(e => e.id));
+    const name = foldText(billType.name);
+    return (recurring || []).find(r => r.type !== 'income' && r.category === billType.category && foldText(r.desc).includes(name)
+      && isDueInMonth(r, month) && !isRecurringPaid(s.applied, r, month) && !isRecurringSkipped(s.skipped, r, month)
+      && !ids.has(recurringEntryId(r, month))) || null;
+  }
+  // Godisnja tabela po lokacijama: iznosi po vrsti i potrosnja po merenju (meseci 1-12 + zbir).
+  // missing = vrsta ima racune te godine, a za mesec pre tekuceg ga nema.
+  function billsTable(bills, billTypes, locations, year, currentMonth){
+    const months = Array.from({ length: 12 }, (_, i) => year + '-' + pad2(i + 1));
+    const inYear = (bills || []).filter(b => b.month && b.month.slice(0, 4) === String(year));
+    const empty = () => Array(12).fill(null);
+    const add = (arr, i, v) => { arr[i] = round2((arr[i] || 0) + v); };
+    const sum = cells => round2(cells.reduce((s, v) => s + (v || 0), 0));
+    return { locations: (locations || []).map(l => {
+      const types = (billTypes || []).filter(t => t.locationId === l.id);
+      const rows = types.map(t => {
+        const cells = empty(), billIds = months.map(() => []);
+        inYear.filter(b => b.billTypeId === t.id).forEach(b => { const i = months.indexOf(b.month); add(cells, i, b.amount || 0); billIds[i].push(b.id); });
+        const any = billIds.some(x => x.length);
+        const missing = months.map((m, i) => any && m < currentMonth && !billIds[i].length);
+        return { typeId: t.id, name: t.name, cells, billIds, missing, total: sum(cells) };
+      });
+      const metricRows = [];
+      types.forEach(t => t.metrics.forEach(m => {
+        const cells = empty();
+        inYear.filter(b => b.billTypeId === t.id && b.values && typeof b.values[m.key] === 'number').forEach(b => add(cells, months.indexOf(b.month), b.values[m.key]));
+        metricRows.push({ typeId: t.id, key: m.key, label: t.metrics.length > 1 ? t.name + ' – ' + m.name : t.name, unit: m.unit, cells, total: sum(cells) });
+      }));
+      return { id: l.id, name: l.name, currency: l.currency, rows, metricRows, total: round2(rows.reduce((s, r) => s + r.total, 0)) };
+    }) };
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1110,6 +1150,7 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
+    findBillDuplicate, findRecurringForBill, billsTable,
     checkWorkbookShape, checkDataFileShape
   };
 });

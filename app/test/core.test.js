@@ -942,3 +942,58 @@ test('mergeBillQr: QR ima prednost za iznos i primaoca, razlika -> low', () => {
   assert.equal(onlyQr.billTypeId, '');
   assert.equal(C.mergeBillQr(r, null, BILL_CTX).amount, 4400);
 });
+
+test('findBillDuplicate i findRecurringForBill', () => {
+  const bills = [{ id: 'B1', billTypeId: 'T1', month: '2025-01' }];
+  assert.equal(C.findBillDuplicate(bills, 'T1', '2025-01').id, 'B1');
+  assert.equal(C.findBillDuplicate(bills, 'T1', '2025-01', 'B1'), null);
+  assert.equal(C.findBillDuplicate(bills, 'T1', '2025-02'), null);
+
+  const type = { id: 'T1', name: 'Struja', category: 'Stanovanje' };
+  const recurring = [
+    { id: 'r1', desc: 'Internet', category: 'Stanovanje', type: 'expense', day: 10 },
+    { id: 'r2', desc: 'EPS – STRUJA', category: 'Stanovanje', type: 'expense', day: 15 },
+    { id: 'r3', desc: 'Struja plata', category: 'Stanovanje', type: 'income', day: 1 }
+  ];
+  const st = { applied: {}, skipped: {}, entries: [] };
+  assert.equal(C.findRecurringForBill(recurring, type, '2025-01', st).id, 'r2');
+  assert.equal(C.findRecurringForBill(recurring, type, '2025-01', { ...st, applied: { '2025-01': ['r2'] } }), null);
+  assert.equal(C.findRecurringForBill(recurring, type, '2025-01', { ...st, entries: [{ id: 'rec-r2-2025-01' }] }), null);
+  assert.equal(C.findRecurringForBill(recurring, { ...type, category: 'Drugo' }, '2025-01', st), null);
+});
+
+test('billsTable: dve lokacije, merenja, zbirovi, "fali"', () => {
+  const locations = [{ id: 'L1', name: 'Stan', currency: 'RSD' }, { id: 'L2', name: 'Drvar', currency: 'BAM' }];
+  const billTypes = [
+    { id: 'T1', locationId: 'L1', name: 'Struja', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }, { key: 'm2', name: 'Jeftina', unit: 'kWh' }] },
+    { id: 'T2', locationId: 'L1', name: 'Plin', metrics: [{ key: 'm1', name: 'Potrošnja', unit: 'm³' }] },
+    { id: 'T3', locationId: 'L1', name: 'Internet', metrics: [] },
+    { id: 'T4', locationId: 'L2', name: 'Struja', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }] }
+  ];
+  const bills = [
+    { id: 'a', billTypeId: 'T1', month: '2025-01', amount: 4456.16, values: { m1: 215, m2: 154 } },
+    { id: 'b', billTypeId: 'T1', month: '2025-03', amount: 3110.39, values: { m1: 134 } },
+    { id: 'c', billTypeId: 'T2', month: '2025-01', amount: 100, values: { m1: 352 } },
+    { id: 'c2', billTypeId: 'T2', month: '2025-01', amount: 50, values: { m1: 8 } },
+    { id: 'd', billTypeId: 'T4', month: '2025-01', amount: 9.99, values: { m1: 0 } },
+    { id: 'x', billTypeId: 'T1', month: '2024-12', amount: 1, values: {} }
+  ];
+  const tb = C.billsTable(bills, billTypes, locations, 2025, '2025-04');
+  const stan = tb.locations[0];
+  assert.equal(stan.rows.length, 3);
+  assert.equal(stan.rows[0].cells[0], 4456.16);
+  assert.equal(stan.rows[0].cells[1], null);
+  assert.deepEqual(stan.rows[0].missing.slice(0, 4), [false, true, false, false]); // feb fali, apr je tekuci
+  assert.equal(stan.rows[2].missing.some(Boolean), false);                         // Internet nema racuna te godine
+  assert.equal(stan.rows[1].cells[0], 150);
+  assert.deepEqual(stan.rows[1].billIds[0], ['c', 'c2']);
+  assert.equal(stan.rows[0].total, 7566.55);
+  assert.equal(stan.total, 7716.55);
+  assert.deepEqual(stan.metricRows.map(m => m.label), ['Struja – Skupa', 'Struja – Jeftina', 'Plin']);
+  assert.equal(stan.metricRows[0].total, 349);
+  assert.equal(stan.metricRows[2].cells[0], 360);
+  assert.equal(tb.locations[1].metricRows[0].cells[0], 0);
+  assert.equal(tb.locations[1].currency, 'BAM');
+  const past = C.billsTable(bills, billTypes, locations, 2025, '2026-02');
+  assert.equal(past.locations[0].rows[0].missing[11], true);                        // prosla godina: svi meseci
+});
