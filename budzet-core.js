@@ -1104,6 +1104,86 @@
     }) };
   }
 
+  // Uvoz godisnje tabele racuna iz Excela (korisnikov raspored): red sa mesecima "01. Januar"…,
+  // blokovi "Kućni računi", "Kućni računi (Drvar)", "Kućni računi (potrošnja)", "Kućni računi (Drvar / potrošnja)".
+  const MONTH_HEAD = /^\s*(\d{1,2})\s*\.\s*\S/;
+  function parseBillsSheet(aoa){
+    const rows = Array.isArray(aoa) ? aoa : [];
+    const monthOf = c => { const m = MONTH_HEAD.exec(String(c == null ? '' : c)); return m && +m[1] >= 1 && +m[1] <= 12 ? +m[1] : 0; };
+    const hi = rows.findIndex(r => (r || []).filter(c => monthOf(c)).length >= 2);
+    if(hi < 0) return null;
+    const cols = {};
+    rows[hi].forEach((c, i) => { const m = monthOf(c); if(m && cols[m] == null) cols[m] = i; });
+    let year = null;
+    for(let i = 0; i <= hi && !year; i++) (rows[i] || []).forEach(c => { const m = /\b(20\d\d)\b/.exec(String(c)); if(m && !year) year = +m[1]; });
+    const blocks = [];
+    let cur = null;
+    for(let i = hi + 1; i < rows.length; i++){
+      const r = rows[i] || [];
+      const head = String(r[0] == null ? '' : r[0]).trim(), label = String(r[1] == null ? '' : r[1]).trim();
+      if(head && /^kucni racuni/.test(foldText(head))){
+        const inner = (/\(([^)]*)\)/.exec(head) || [, ''])[1].split('/').map(s => s.trim()).filter(Boolean);
+        const isCons = s => /^potro/.test(foldText(s));
+        cur = { location: inner.filter(s => !isCons(s))[0] || '', consumption: inner.some(isCons), rows: [] };
+        blocks.push(cur);
+      } else if(head){ cur = null; }
+      if(!cur || !label || /^(kategorija|racun)$/.test(foldText(label))) continue;
+      const values = Array.from({ length: 12 }, (_, m) => { const c = cols[m + 1]; if(c == null) return null; const v = parseAmount(r[c]); return Number.isFinite(v) ? v : null; });
+      if(values.some(v => v != null)) cur.rows.push({ label, values });
+    }
+    return blocks.length ? { year, blocks } : null;
+  }
+  // Tabela -> nove lokacije/vrste/merenja + racuni (iznos i potrosnja iste vrste i meseca u jednom racunu); postojeci se preskacu
+  function billsFromSheet(parsed, ctx){
+    const out = { newLocations: [], newTypes: [], changedTypes: [], bills: [], duplicates: 0 };
+    if(!parsed || !parsed.year) return out;
+    const locations = (ctx.locations || []).slice(), types = (ctx.billTypes || []).map(t => ({ ...t, metrics: t.metrics.slice() }));
+    const locFor = name => {
+      if(!name) return locations.find(l => l.id === ctx.primaryLocationId) || locations[0];
+      let l = locations.find(x => foldText(x.name) === foldText(name));
+      if(!l){ l = { id: ctx.newId(), name, currency: (ctx.newLocationCurrency || {})[name] || 'RSD' }; locations.push(l); out.newLocations.push(l); }
+      return l;
+    };
+    const typeFor = (loc, name) => {
+      let t = types.find(x => x.locationId === loc.id && foldText(x.name) === foldText(name));
+      if(!t){ t = { id: ctx.newId(), locationId: loc.id, name, category: ctx.category || 'Ostalo', metrics: [] }; types.push(t); out.newTypes.push(t); }
+      return t;
+    };
+    const metricFor = (t, name) => {
+      let m = name ? t.metrics.find(x => foldText(x.name) === foldText(name)) : (t.metrics.length === 1 ? t.metrics[0] : null);
+      if(!m){
+        m = { key: 'm' + (t.metrics.reduce((mx, x) => Math.max(mx, parseInt(x.key.slice(1), 10) || 0), 0) + 1), name: name || 'Potrošnja', unit: '' };
+        t.metrics.push(m);
+        if(!out.newTypes.includes(t) && !out.changedTypes.includes(t)) out.changedTypes.push(t);
+      }
+      return m;
+    };
+    const acc = new Map();
+    const slot = (t, loc, i) => {
+      const month = parsed.year + '-' + pad2(i + 1), k = t.id + '|' + month;
+      if(!acc.has(k)) acc.set(k, { id: ctx.newId(), billTypeId: t.id, month, amount: 0, currency: loc.currency, values: {}, source: 'excel' });
+      return acc.get(k);
+    };
+    parsed.blocks.forEach(b => {
+      const loc = locFor(b.location);
+      b.rows.forEach(r => {
+        const [typeName, metricName] = r.label.split(/\s+[-–]\s+/);
+        const t = typeFor(loc, typeName.trim());
+        const m = b.consumption ? metricFor(t, metricName ? metricName.trim().replace(/^./, c => c.toUpperCase()) : '') : null;
+        r.values.forEach((v, i) => {
+          if(v == null) return;
+          if(m){ if(v >= 0) slot(t, loc, i).values[m.key] = v; }
+          else if(v > 0) slot(t, loc, i).amount = round2(v);
+        });
+      });
+    });
+    acc.forEach(bill => {
+      if(findBillDuplicate(ctx.bills, bill.billTypeId, bill.month)) out.duplicates++;
+      else out.bills.push(bill);
+    });
+    return out;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1150,7 +1230,7 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
-    findBillDuplicate, findRecurringForBill, billsTable,
+    findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

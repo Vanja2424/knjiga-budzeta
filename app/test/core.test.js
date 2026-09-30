@@ -997,3 +997,56 @@ test('billsTable: dve lokacije, merenja, zbirovi, "fali"', () => {
   const past = C.billsTable(bills, billTypes, locations, 2025, '2026-02');
   assert.equal(past.locations[0].rows[0].missing[11], true);                        // prosla godina: svi meseci
 });
+
+const SHEET = [
+  ['Računi 2025'],
+  ['Mesec', '', '01. Januar', '02. Februar', '03. Mart', '2025'],
+  ['Kategorija', 'Račun', 'Iznos', 'Iznos', 'Iznos', 'Iznos'],
+  ['Kućni računi', 'Struja', '4456.16', '4434.72', 3110.39, 11999],
+  ['', 'Plin', 21130.49, '', 12837.28, 1],
+  ['', 'Internet', 2800, 2800, 2800, 8400],
+  ['', '', '', '', '', 227294],
+  ['Kućni računi (Drvar)', 'Struja', 9.99, 9.99, 8.2, 28],
+  ['Kućni računi (potrošnja)', 'Struja - skupa', 215, 194, 134, 543],
+  ['', 'Struja - jeftina', 154, 173, 104, 431],
+  ['', 'Plin', 352, 295, 213, 860],
+  ['Kućni računi (Drvar / potrošnja)', 'Struja - skupa', 0, 0, 38, 38]
+];
+
+test('parseBillsSheet: blokovi, lokacije, potrosnja, godina', () => {
+  const p = C.parseBillsSheet(SHEET);
+  assert.equal(p.year, 2025);
+  assert.deepEqual(p.blocks.map(b => [b.location, b.consumption, b.rows.length]), [['', false, 3], ['Drvar', false, 1], ['', true, 3], ['Drvar', true, 1]]);
+  assert.deepEqual(p.blocks[0].rows[1].values.slice(0, 3), [21130.49, null, 12837.28]);
+  assert.equal(p.blocks[0].rows[0].values[0], 4456.16);
+  assert.equal(p.blocks[0].rows[0].values.length, 12);
+  assert.equal(C.parseBillsSheet([['nesto'], ['a', 'b']]), null);
+});
+
+test('billsFromSheet: spaja iznos i potrosnju, nove lokacije i vrste, duplikati', () => {
+  let n = 0; const newId = () => 'n' + (++n);
+  const ctx = {
+    locations: [{ id: 'L1', name: 'Stan', currency: 'RSD' }],
+    billTypes: C.defaultBillTypes('L1', 'Stanovanje', () => 'T' + (++n)),
+    bills: [], primaryLocationId: 'L1', category: 'Stanovanje', newId, newLocationCurrency: { Drvar: 'BAM' }
+  };
+  ctx.bills = [{ id: 'old', billTypeId: ctx.billTypes[2].id, month: '2025-01' }]; // Voda jan vec postoji — ne smeta
+  const r = C.billsFromSheet(C.parseBillsSheet(SHEET), ctx);
+  assert.deepEqual(r.newLocations.map(l => [l.name, l.currency]), [['Drvar', 'BAM']]);
+  assert.deepEqual(r.newTypes.map(t => t.name), ['Struja']);                  // Drvar Struja
+  assert.deepEqual(r.newTypes[0].metrics.map(m => m.name), ['Skupa']);
+  const stanStruja = ctx.billTypes[0].id;
+  const jan = r.bills.find(b => b.billTypeId === stanStruja && b.month === '2025-01');
+  assert.equal(jan.amount, 4456.16);
+  assert.deepEqual(jan.values, { m1: 215, m2: 154 });
+  assert.equal(jan.source, 'excel');
+  const plinFeb = r.bills.find(b => b.billTypeId === ctx.billTypes[1].id && b.month === '2025-02');
+  assert.equal(plinFeb.amount, 0);                                             // samo potrosnja
+  assert.deepEqual(plinFeb.values, { m1: 295 });
+  const drvar = r.bills.filter(b => b.billTypeId === r.newTypes[0].id);
+  assert.equal(drvar.find(b => b.month === '2025-03').values.m1, 38);
+  assert.equal(drvar[0].currency, 'BAM');
+  const again = C.billsFromSheet(C.parseBillsSheet(SHEET), { ...ctx, bills: r.bills, locations: ctx.locations.concat(r.newLocations), billTypes: ctx.billTypes.concat(r.newTypes) });
+  assert.equal(again.bills.length, 0);
+  assert.equal(again.duplicates, r.bills.length);
+});
