@@ -10,7 +10,7 @@ function setup(fetchImpl, enc = true){
   const safeStorage = { isEncryptionAvailable: () => enc, encryptString: s => Buffer.from('X' + s), decryptString: b => b.toString().slice(1) };
   const calls = [];
   const fetch = async (url, opts) => { calls.push({ url, opts }); return fetchImpl(url, opts); };
-  const api = createBills({ fetch, safeStorage, getSettings: () => settings, saveSettings: () => {}, dataDir: () => dir });
+  const api = createBills({ fetch, safeStorage, getSettings: () => settings, saveSettings: () => {}, dataDir: () => dir, sleep: async () => {} });
   return { api, dir, calls, settings: () => settings };
 }
 const okResponse = content => ({ ok: true, status: 200, headers: new Map(), json: async () => ({ choices: [{ message: { content } }] }) });
