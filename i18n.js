@@ -502,6 +502,7 @@
     'Račun je prevelik za besplatni Groq limit ni posle smanjivanja. Popuni podatke ručno ili probaj ponovo za minut.': 'The bill is too large for the free Groq limit even after shrinking it. Fill in the details manually or try again in a minute.',
     'Rashod ide u mesec': 'Expense goes to month', 'Izaberi mesec u koji ide rashod.': 'Choose the month the expense goes to.',
     'Obriši kućni račun': 'Delete household bill',
+    'Otvori račun iz prodavnice': 'Open store receipt', 'Prilog nije pronađen u folderu Prilozi.': 'The attachment wasn’t found in the Prilozi folder.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

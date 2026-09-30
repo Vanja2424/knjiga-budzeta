@@ -991,6 +991,20 @@
       check('AI: podrazumevani model', info1.model === 'qwen/qwen3.8-27b', info1.model);
     }
 
+    // Fiskalni racun: polja na rashodu prezive Excel i kopiju, 📎 u Rashodima
+    if (typeof window.__addEntriesRaw === 'function') {
+      const e = { id: 'smoke-rcpt-1', type: 'expense', desc: 'Smoke Maxi', amount: 10, category: 'Hrana', date: monthKey(new Date()) + '-01', paid: true, tags: ['nabavka'], items: ['Mleko'], itemPrices: [10], receiptId: 'smokeR1', attachments: ['2026-09-30-racun-smoke-1.jpg'] };
+      window.__addEntriesRaw([e]);
+      const san = window.__sanitizeImportedBackup({ entries: [e, Object.assign({}, e, { id: 'smoke-rcpt-2', receiptId: '"><x', attachments: ['..\\a.pdf', 'ok.pdf'] })] });
+      check('račun: kopija čuva receiptId i priloge', san.entries[0].receiptId === 'smokeR1' && san.entries[0].attachments[0] === e.attachments[0] && san.entries[1].receiptId === undefined && san.entries[1].attachments.join() === 'ok.pdf', JSON.stringify(san.entries[1]));
+      const ws = window.__buildWorkbook().Sheets['Stavke'];
+      const row = XLSX.utils.sheet_to_json(ws, { defval: '' }).find(r => r.ID === 'smoke-rcpt-1');
+      check('račun: Excel kolone RacunID i Prilozi', !!row && row.RacunID === 'smokeR1' && row.Prilozi === e.attachments[0], JSON.stringify(row));
+      go('rashodi'); await sleep(80);
+      check('račun: 📎 u listi rashoda', !!document.querySelector('.att-btn[data-id="smoke-rcpt-1"]'));
+      window.__deleteEntriesById(['smoke-rcpt-1']);
+    } else check('račun: hook __addEntriesRaw', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

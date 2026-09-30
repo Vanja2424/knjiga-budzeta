@@ -1221,6 +1221,8 @@ thead input[type="checkbox"], .ob-cat-check, .goal-add-input + input{ accent-col
 .trend-range-btn.active, .compare-mode-btn.active{ background: var(--card); color: var(--ink); border-color: transparent; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.12); }
 [data-theme="dark"] .trend-range-btn.active, [data-theme="dark"] .compare-mode-btn.active{ background: #636366; }
 /* Ikonice u redovima: tihe dok se ne pokazu; bez rotiranja i skakanja */
+.att-btn{ background:none; border:none; cursor:pointer; font-size: 0.95em; padding: 0.3em 0.4em; border-radius: 6px; }
+.att-btn:hover{ background: var(--accent-soft); }
 .del-btn, .edit-btn, .dup-btn, .envelope-suggest-btn{
   color: var(--ink-tertiary); border-radius: 6px; padding: 4px 7px; font-size: 14px;
   transition: color var(--dur-fast) ease, background-color var(--dur-fast) ease;
@@ -7406,7 +7408,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           <td class="paid-check"><input type="checkbox" data-paid-id="${e.id}" ${paid?'checked':''} title="Plaćeno"></td>
           <td>${d}</td><td>${escapeHtml(e.desc)}${itemsSummaryHtml(e.items)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
-          <td class="row-actions"><button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
+          <td class="row-actions">${e.attachments && e.attachments.length && window.desktop ? `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button>` : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
       selectAllCb.checked = filtered.every(e=>selectedExpenseIds.has(e.id));
       body.querySelectorAll('.row-select').forEach(cb=>{
@@ -7427,6 +7429,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         b.addEventListener('click', ()=>{
           const entry = entries.find(e=>e.id === b.dataset.id);
           if(entry) duplicateEntry(entry);
+        });
+      });
+      body.querySelectorAll('.att-btn').forEach(b=>{
+        b.addEventListener('click', async ()=>{
+          const entry = entries.find(e=>e.id === b.dataset.id);
+          if(!entry || !entry.attachments || !window.desktop || !window.desktop.bills) return;
+          const r = await window.desktop.bills.openFile(entry.attachments[0]);
+          if(!r || !r.ok) appAlert(t('Prilog nije pronađen u folderu Prilozi.'));
         });
       });
       wireEditButton(body, {
@@ -8824,6 +8834,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       typeof e.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(e.date)
     ).map(e => { const o = Object.assign({}, e, { desc: String(e.desc == null ? '' : e.desc), category: String(e.category || 'Ostalo'), tags: Array.isArray(e.tags) ? e.tags.map(String) : [] });
       if(Array.isArray(e.items)) o.items = e.items.map(String); else delete o.items;
+      if(typeof e.receiptId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(e.receiptId)) o.receiptId = e.receiptId; else delete o.receiptId;
+      const att = Array.isArray(e.attachments) ? e.attachments.filter(C.isAttachmentName) : [];
+      if(att.length) o.attachments = att; else delete o.attachments;
       if(Array.isArray(o.items) && Array.isArray(e.itemPrices) && e.itemPrices.length === o.items.length) o.itemPrices = e.itemPrices.map(p=> (typeof p === 'number' && isFinite(p) && p >= 0) ? p : null); else delete o.itemPrices;
       return o; });
     // Isti tip/opseg koercija kao rucni unos (recurringForm submit) i Excel uvoz (parseWorkbook) —
@@ -8914,6 +8927,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     };
   }
   window.__sanitizeImportedBackup = sanitizeImportedBackup;
+  window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
 
   document.getElementById('backupImportInput').addEventListener('change', function(e){
     const file = e.target.files[0];
@@ -9139,7 +9153,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), DugID: e.debtId || ''})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), DugID: e.debtId || '', RacunID: e.receiptId || '', Prilozi: (e.attachments || []).join('; ')})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -9225,7 +9239,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         ...((parseInt(r.PokrivaMeseci, 10) || 1) > 1 ? { spreadMonths: parseInt(r.PokrivaMeseci, 10), ...(/^\d{4}-\d{2}$/.test(String(r.OdMeseca)) ? { spreadStart: String(r.OdMeseca) } : {}) } : {}),
         ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {}),
         ...(C.cellToItems(r.Kupljeno).length ? { items: C.cellToItems(r.Kupljeno) } : {}),
-        ...(r.DugID ? { debtId: String(r.DugID) } : {})
+        ...(r.DugID ? { debtId: String(r.DugID) } : {}),
+        ...(/^[A-Za-z0-9_-]{1,64}$/.test(String(r.RacunID || '')) ? { receiptId: String(r.RacunID) } : {}),
+        ...((att => att.length ? { attachments: att } : {})(String(r.Prilozi || '').split(';').map(x=> x.trim()).filter(C.isAttachmentName)))
       };
     });
 
