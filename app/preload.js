@@ -65,5 +65,18 @@ contextBridge.exposeInMainWorld('desktop', {
     onOpen: (cb) => ipcRenderer.on('quick:open', (_e, opts) => cb(opts)),
     // iz glavnog prozora: otvori prozor za unos (rashod/prihod)
     open: (type) => ipcRenderer.send('quick:open-request', type)
+  },
+
+  // Kucni racuni: AI citanje (Groq; kljuc ostaje u glavnom procesu) i prilozi u folderu Prilozi
+  bills: {
+    keyInfo: () => ipcRenderer.invoke('bills:key-info'),
+    setKey: (key) => ipcRenderer.invoke('bills:key-set', key),
+    setOptions: (o) => ipcRenderer.invoke('bills:options', o),
+    testKey: () => ipcRenderer.invoke('bills:key-test'),
+    read: (req) => ipcRenderer.invoke('bills:read', req),
+    saveFile: (bytes, name) => ipcRenderer.invoke('bills:save-file', bytes, name),
+    openFile: (name) => ipcRenderer.invoke('bills:open-file', name),
+    deleteFile: (name) => ipcRenderer.invoke('bills:delete-file', name),
+    restoreFile: (name) => ipcRenderer.invoke('bills:restore-file', name)
   }
 });

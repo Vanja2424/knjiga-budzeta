@@ -45,6 +45,8 @@
       "qrcode-generator.js",
       "jsQR.js",
       "bills.js",
+      "pdf.min.mjs",
+      "pdf.worker.min.mjs",
       "build/icon.png"
     ],
     "win": {

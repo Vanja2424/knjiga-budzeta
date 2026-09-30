@@ -10,6 +10,9 @@
   try {
     check('SheetJS 0.20.3 učitan', window.XLSX && XLSX.version === '0.20.3', window.XLSX && XLSX.version);
     check('budzet-core.js učitan', !!window.BudzetCore);
+    const pdfjs = await import('./pdf.min.mjs').catch(e => ({ err: String(e) }));
+    check('pdf.js se učitava (.mjs)', !!(pdfjs && pdfjs.getDocument), pdfjs && pdfjs.err);
+    check('desktop.bills postoji', !!(window.desktop && window.desktop.bills && window.desktop.bills.read));
     if ($('onboardingOverlay').classList.contains('show')) $('onboardingSkipBtn').click();
 
     // Svi ekrani se otvaraju

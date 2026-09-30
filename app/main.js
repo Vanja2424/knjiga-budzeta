@@ -1,11 +1,12 @@
 const {
   app, BrowserWindow, protocol, net, session, shell, nativeTheme, ipcMain, dialog,
-  Menu, Tray, nativeImage, globalShortcut, screen, Notification, powerMonitor
+  Menu, Tray, nativeImage, globalShortcut, screen, Notification, powerMonitor, safeStorage
 } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
+const { createBills, registerBillsIpc } = require('./bills');
 // Azuriranja postoje samo u instaliranoj verziji (portable i razvojno pokretanje ih nemaju).
 const IS_MAC = process.platform === 'darwin';
 // Na Mac-u aplikacija nije potpisana (nema Apple developer naloga), pa samo-azuriranje ne radi —
@@ -112,6 +113,7 @@ const dataDir = () => process.env.KNJIGA_DATA_DIR || path.join(app.getPath('docu
 const dataFile = () => path.join(dataDir(), 'podaci.json');
 const backupDir = () => process.env.KNJIGA_BACKUP_DIR || path.join(dataDir(), 'Rezervne kopije');
 const BACKUP_KEEP_DAYS = 30;
+let billsApi = null; // Kucni racuni: Groq citanje i prilozi (vidi bills.js); pravi se u init() posle loadSettings
 let lastSavedAt = null;
 
 const todayStr = () => {
@@ -290,6 +292,7 @@ function runExtraBackup(force) {
     const target = extraBackupTarget();
     fs.mkdirSync(target, { recursive: true });
     withRetry(() => fs.copyFileSync(dataFile(), path.join(target, `Podaci-${today}.json`)));
+    try { if (billsApi) billsApi.mirrorTo(path.join(target, 'Prilozi')); } catch { /* prilozi nisu presudni za kopiju podataka */ }
     const old = fs.readdirSync(target).filter(f => /^Podaci-\d{4}-\d{2}-\d{2}\.json$/.test(f)).sort();
     old.slice(0, Math.max(0, old.length - EXTRA_BACKUP_KEEP)).forEach(f => { try { fs.unlinkSync(path.join(target, f)); } catch { /* ignorisano */ } });
     settings.extraBackupLast = new Date().toISOString();
@@ -969,12 +972,19 @@ if (!app.requestSingleInstanceLock()) {
 function init() {
   if (!IS_MAC) app.setAppUserModelId('com.vanja.knjigabudzeta'); // potrebno za Windows notifikacije
   loadSettings();
+  billsApi = createBills({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, dataDir });
+  registerBillsIpc(ipcMain, billsApi, shell);
+  setTimeout(() => billsApi.purgeTrash(30), 60 * 1000);
 
   protocol.handle('app', async (req) => {
     const rel = decodeURIComponent(new URL(req.url).pathname).replace(/^\/+/, '');
     const file = path.normalize(path.join(__dirname, rel));
     if (!file.startsWith(__dirname + path.sep)) return new Response('Not found', { status: 404 });
     const res = await net.fetch(pathToFileURL(file).toString());
+    if (file.endsWith('.mjs')) { // pdf.js je ES modul — mora da stigne kao JavaScript
+      const h = new Headers(res.headers); h.set('Content-Type', 'text/javascript; charset=utf-8');
+      return new Response(res.body, { status: res.status, headers: h });
+    }
     if (!file.endsWith('.html')) return res;
     // Stranica sme da ucitava samo sopstveni sadrzaj — nema spoljnih skripti ni mreznih zahteva.
     const headers = new Headers(res.headers);
