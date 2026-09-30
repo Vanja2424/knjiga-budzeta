@@ -1420,8 +1420,9 @@
     (rows || []).forEach(r => {
       if(!r || r.type !== 'expense' || r.catSource !== 'default' || !String(r.desc || '').trim()) return;
       const key = importDescKey(r.desc);
-      if(!map.has(key)) map.set(key, { key, desc: String(r.desc).trim().replace(/\s+/g, ' '), count: 0 });
-      map.get(key).count++;
+      if(!map.has(key)) map.set(key, { key, desc: String(r.desc).trim().replace(/\s+/g, ' '), count: 0, raws: [] });
+      const c = map.get(key); c.count++;
+      if(!c.raws.includes(r.desc)) c.raws.push(r.desc);
     });
     return [...map.values()];
   }
@@ -1432,14 +1433,26 @@
       '- category: tačno jedna od ovih kategorija korisnika ili "" ako nisi siguran: ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
       '- keyword: kratak deo opisa koji označava prodavca/uslugu (npr. "LIDL", "WOLT", "NIS PETROL"), tačno kako piše u opisu; bez brojeva, grada i reči kao POS/KUPOVINA.',
       'Stavke:',
-      ...(candidates || []).map((c, i) => i + ': ' + c.desc)
+      ...(candidates || []).map((c, i) => i + ': ' + maskDigits(c.desc))
     ].join('\n');
   }
-  const KEYWORD_STOP = new Set(['pos', 'kupovina', 'placanje', 'uplata', 'isplata', 'kartica', 'karticom', 'visa', 'mastercard', 'maestro', 'dina', 'internet', 'web', 'order', 'beograd', 'novi', 'sad', 'doo', 'srbija', 'srb', 'ltd', 'www', 'com', 'rsd', 'trn', 'pmt']);
+  // brojevi kartica/racuna (4+ cifre u nizu, i sa razmacima/crticama) ne idu AI-ju
+  function maskDigits(text){
+    return String(text || '').replace(/\d[\d\s\-\/.]*\d/g, m => (m.match(/\d/g) || []).length >= 4 ? '#' : m);
+  }
+  const KEYWORD_STOP = new Set(['karticom', 'pos', 'kupovina', 'placanje', 'uplata', 'isplata', 'kartica', 'karticom', 'visa', 'mastercard', 'maestro', 'dina', 'internet', 'web', 'order', 'beograd', 'novi', 'sad', 'doo', 'srbija', 'srb', 'ltd', 'www', 'com', 'rsd', 'trn', 'pmt']);
   // prva rec od bar 3 slova koja nije opsta (POS, KUPOVINA, grad…) — rezerva kad AI ne da upotrebljivu kljucnu rec
   function suggestKeyword(desc){
     const w = String(desc || '').split(/[^\p{L}]+/u).find(x => x.length >= 3 && !KEYWORD_STOP.has(foldText(x)));
     return w || '';
+  }
+  // Kljucna rec za pravilo: bar 3 slova, bez niza cifara, bar jedna rec koja nije opsta, i postoji u SVAKOM izvornom opisu
+  // (pravilo se poredi sa izvornim opisom, samo bez velikih slova — kao categoryFromRules)
+  function usableKeyword(kw, raws){
+    const k = String(kw || '').trim();
+    if(k.length < 3 || /\d{3,}/.test(k) || (k.match(/\p{L}/gu) || []).length < 3) return false;
+    if(!k.split(/[^\p{L}]+/u).some(w => w.length >= 3 && !KEYWORD_STOP.has(foldText(w)))) return false;
+    return (raws || []).every(r => String(r).toLowerCase().includes(k.toLowerCase()));
   }
   function cleanImportSuggestions(raw, categories, candidates){
     const o = extractJson(raw);
@@ -1451,8 +1464,8 @@
       if(!c || !Number.isInteger(Number(x.i))) return;
       const category = cats.find(k => foldText(k) === foldText(x.category)) || '';
       let keyword = String(x.keyword || '').trim().slice(0, 30);
-      if(keyword.length < 3 || !importDescKey(c.desc).includes(foldText(keyword))) keyword = suggestKeyword(c.desc);
-      out.set(c.key, { category, keyword });
+      if(!usableKeyword(keyword, c.raws && c.raws.length ? c.raws : [c.desc])) keyword = suggestKeyword(c.desc);
+      out.set(c.key, { category, keyword, strong: keyword.length >= 4 });
     });
     return out;
   }

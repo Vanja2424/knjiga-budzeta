@@ -1301,11 +1301,11 @@ test('uvoz + AI: kandidati, uputstvo, ciscenje predloga, pravila', () => {
   assert.deepEqual(cands.map(c => [c.desc, c.count]), [['POS 4432 LIDL KRALJEVO', 2], ['WOLT *ORDER 123', 1]]);
   const p = C.importCategoryPrompt(['Hrana', 'Restorani'], cands);
   assert.match(p, /"Hrana", "Restorani"/);
-  assert.match(p, /0: POS 4432 LIDL KRALJEVO/);
+  assert.match(p, /0: POS # LIDL KRALJEVO/);   // broj kartice se ne salje
   assert.ok(!/4432\.|iznos/i.test(p.split('\n').slice(-2).join(' ')));
   const sug = C.cleanImportSuggestions('```json\n{"items":[{"i":0,"category":"hrana","keyword":"LIDL"},{"i":1,"category":"Kafane","keyword":"BURGER"},{"i":7,"category":"Hrana","keyword":"X"}]}\n```', ['Hrana', 'Restorani'], cands);
   assert.equal(sug.size, 2);
-  assert.deepEqual(sug.get(cands[0].key), { category: 'Hrana', keyword: 'LIDL' });
+  assert.deepEqual(sug.get(cands[0].key), { category: 'Hrana', keyword: 'LIDL', strong: true });
   assert.equal(sug.get(cands[1].key).category, '');                 // nepoznata kategorija
   assert.equal(sug.get(cands[1].key).keyword, 'WOLT');              // BURGER nije u opisu -> rec iz opisa
   assert.equal(C.cleanImportSuggestions('nista', ['Hrana'], cands), null);
@@ -1314,4 +1314,31 @@ test('uvoz + AI: kandidati, uputstvo, ciscenje predloga, pravila', () => {
   assert.deepEqual(nr, [{ keyword: 'WOLT', category: 'Restorani' }]);
   assert.equal(C.suggestKeyword('POS 4432 NIS PETROL BG'), 'NIS');
   assert.equal(C.suggestKeyword('KUPOVINA 12 BEOGRAD'), '');
+});
+
+test('uvoz + AI posle pregleda: maskirane cifre, opste/numericke kljucne reci, provera na izvornom opisu, jacina', () => {
+  const rows = [
+    { type: 'expense', desc: 'POS 4432 1234 LIDL KRALJEVO', catSource: 'default' },
+    { type: 'expense', desc: 'NIS  PETROL 123', catSource: 'default' },
+    { type: 'expense', desc: 'PLACANJE KARTICOM MAXI 55', catSource: 'default' },
+    { type: 'expense', desc: 'PRENOS NA 160-0000123-45 PETAR', catSource: 'default' }
+  ];
+  const cands = C.importAiCandidates(rows);
+  assert.deepEqual(cands[1].raws, ['NIS  PETROL 123']);
+  const p = C.importCategoryPrompt(['Hrana'], cands);
+  assert.ok(!/4432|1234|0000123/.test(p), p);
+  assert.match(p, /LIDL KRALJEVO/);
+  const sug = C.cleanImportSuggestions(JSON.stringify({ items: [
+    { i: 0, category: 'Hrana', keyword: '4432' },
+    { i: 1, category: 'Hrana', keyword: 'NIS PETROL' },
+    { i: 2, category: 'Hrana', keyword: 'PLACANJE KARTICOM' },
+    { i: 3, category: 'Hrana', keyword: 'POS' }
+  ] }), ['Hrana'], cands);
+  assert.equal(sug.get(cands[0].key).keyword, 'LIDL');                // brojevi -> rec iz opisa
+  assert.equal(sug.get(cands[1].key).keyword, 'NIS');                 // "NIS PETROL" nije u izvornom opisu (dva razmaka)
+  assert.equal(sug.get(cands[1].key).strong, false);                  // kratka rec: pravilo nije podrazumevano
+  assert.equal(sug.get(cands[2].key).keyword, 'MAXI');                // opste reci -> prodavac
+  assert.equal(sug.get(cands[0].key).strong, true);
+  assert.equal(sug.get(cands[3].key).keyword, 'PRENOS');
+  assert.equal(C.suggestKeyword('PLACANJE KARTICOM 12'), '');
 });

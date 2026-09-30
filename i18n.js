@@ -532,6 +532,8 @@
     'za opise koje pravila ne prepoznaju. Štiklirano = napravi pravilo, pa sledeći put AI nije potreban.': 'for descriptions no rule recognizes. Checked = create a rule, so next time AI isn’t needed.',
     'Ključna reč za pravilo': 'Keyword for the rule', 'pravilo': 'rule', 'AI predlozi nisu dostupni ({0}).': 'AI suggestions aren’t available ({0}).',
     'AI odgovor nije mogao da se pročita.': 'The AI answer couldn’t be read.', 'Nova pravila: {0}.': 'New rules: {0}.',
+    'AI predlaže kategorije za {0} opisa… (deo {1}/{2})': 'AI is suggesting categories for {0} descriptions… (part {1}/{2})', 'Uvoz je već u toku — sačekaj da se završi.': 'An import is already running — wait for it to finish.',
+    'Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš i, pri uvozu izvoda, opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica). Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill and payment-slip files you add and, when importing a statement, the descriptions of unknown items (no amounts, dates or card numbers). All other data stays on this computer only.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

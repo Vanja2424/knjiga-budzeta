@@ -1178,8 +1178,17 @@
       check('uvoz AI: pravila napravljena (bez isključenog)', rules.some(r => r.keyword === 'SMOKEGORIVO' && r.category === 'Prevoz') && rules.some(r => r.keyword === 'SMOKEAPOTEKA' && r.category === 'Zdravlje') && !rules.some(r => /SMOKEPEKARA/i.test(r.keyword)), JSON.stringify(rules));
       window.__undoTop(); await sleep(150);
       check('uvoz AI: opoziv briše stavke i nova pravila', !entries().some(e => /SMOKE(GORIVO|KINO|APOTEKA|PEKARA|POZNATO)/.test(e.desc)) && !window.__catRules().some(r => r.keyword === 'SMOKEGORIVO') && window.__catRules().some(r => r.keyword === 'smokepoznato'));
+      // drugi uvoz dok prvi ceka AI: ne krece, jasna poruka; napredak se vidi
+      window.__fakeImportCategorizing = async req => { await sleep(700); return { ok: true, content: JSON.stringify({ items: [{ i: 0, category: 'Prevoz', keyword: 'SMOKEGORIVO' }] }) }; };
+      const pA = window.__runImportText([{ name: 'a.csv', text: 'Datum;Opis;Iznos\n' + m + '-03;POS 11 SMOKEGORIVO BG;-3000,00\n' }]); await sleep(150);
+      check('uvoz AI: napredak u statusu', /AI predlaže/.test($('csvImportStatus').textContent), $('csvImportStatus').textContent);
+      await window.__runImportText([{ name: 'b.csv', text: 'Datum;Opis;Iznos\n' + m + '-04;SMOKEDRUGI;-100,00\n' }]);
+      check('uvoz AI: drugi uvoz ne kreće dok prvi traje', /već u toku/.test($('csvImportStatus').textContent), $('csvImportStatus').textContent);
+      await sleep(900); if ($('dialogOverlay').classList.contains('show')) $('dialogCancel').click(); await pA;
       window.__setCatRules(rules0);
       window.__fakeImportCategorizing = null;
+      go('podesavanja'); await sleep(80);
+      check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
     } else check('uvoz AI: hook', false);
 
     // Cuvanje u fajl
