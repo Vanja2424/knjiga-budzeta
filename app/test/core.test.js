@@ -1213,3 +1213,46 @@ test('findReceiptDuplicate', () => {
   assert.equal(C.findReceiptDuplicate(entries, '2026-09-29', 183.34), null);
   assert.equal(C.findReceiptDuplicate(entries, '2026-09-30', 200), null);
 });
+
+test('mergeReceiptParts: preklapanje i kad se red procita malo drugacije, do 8 redova, deo na stavci', () => {
+  const it = (raw, price, name) => ({ raw, name: name || raw, qty: 1, unit: '', price, category: '', discount: false });
+  const a = { store: 'M', date: '2026-09-30', total: null, items: [it('MLEKO 2,8%', 100, 'Mleko'), it('HLEB', 60)], low: [] };
+  const b = { store: '', date: '', total: null, items: [it('MLEKO 2.8%', 100, 'Mleko'), it('HLEB', 60), it('JAJA', 30)], low: [] };
+  const m = C.mergeReceiptParts([a, b]);
+  assert.deepEqual(m.items.map(x => x.name), ['Mleko', 'HLEB', 'JAJA']);
+  assert.deepEqual(m.items.map(x => x.part), [0, 0, 1]);
+  const L = 'ABCDEFGH'.split('');
+  const p1 = { items: ['X', ...L].map((r, i) => it(r, i + 1)), low: [] };
+  const p2 = { items: [...L, 'Z'].map((r, i) => it(r, i + 2)), low: [] };
+  assert.deepEqual(C.mergeReceiptParts([p1, p2]).items.map(x => x.raw).join(''), 'XABCDEFGHZ');
+});
+
+test('mergeReceiptParts: stvarno ponovljena stavka se vraca kad to uskladjuje zbir', () => {
+  const it = (raw, price) => ({ raw, name: raw, qty: 1, unit: '', price, category: '', discount: false });
+  const a = { items: [it('MLEKO', 100), it('HLEB', 60)], low: [] };
+  const b = { total: 190, items: [it('HLEB', 60), it('JAJA', 30)], low: [] };  // 100+60+60+30 = 250? ne: ukupno 190 -> preklapanje
+  assert.deepEqual(C.mergeReceiptParts([a, b]).items.map(x => x.raw), ['MLEKO', 'HLEB', 'JAJA']);
+  const c = { total: 250, items: [it('HLEB', 60), it('JAJA', 30)], low: [] };  // 250 = dva hleba
+  assert.deepEqual(C.mergeReceiptParts([a, c]).items.map(x => x.raw), ['MLEKO', 'HLEB', 'HLEB', 'JAJA']);
+});
+
+test('insertReceiptPart: novi deo na svoje mesto, izmene ostaju, preklapanje sa susedima', () => {
+  const it = (raw, price, part, extra) => Object.assign({ raw, name: raw, qty: 1, unit: '', price, category: '', discount: false, part }, extra || {});
+  const cur = [it('A', 1, 0, { category: 'Moja' }), it('B', 2, 0), it('E', 5, 2)];
+  const out = C.insertReceiptPart(cur, 1, [it('B', 2), it('C', 3), it('D', 4), it('E', 5)]);
+  assert.deepEqual(out.map(x => x.raw), ['A', 'B', 'C', 'D', 'E']);
+  assert.equal(out[0].category, 'Moja');
+  assert.deepEqual(out.map(x => x.part), [0, 0, 1, 1, 2]);
+  const added = C.insertReceiptPart(cur.slice(0, 2), 1, [it('B', 2), it('X', 9)]);
+  assert.deepEqual(added.map(x => x.raw), ['A', 'B', 'X']);
+});
+
+test('receiptToExpenses: kategorija bez ijedne cene ne pravi rashod od 0', () => {
+  const it = (name, price, category) => ({ raw: name, name, qty: 1, unit: '', price, category, discount: false });
+  const rows = C.receiptToExpenses([it('Mleko', 100, 'Hrana'), it('Kesa', null, 'Ostalo')], 105);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].amount, 105);
+  assert.deepEqual(rows[0].items.map(i => i.name), ['Mleko', 'Kesa']);
+  assert.deepEqual(rows[0].itemPrices, [100, null]);
+  assert.ok(C.receiptToExpenses([it('A', 0.004, 'X'), it('B', 50, 'Y')], 50).every(r => r.amount > 0));
+});

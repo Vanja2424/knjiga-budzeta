@@ -1049,11 +1049,25 @@
       window.__fakeReceiptReading = (req, i) => { calls++; return i === 1 && calls === 2 ? { ok: false, kind: 'limit', status: 429 } : { ok: true, content: JSON.stringify(i === 0 ? part1 : part2) }; };
       const p3 = window.__addReceiptFiles([new File([img], 'a.jpg', { type: 'image/jpeg' }), new File([img], 'b.jpg', { type: 'image/jpeg' })]); await sleep(2000);
       check('račun: deo 2 nije pročitan — poruka i dugme ponovi', /Deo 2/.test($('receiptStatus').textContent) && window.__receiptState().items.length === 3, $('receiptStatus').textContent);
+      // izmena pre ponovnog citanja mora da ostane
+      const cat0 = document.querySelector('#receiptItems .receipt-row[data-i="0"] select[data-f="category"]');
+      cat0.value = 'Smoke higijena'; cat0.dispatchEvent(new Event('change', { bubbles: true }));
+      const nm0 = document.querySelector('#receiptItems .receipt-row[data-i="0"] input[data-f="name"]');
+      nm0.value = 'Mleko moje'; nm0.dispatchEvent(new Event('input', { bubbles: true }));
       $('receiptNext').click(); await sleep(50);
       check('račun: dugme Pokušaj ponovo za deo 2', $('receiptRetry').style.display !== 'none');
       $('receiptRetry').click(); await sleep(800);
       check('račun: posle ponavljanja svih 5 stavki', window.__receiptState().items.length === 5 && !/Deo 2/.test($('receiptStatus').textContent), JSON.stringify(window.__receiptState().items.map(x => x.name)));
+      check('račun: izmene ostaju posle ponovnog čitanja', window.__receiptState().items[0].name === 'Mleko moje' && window.__receiptState().items[0].category === 'Smoke higijena', JSON.stringify(window.__receiptState().items[0]));
       $('receiptCancel').click(); await p3;
+      // zatvaranje dok cita: ostali delovi se ne salju; "Dodaj jos sliku" je iskljuceno tokom citanja
+      let slowCalls = 0;
+      window.__fakeReceiptReading = async (req, i) => { slowCalls++; await sleep(400); return { ok: true, content: JSON.stringify(i === 0 ? part1 : part2) }; };
+      const p4 = window.__addReceiptFiles([new File([img], 'a.jpg', { type: 'image/jpeg' }), new File([img], 'b.jpg', { type: 'image/jpeg' }), new File([img], 'c.jpg', { type: 'image/jpeg' })]);
+      await sleep(150);
+      check('račun: Dodaj još sliku isključeno tokom čitanja', $('receiptAddPart').disabled === true);
+      $('receiptCancel').click(); await p4; await sleep(1200);
+      check('račun: posle zatvaranja nema daljih poziva', slowCalls === 1 && !$('receiptOverlay').classList.contains('show'), 'poziva: ' + slowCalls);
       window.__shopping().items = window.__shopping().items.filter(i => !i.id.startsWith('smoke-sl-')); window.__saveShopping();
       window.__deleteExpenseCategory('Smoke higijena');
       window.__fakeReceiptReading = null;

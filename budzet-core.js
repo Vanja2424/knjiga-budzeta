@@ -1254,27 +1254,48 @@
     if(!items.length) out.low.push('items');
     return out;
   }
-  // Delovi dugackog racuna (vise slika) -> jedan; isti redovi na spoju (do 3, ime + cena) racunaju se jednom
+  // Isti red na spoju dve slike: tekst (samo slova i cifre, "2,8%" = "2.8%") ili kratko ime + ista cena
+  const lineKeys = i => [i.raw, i.name].map(x => foldText(x).replace(/[^a-z0-9]/g, '')).filter(Boolean).map(k => k + '|' + i.price);
+  const sameLine = (x, y) => { const b = lineKeys(y); return lineKeys(x).some(k => b.includes(k)); };
+  // Najduze preklapanje (do 8 redova): kraj prve liste = pocetak druge
+  function overlapLen(prev, next){
+    for(let k = Math.min(8, prev.length, next.length); k >= 1; k--){
+      let ok = true;
+      for(let j = 0; j < k && ok; j++) ok = sameLine(prev[prev.length - k + j], next[j]);
+      if(ok) return k;
+    }
+    return 0;
+  }
+  const priceSum = items => items.reduce((s, i) => s + (i.price || 0), 0);
+  // Delovi dugackog racuna (vise slika) -> jedan; redovi na spoju racunaju se jednom, osim kad bi tek sa njima zbir bio jednak ukupnom
   function mergeReceiptParts(parts){
     const list = (parts || []).filter(Boolean);
     if(!list.length) return null;
-    const key = i => foldText(i.raw || i.name) + '|' + i.price;
-    const items = [];
-    list.forEach(p => {
-      const next = p.items.slice();
-      for(let k = Math.min(3, items.length, next.length); k >= 1; k--){
-        const tail = items.slice(items.length - k).map(key), head = next.slice(0, k).map(key);
-        if(tail.every((x, j) => x === head[j])){ next.splice(0, k); break; }
-      }
-      items.push(...next);
-    });
+    const tagged = list.map((p, pi) => (p.items || []).map(i => Object.assign({}, i, { part: pi })));
+    let items = [];
+    tagged.forEach(next => { items.push(...next.slice(overlapLen(items, next))); });
     const first = f => (list.find(p => p[f]) || {})[f] || '';
     const lastTotal = list.slice().reverse().find(p => p.total != null);
+    if(lastTotal){
+      const all = [].concat(...tagged);
+      if(Math.abs(priceSum(items) - lastTotal.total) > 0.5 && Math.abs(priceSum(all) - lastTotal.total) <= 0.5) items = all;
+    }
     const out = { store: first('store'), date: first('date'), total: lastTotal ? lastTotal.total : null, items, low: [] };
     if(!out.date) out.low.push('date');
     if(out.total == null) out.low.push('total');
     if(!items.length) out.low.push('items');
     return out;
+  }
+  // Deo procitan kasnije ("Dodaj jos sliku", "Pokusaj ponovo"): ubaci ga na njegovo mesto, a korisnikove izmene ostalih stavki ostaju
+  function insertReceiptPart(items, partIndex, newItems){
+    const cur = (items || []).filter(i => i.part !== partIndex);
+    let pos = cur.findIndex(i => (i.part || 0) > partIndex);
+    if(pos < 0) pos = cur.length;
+    const head = cur.slice(0, pos), tail = cur.slice(pos);
+    let mid = (newItems || []).map(i => Object.assign({}, i, { part: partIndex }));
+    mid = mid.slice(overlapLen(head, mid));
+    mid = mid.slice(0, mid.length - overlapLen(mid, tail));
+    return head.concat(mid, tail);
   }
   // Popust (negativna stavka) se oduzima od prethodne stavke; veci od nje ili bez prethodne -> srazmerno na sve sa cenom
   function applyReceiptDiscounts(items){
@@ -1336,7 +1357,10 @@
     else if(sumC === 0) rows.forEach((r, i) => { r.cents = i === 0 ? target : 0; });
     rows.sort((a, b) => b.cents - a.cents || a.category.localeCompare(b.category));
     rows[0].cents += target - rows.reduce((s, r) => s + r.cents, 0);
-    return rows.map(r => ({ category: r.category, amount: r.cents / 100, items: r.items, itemPrices: r.itemPrices }));
+    // kategorija bez iznosa (stavke bez cene) ne pravi rashod od 0 — stavke idu u najveci rashod, bez cene
+    const big = rows[0];
+    rows.slice(1).filter(r => r.cents <= 0).forEach(r => { big.items = big.items.concat(r.items); big.itemPrices = big.itemPrices.concat(r.items.map(() => null)); });
+    return rows.filter(r => r === big || r.cents > 0).map(r => ({ category: r.category, amount: r.cents / 100, items: r.items, itemPrices: r.itemPrices }));
   }
   // Isti racun vec unet: rashodi iste grupe (receiptId) tog dana sa zbirom +-1 din
   function findReceiptDuplicate(entries, date, total){
@@ -1393,7 +1417,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, applyReceiptDiscounts, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

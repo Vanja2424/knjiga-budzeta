@@ -4946,10 +4946,23 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!part.reading) part.error = t('AI odgovor nije mogao da se pročita. Popuni podatke ručno.');
     } else { part.reading = null; part.error = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); }
   }
+  // stavke posle popusta, sa kategorijom iz memorije (lista/istorija), pa predlog AI-ja, pa Ostalo
+  function receiptItemsWithCategories(list){
+    const memory = C.itemCategoryMemory(entries, shopping.items);
+    return C.applyReceiptDiscounts(list).map(i=> Object.assign({}, i, { category: memory.get(C.itemKey(i.name)) || i.category || defaultShopCat() }));
+  }
+  // Novi deo (dodat ili ponovo procitan): bez korisnikovih izmena -> sve iz pocetka; sa izmenama -> samo taj deo na njegovo mesto
+  function applyReceiptPart(idx){
+    const part = receipt.parts[idx];
+    if(!receipt.edited || !part.reading){ rebuildReceiptItems(); return; }
+    receipt.items = C.insertReceiptPart(receipt.items.filter(i=> (i.name || '').trim() || i.price != null), idx, receiptItemsWithCategories(part.reading.items.map(i=> Object.assign({}, i, { part: idx }))));
+    if(!receipt.items.length) receipt.items = [emptyReceiptItem()];
+    if(!receipt.storeTouched && !receipt.store) receipt.store = part.reading.store;
+    if(!receipt.totalTouched && part.reading.total != null) receipt.total = part.reading.total;
+  }
   function rebuildReceiptItems(){
     const merged = C.mergeReceiptParts(receipt.parts.map(p=> p.reading)) || { store: '', date: '', total: null, items: [], low: [] };
-    const memory = C.itemCategoryMemory(entries, shopping.items);
-    receipt.items = C.applyReceiptDiscounts(merged.items).map(i=> Object.assign({}, i, { category: memory.get(C.itemKey(i.name)) || i.category || defaultShopCat() }));
+    receipt.items = receiptItemsWithCategories(merged.items);
     if(!receipt.items.length) receipt.items = [emptyReceiptItem()];
     if(!receipt.storeTouched) receipt.store = merged.store;
     if(!receipt.dateTouched) receipt.date = merged.date || toISODateLocal(new Date());
@@ -4961,6 +4974,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     rEl('receiptPartLabel').textContent = receipt.parts.length > 1 ? t('Deo {0} od {1}', receipt.page + 1, receipt.parts.length) : '';
     ['receiptPrev', 'receiptNext'].forEach(id=> { rEl(id).style.display = receipt.parts.length > 1 ? '' : 'none'; });
     rEl('receiptRetry').style.display = p && p.error && !p.prep.error ? '' : 'none';
+    setReceiptBusy(!!receipt.busy);
     rEl('receiptStore').value = receipt.store || ''; rEl('receiptDate').value = receipt.date || ''; rEl('receiptTotal').value = receipt.total != null ? String(receipt.total) : '';
     const matched = new Set(C.matchReceiptToShopping(receipt.items, shopping.items).map(m=> m.receiptIndex));
     const catOpts = sel => expenseCats.map(c=> `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''} translate="no">${escapeHtml(c)}</option>`).join('');
@@ -4986,18 +5000,25 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     receipt.diff = diff;
   }
   const receiptPrepOpts = { maxSide: RECEIPT_MAX_SIDE, maxPages: 1 };
+  // tokom citanja: bez dodavanja dela, ponavljanja i cuvanja (redosled delova i stanje ostaju ispravni)
+  function setReceiptBusy(busy){ ['receiptAddPart', 'receiptRetry', 'receiptSave'].forEach(id=> { rEl(id).disabled = !!busy; }); }
   async function addReceiptFiles(files){
     const list = Array.from(files || []); if(!list.length) return;
     receipt = { parts: [], items: [], page: 0 };
     rEl('receiptStatus').textContent = t('Čitam račun…'); rEl('receiptItems').innerHTML = ''; rEl('receiptPreview').innerHTML = ''; rEl('receiptSums').innerHTML = ''; rEl('receiptDiff').textContent = '';
-    rEl('receiptSave').disabled = true;
+    receipt.busy = true; setReceiptBusy(true);
     rEl('receiptOverlay').classList.add('show');
     const done = new Promise(res=>{ receipt.resolve = res; });
     const r = receipt;
-    for(const f of list){ const part = { prep: await prepareBillFile(f, receiptPrepOpts) }; r.parts.push(part); await readReceiptPart(part, r.parts.length - 1); }
-    if(receipt !== r) return done; // zatvoren u medjuvremenu
+    for(const f of list){
+      if(receipt !== r) break; // zatvoren: ostali delovi se ne salju
+      const part = { prep: await prepareBillFile(f, receiptPrepOpts) };
+      if(receipt !== r) break;
+      r.parts.push(part); await readReceiptPart(part, r.parts.length - 1);
+    }
+    if(receipt !== r) return done;
+    r.busy = false;
     rebuildReceiptItems(); renderReceipt();
-    rEl('receiptSave').disabled = false;
     return done;
   }
   window.__addReceiptFiles = addReceiptFiles;
@@ -5006,14 +5027,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   rEl('receiptItems').addEventListener('input', e=>{
     const row = e.target.closest('.receipt-row'); if(!row || !receipt) return;
     const it = receipt.items[+row.dataset.i]; const f = e.target.dataset.f;
+    receipt.edited = true;
     if(f === 'name') it.name = e.target.value;
     if(f === 'price'){ const v = parseFloat(e.target.value); it.price = Number.isFinite(v) ? v : null; row.classList.toggle('bill-low', it.price == null); }
     renderReceiptSums();
   });
-  rEl('receiptItems').addEventListener('change', e=>{ const row = e.target.closest('.receipt-row'); if(row && receipt && e.target.dataset.f === 'category'){ receipt.items[+row.dataset.i].category = e.target.value; renderReceiptSums(); } });
-  rEl('receiptItems').addEventListener('click', e=>{ const b = e.target.closest('.rc-del'); if(!b || !receipt) return; receipt.items.splice(+b.closest('.receipt-row').dataset.i, 1); if(!receipt.items.length) receipt.items.push(emptyReceiptItem()); renderReceipt(); });
-  rEl('receiptAddItem').addEventListener('click', ()=>{ if(!receipt) return; receipt.items.push(emptyReceiptItem()); renderReceipt(); });
-  rEl('receiptAddDiff').addEventListener('click', ()=>{ if(!receipt || !(receipt.diff > 0)) return; receipt.items.push(Object.assign(emptyReceiptItem(), { name: t('Razlika do ukupnog'), price: receipt.diff })); renderReceipt(); });
+  rEl('receiptItems').addEventListener('change', e=>{ const row = e.target.closest('.receipt-row'); if(row && receipt && e.target.dataset.f === 'category'){ receipt.edited = true; receipt.items[+row.dataset.i].category = e.target.value; renderReceiptSums(); } });
+  rEl('receiptItems').addEventListener('click', e=>{ const b = e.target.closest('.rc-del'); if(!b || !receipt) return; receipt.edited = true; receipt.items.splice(+b.closest('.receipt-row').dataset.i, 1); if(!receipt.items.length) receipt.items.push(emptyReceiptItem()); renderReceipt(); });
+  rEl('receiptAddItem').addEventListener('click', ()=>{ if(!receipt) return; receipt.edited = true; receipt.items.push(emptyReceiptItem()); renderReceipt(); });
+  rEl('receiptAddDiff').addEventListener('click', ()=>{ if(!receipt || !(receipt.diff > 0)) return; receipt.edited = true; receipt.items.push(Object.assign(emptyReceiptItem(), { name: t('Razlika do ukupnog'), price: receipt.diff })); renderReceipt(); });
   rEl('receiptStore').addEventListener('input', e=>{ if(receipt){ receipt.store = e.target.value; receipt.storeTouched = true; } });
   rEl('receiptDate').addEventListener('change', e=>{ if(receipt){ receipt.date = e.target.value; receipt.dateTouched = true; renderReceipt(); } });
   rEl('receiptTotal').addEventListener('input', e=>{ if(receipt){ const v = parseFloat(e.target.value); receipt.total = Number.isFinite(v) ? v : null; receipt.totalTouched = true; renderReceiptSums(); } });
@@ -5022,22 +5044,29 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   rEl('receiptNext').addEventListener('click', ()=> flipReceipt(1));
   rEl('receiptAddPart').addEventListener('click', ()=> rEl('receiptPartInput').click());
   rEl('receiptPartInput').addEventListener('change', async e=>{
-    const f = e.target.files[0]; e.target.value = ''; if(!f || !receipt) return;
+    const f = e.target.files[0]; e.target.value = ''; if(!f || !receipt || receipt.busy) return;
+    const r = receipt; r.busy = true; setReceiptBusy(true);
     rEl('receiptStatus').textContent = t('Čitam račun…');
-    const part = { prep: await prepareBillFile(f, receiptPrepOpts) }; receipt.parts.push(part);
-    await readReceiptPart(part, receipt.parts.length - 1);
-    receipt.page = receipt.parts.length - 1; rebuildReceiptItems(); renderReceipt();
+    const part = { prep: await prepareBillFile(f, receiptPrepOpts) };
+    if(receipt !== r) return;
+    r.parts.push(part);
+    await readReceiptPart(part, r.parts.length - 1);
+    if(receipt !== r) return;
+    r.busy = false; r.page = r.parts.length - 1; applyReceiptPart(r.page); renderReceipt();
   });
   rEl('receiptRetry').addEventListener('click', async ()=>{
-    if(!receipt) return;
-    const idx = receipt.page, part = receipt.parts[idx];
+    if(!receipt || receipt.busy) return;
+    const r = receipt, idx = r.page, part = r.parts[idx];
+    r.busy = true; setReceiptBusy(true);
     rEl('receiptStatus').textContent = t('Čitam račun…');
-    await readReceiptPart(part, idx); rebuildReceiptItems(); renderReceipt();
+    await readReceiptPart(part, idx);
+    if(receipt !== r) return;
+    r.busy = false; applyReceiptPart(idx); renderReceipt();
   });
   rEl('receiptCancel').addEventListener('click', ()=> closeReceipt(false));
   rEl('receiptOverlay').addEventListener('click', e=>{ if(e.target.id === 'receiptOverlay') closeReceipt(false); });
   async function saveReceipt(){
-    if(!receipt) return;
+    if(!receipt || receipt.busy) return;
     const items = receipt.items.filter(i=> (i.name || '').trim() || i.price > 0);
     const total = parseFloat(rEl('receiptTotal').value);
     if(!items.some(i=> i.price > 0) && !(total > 0)){ rEl('receiptStatus').textContent = t('Upiši bar jednu stavku sa cenom ili ukupan iznos.'); return; }
