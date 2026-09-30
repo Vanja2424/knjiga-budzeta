@@ -1275,3 +1275,16 @@ test('slipPrompt i cleanSlipReading: nalog za uplatu', () => {
   assert.equal(C.cleanSlipReading('nema'), null);
   assert.equal(C.cleanSlipReading({ purpose: 'samo svrha' }), null);  // bez primaoca i racuna nema smisla
 });
+
+test('cleanSlipReading: propusten model 97 se vraca kad poziv na broj prolazi proveru; slipWarnings', () => {
+  let ref = null;
+  for(let i = 0; i < 100 && !ref; i++){ const c = String(i).padStart(2, '0') + '12345678'; if(C.validReference97(c)) ref = c; }
+  const r = C.cleanSlipReading({ name: 'Infostan', account: '845-0000000404849-87', model: '', reference: ref });
+  assert.equal(r.model, '97');
+  assert.deepEqual(C.slipWarnings(r), []);
+  const bad = C.cleanSlipReading({ name: 'Infostan', account: '845-0000000404849-87', model: '', reference: '1234567' });
+  assert.equal(bad.model, '');
+  assert.equal(C.slipWarnings(bad).length, 1);
+  assert.match(C.slipWarnings(bad)[0], /Poziv na broj nije proveren/);
+  assert.deepEqual(C.slipWarnings(C.cleanSlipReading({ name: 'X', account: '845-0000000404849-87' })), []);
+});

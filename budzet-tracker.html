@@ -1805,6 +1805,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .receipt-diff{ margin-top: 4px; font-weight: 600; color: var(--warn-text, var(--warn)); }
 .ips-oneoff-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 0.6em; margin-top: 0.6em; }
 .ips-oneoff-row select, .ips-oneoff-row input{ width: 100%; }
+.ips-warn{ color: var(--warn-text, var(--warn)); }
 </style>
 </head>
 <body>
@@ -4405,51 +4406,59 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   let fakeSlipReading = null; // test: zamenjuje Groq poziv za uplatnicu (req -> { ok, content })
   Object.defineProperty(window, '__fakeSlipReading', { get: ()=> fakeSlipReading, set: v=>{ fakeSlipReading = v; }, configurable: true });
   // Uplatnica (slika ili PDF): prvo IPS QR lokalno, a bez QR-a AI procita polja naloga (proverava ih ipsProblems)
-  async function readSlip(blob, statusEl){
-    statusEl.textContent = t('Čitam uplatnicu…');
+  async function readSlip(blob, statusEl, isCurrent){
+    const say = msg => { if(!isCurrent || isCurrent()) statusEl.textContent = msg; };
+    say(t('Čitam uplatnicu…'));
     const isPdf = blob.type === 'application/pdf' || /\.pdf$/i.test(blob.name || '');
     let p = null, notIps = false;
     if(!isPdf){ try{ const txt = await decodeQrImage(blob); p = txt ? C.parseIpsQr(txt) : null; notIps = !!txt && !p; } catch(e){ /* nije slika */ } }
     let prep = null;
     try{ prep = await prepareBillFile(blob); } catch(e){ prep = null; }
     if(!p && prep && prep.canvases.length) p = await findQrInPrepared(prep);
-    if(p){ p.source = 'qr'; p.prep = prep; statusEl.textContent = t('Pročitano: {0}{1}', p.name || C.formatAccount(p.account), p.amount ? ' · ' + fmt(p.amount) : ''); return p; }
-    if(!prep || prep.error){ statusEl.textContent = (prep && prep.error) || t('QR kod nije pronađen na slici — probaj oštriji ili veći snimak.'); return null; }
+    if(p){ p.source = 'qr'; p.prep = prep; say(t('Pročitano: {0}{1}', p.name || C.formatAccount(p.account), p.amount ? ' · ' + fmt(p.amount) : '')); return p; }
+    if(!prep || prep.error){ say((prep && prep.error) || t('QR kod nije pronađen na slici — probaj oštriji ili veći snimak.')); return prep ? { failed: true, prep } : null; }
     if(!(fakeSlipReading || (window.desktop && window.desktop.bills))){
-      statusEl.textContent = notIps ? t('Ovo nije IPS QR kod uplatnice.') : t('QR kod nije pronađen, a AI čitanje nije podešeno (Podešavanja → AI čitanje računa).');
-      return null;
+      say(notIps ? t('Ovo nije IPS QR kod uplatnice.') : t('QR kod nije pronađen, a AI čitanje nije podešeno (Podešavanja → AI čitanje računa).'));
+      return { failed: true, prep };
     }
-    statusEl.textContent = t('QR kod nije pronađen — čitam uplatnicu preko AI…');
+    say(t('QR kod nije pronađen — čitam uplatnicu preko AI…'));
     const req = { images: prep.images, text: prep.text, prompt: C.slipPrompt() };
     let res;
     try{ res = fakeSlipReading ? await fakeSlipReading(req) : await window.desktop.bills.read(req); }
     catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
-    if(!res || !res.ok){ statusEl.textContent = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); return null; }
+    if(!res || !res.ok){ say((BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {})); return prep ? { failed: true, prep } : null; }
     const got = C.cleanSlipReading(res.content);
-    if(!got){ statusEl.textContent = t('Uplatnica nije pročitana — popuni podatke ručno.'); return null; }
+    if(!got){ say(t('Uplatnica nije pročitana — popuni podatke ručno.')); return prep ? { failed: true, prep } : null; }
     p = Object.assign(got, { source: 'ai', prep });
-    statusEl.textContent = t('Pročitano sa slike (AI) — proveri podatke: {0}{1}', p.name || C.formatAccount(p.account), p.amount ? ' · ' + fmt(p.amount) : '');
+    say(t('Pročitano sa slike (AI) — proveri podatke: {0}{1}', p.name || C.formatAccount(p.account), p.amount ? ' · ' + fmt(p.amount) : ''));
     return p;
   }
-  const slipProblemsHtml = p => C.ipsProblems(Object.assign({}, p, { amount: p.amount || 1 })).map(x=> `<div>${escapeHtml(t(x))}</div>`).join('');
+  const slipProblemsHtml = p => C.ipsProblems(Object.assign({}, p, { amount: p.amount || 1 })).map(x=> `<div>${escapeHtml(t(x))}</div>`).join('')
+    + C.slipWarnings(p).map(x=> `<div class="ips-warn">${escapeHtml(t(x))}</div>`).join('');
   window.__readSlipText = text => C.parseIpsQr(text);
   window.__readSlipBlob = blob => readSlip(blob, document.getElementById('recSlipStatus'));
   async function applySlipToEdit(blob){
     const st = ipsState;
-    const p = await readSlip(blob, ipsEl('ipsImageStatus'));
-    if(!p || ipsState !== st) return;
+    const isCurrent = ()=> ipsState === st && ipsEl('ipsOverlay').classList.contains('show');
+    const p = await readSlip(blob, ipsEl('ipsImageStatus'), isCurrent);
+    if(!p || !isCurrent()) return;
+    if(p.failed){ if(st.r && st.r.oneOff) st.r.slipPrep = p.prep || null; return; }
     ipsFillFields(p);
     ipsEl('ipsProblems').innerHTML = p.source === 'ai' ? slipProblemsHtml(p) : '';
     if(st.r && st.r.oneOff){ st.r.slipAmount = p.amount || 0; st.r.slipPrep = p.prep || null; }
   }
   async function applySlipToNew(blob){
     const p = await readSlip(blob, document.getElementById('recSlipStatus'));
-    if(!p) return;
+    if(!p || p.failed) return;
     const aiMsg = document.getElementById('recSlipStatus').textContent;
     fillRecFormFromSlip(p);
     if(p.source === 'ai'){
       const probs = C.ipsProblems(Object.assign({}, p, { amount: p.amount || 1 }));
-      document.getElementById('recSlipStatus').textContent = aiMsg + (probs.length ? ' ' + probs.map(x=> t(x)).join(' ') : '');
+      // podaci sa greskom se ne cuvaju uz stavku; ispravljaju se kasnije u prozoru "Podaci za placanje"
+      if(probs.length) pendingSlipPayee = null;
+      const notes = probs.map(x=> t(x)).concat(C.slipWarnings(p).map(x=> t(x)));
+      document.getElementById('recSlipStatus').textContent = aiMsg + (notes.length ? ' ' + notes.join(' ') : '')
+        + (probs.length ? ' ' + t('Podaci za plaćanje nisu sačuvani uz stavku — dodaj ih ispravne preko dugmeta QR.') : '');
     }
   }
   function fillRecFormFromSlip(p){

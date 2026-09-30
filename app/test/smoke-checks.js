@@ -1091,6 +1091,20 @@
         const delS = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(sr.id)}"] .del-btn`);
         if (delS) { delS.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
       }
+      // 1b) pogresan racun sa AI ne sme da se sacuva uz novu ponavljajucu
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { name: 'JKP Smoke Losa', account: '845-0000000404849-88' })) });
+      go('ponavljajuce'); await sleep(60);
+      setFile('recSlipInput', new File([blank], 'u.png', { type: 'image/png' })); await sleep(1500);
+      check('uplatnica: loš račun javljen u formi', /Kontrolni broj/.test($('recSlipStatus').textContent), $('recSlipStatus').textContent);
+      setVal('recDay', '5'); $('recAutoPay').checked = false; $('recurringForm').requestSubmit(); await sleep(150);
+      const srBad = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc.startsWith('JKP Smoke Losa'));
+      check('uplatnica: loš račun se ne čuva uz ponavljajuću', !!srBad && !srBad.payee, JSON.stringify(srBad && srBad.payee));
+      if (srBad) {
+        go('ponavljajuce'); await sleep(80);
+        const delB = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(srBad.id)}"] .del-btn`);
+        if (delB) { delB.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
+      }
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(slip) });
       // 2) jednokratno placanje iz Rashoda
       go('rashodi'); await sleep(60);
       check('uplatnica: dugme u Rashodima', !!$('expSlipBtn'));
@@ -1111,6 +1125,30 @@
         check('uplatnica: pogrešan kontrolni broj odmah označen', /Kontrolni broj/.test($('ipsProblems').textContent), $('ipsProblems').textContent);
         $('ipsPrimary').click(); await sleep(120);
         check('uplatnica: bez QR koda dok se ne ispravi', $('ipsEdit').style.display !== 'none' && !$('ipsQr').querySelector('svg'));
+        $('ipsClose').click();
+        // 4) poziv na broj bez modela: upozorenje (ne blokira)
+        window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { reference: '1234567' })) });
+        setFile('expSlipInput', new File([blank], 'u4.png', { type: 'image/png' })); await sleep(1500);
+        check('uplatnica: upozorenje za neprovereni poziv na broj', /nije proveren/.test($('ipsProblems').textContent), $('ipsProblems').textContent);
+        $('ipsClose').click();
+        // 5) AI ne uspe: rucni unos, slika i dalje ide kao prilog
+        window.__fakeSlipReading = () => ({ ok: false, kind: 'nokey' });
+        setFile('expSlipInput', new File([blank], 'u5.png', { type: 'image/png' })); await sleep(1500);
+        setVal('ipsAccount', '845-0000000404849-87'); setVal('ipsName', 'Smoke Rucno');
+        $('ipsPrimary').click(); await sleep(120);
+        setVal('ipsAmount', '500'); $('ipsOneOffCat').value = 'Stanovanje';
+        const nE2 = entries().length;
+        $('ipsPrimary').click(); await sleep(250);
+        const ne2 = entries().slice(nE2)[0];
+        check('uplatnica: bez AI slika ostaje prilog', !!ne2 && ne2.amount === 500 && Array.isArray(ne2.attachments) && ne2.attachments.length === 1, JSON.stringify(ne2));
+        if (ne2) window.__deleteEntriesById([ne2.id]);
+        // 6) poruka ranijeg (sporog) citanja ne prepisuje novu
+        window.__fakeSlipReading = async () => { await sleep(700); return { ok: true, content: JSON.stringify(Object.assign({}, slip, { name: 'STARA uplatnica' })) }; };
+        setFile('expSlipInput', new File([blank], 'u6.png', { type: 'image/png' })); await sleep(200);
+        $('ipsClose').click();
+        window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { name: 'NOVA uplatnica' })) });
+        setFile('expSlipInput', new File([blank], 'u7.png', { type: 'image/png' })); await sleep(1800);
+        check('uplatnica: poruka ranijeg čitanja ne prepisuje novu', /NOVA/.test($('ipsImageStatus').textContent) && !/STARA/.test($('ipsImageStatus').textContent) && $('ipsName').value.startsWith('NOVA'), $('ipsImageStatus').textContent);
         $('ipsClose').click();
       }
       window.__fakeSlipReading = null;

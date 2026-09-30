@@ -1392,15 +1392,24 @@
     const code = str(o.code, 5).replace(/\D/g, '');
     const amount = parseAmount(o.amount);
     const cur = str(o.currency, 3).toUpperCase();
+    const reference = str(o.reference, 40).replace(/\s+/g, '').slice(0, 33);
+    let model = str(o.model, 6).replace(/\D/g, '').slice(0, 2);
+    // AI cesto propusti polje "model": ako poziv na broj prolazi kontrolu modela 97, to je model 97
+    if(!model && reference && validReference97(reference)) model = '97';
     return {
       name, account: normalizeAccount(accountRaw) || accountRaw,
       code: /^\d{3}$/.test(code) ? code : '',
       amount: Number.isFinite(amount) && amount > 0 ? round2(amount) : null,
       currency: /^[A-Z]{3}$/.test(cur) ? cur : 'RSD',
       purpose: str(o.purpose, 35),
-      model: str(o.model, 6).replace(/\D/g, '').slice(0, 2),
-      reference: str(o.reference, 40).replace(/\s+/g, '').slice(0, 33)
+      model, reference
     };
+  }
+  // Upozorenja za podatke koje je procitao AI (ne blokiraju placanje): poziv na broj bez modela 97 nema kontrolu
+  function slipWarnings(p){
+    const out = [];
+    if(p && p.reference && p.model !== '97') out.push('Poziv na broj nije proveren kontrolnim brojem — uporedi ga sa uplatnicom pre plaćanja.');
+    return out;
   }
 
   // ---------- Provera Excel fajla i fajla kopije ----------
@@ -1450,7 +1459,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

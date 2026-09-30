@@ -525,6 +525,8 @@
     'Uplatnica nije pročitana — popuni podatke ručno.': 'The slip couldn’t be read — fill in the details manually.',
     'Pročitano sa slike (AI) — proveri podatke: {0}{1}': 'Read from the image (AI) — check the details: {0}{1}',
     'Upiši iznos veći od nule.': 'Enter an amount greater than zero.',
+    'Poziv na broj nije proveren kontrolnim brojem — uporedi ga sa uplatnicom pre plaćanja.': 'The payment reference has no check digit — compare it with the slip before paying.',
+    'Podaci za plaćanje nisu sačuvani uz stavku — dodaj ih ispravne preko dugmeta QR.': 'The payment details weren’t saved with the item — add correct ones with the QR button.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
