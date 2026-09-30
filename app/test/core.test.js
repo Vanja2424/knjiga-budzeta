@@ -1112,3 +1112,63 @@ test('cleanBills cuva mesec rashoda', () => {
   assert.equal(b[0].expenseMonth, '2026-09');
   assert.equal(b[1].expenseMonth, undefined);
 });
+
+test('isAttachmentName i itemKey', () => {
+  assert.equal(C.isAttachmentName('2026-09-30-racun-maxi-1.jpg'), true);
+  assert.equal(C.isAttachmentName('x.bat'), false);
+  assert.equal(C.isAttachmentName('..\\x.pdf'), false);
+  assert.equal(C.isAttachmentName('.x.pdf'), false);
+  assert.equal(C.itemKey('Mleko (2 kom)'), 'mleko');
+  assert.equal(C.itemKey('Čokolada'), 'cokolada');
+});
+
+test('receiptPrompt i cleanReceiptReading', () => {
+  const p = C.receiptPrompt(['Hrana', 'Higijena']);
+  assert.match(p, /"Hrana", "Higijena"/);
+  assert.match(p, /"discount"/);
+  const raw = 'Evo:\n```json\n{"store":"Maxi","date":"30.09.2026","total":"1.234,50","items":[' +
+    '{"raw":"MLEKO IMLEK 2,8% 1L","name":"Mleko","qty":"2","unit":"kom","price":"259,98","category":"Hrana"},' +
+    '{"raw":"POPUST","name":"","price":-20,"discount":1},' +
+    '{"raw":"SAPUN DOVE 100G","price":"199,00","category":"Kozmetika"},' +
+    '{"raw":"","name":"","price":null}]}\n```';
+  const r = C.cleanReceiptReading(raw, { categories: ['Hrana', 'Higijena'] });
+  assert.equal(r.store, 'Maxi');
+  assert.equal(r.date, '2026-09-30');
+  assert.equal(r.total, 1234.5);
+  assert.equal(r.items.length, 3);
+  assert.deepEqual(r.items[0], { raw: 'MLEKO IMLEK 2,8% 1L', name: 'Mleko', qty: 2, unit: 'kom', price: 259.98, category: 'Hrana', discount: false });
+  assert.equal(r.items[1].discount, true);
+  assert.equal(r.items[1].price, -20);
+  assert.equal(r.items[2].name, 'Sapun dove');
+  assert.equal(r.items[2].category, '');
+  assert.equal(C.cleanReceiptReading('nista', { categories: [] }), null);
+  assert.deepEqual(C.cleanReceiptReading({ items: [] }, { categories: [] }).low.sort(), ['date', 'items', 'total']);
+});
+
+test('mergeReceiptParts: redosled, preklapanje do 3 reda, ukupno iz poslednjeg dela', () => {
+  const it = (raw, price) => ({ raw, name: raw, qty: 1, unit: '', price, category: '', discount: false });
+  const a = { store: 'Maxi', date: '2026-09-30', total: null, items: [it('A', 1), it('B', 2), it('C', 3)], low: ['total'] };
+  const b = { store: '', date: '', total: 16, items: [it('B', 2), it('C', 3), it('D', 4), it('E', 6)], low: [] };
+  const m = C.mergeReceiptParts([a, b]);
+  assert.deepEqual(m.items.map(x => x.raw), ['A', 'B', 'C', 'D', 'E']);
+  assert.equal(m.store, 'Maxi');
+  assert.equal(m.total, 16);
+  assert.ok(!m.low.includes('total'));
+  const c = { store: '', date: '', total: null, items: [it('C', 9), it('F', 1)], low: [] };
+  assert.deepEqual(C.mergeReceiptParts([a, c]).items.map(x => x.raw), ['A', 'B', 'C', 'C', 'F']);
+  assert.equal(C.mergeReceiptParts([]), null);
+});
+
+test('applyReceiptDiscounts: popust na prethodnu stavku, veci popust srazmerno, popust na pocetku', () => {
+  const it = (name, price, discount) => ({ raw: name, name, qty: 1, unit: '', price, category: '', discount: !!discount });
+  const r1 = C.applyReceiptDiscounts([it('A', 100), it('B', 50), it('pop', -10, 1)]);
+  assert.deepEqual(r1.map(x => [x.name, x.price]), [['A', 100], ['B', 40]]);
+  const r2 = C.applyReceiptDiscounts([it('A', 100), it('B', 50), it('pop', -60, 1)]);
+  assert.equal(r2.length, 2);
+  assert.equal(Math.round((r2[0].price + r2[1].price) * 100), 9000);
+  assert.ok(r2.every(x => x.price >= 0));
+  const r3 = C.applyReceiptDiscounts([it('pop', -5, 1), it('A', 30), it('B', 20)]);
+  assert.equal(Math.round((r3[0].price + r3[1].price) * 100), 4500);
+  const r4 = C.applyReceiptDiscounts([it('A', null), it('B', 20)]);
+  assert.equal(r4[0].price, null);
+});

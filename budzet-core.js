@@ -983,7 +983,7 @@
         if(/^\d{4}-(0[1-9]|1[0-2])$/.test(b.expenseMonth || '')) out.expenseMonth = b.expenseMonth;
         const payee = b.payee && cleanPayee(b.payee); if(payee) out.payee = payee;
         ['entryId', 'recurringId'].forEach(k => { if(isId(b[k])) out[k] = b[k]; });
-        if(isStr(b.file) && /^[^\\/:*?"<>|]+\.(pdf|jpe?g|png|webp|heic)$/i.test(b.file) && b.file[0] !== '.') out.file = b.file;
+        if(isAttachmentName(b.file)) out.file = b.file;
         return out;
       });
   }
@@ -1211,6 +1211,95 @@
     return out;
   }
 
+  // ---------- Fiskalni racun iz prodavnice ----------
+  const ATTACH_RE = /^[^\\/:*?"<>|]+\.(pdf|jpe?g|png|webp|heic)$/i;
+  const isAttachmentName = n => typeof n === 'string' && n.length <= 160 && n[0] !== '.' && ATTACH_RE.test(n);
+  const itemKey = label => foldText(purchasedItemName(label));
+  function receiptPrompt(categories){
+    return [
+      'Čitaš fiskalni račun iz prodavnice (Srbija/BiH), sa slike ili iz teksta. Slika može biti samo DEO dugačkog računa.',
+      'Vrati SAMO jedan JSON objekat tačno ovog oblika:',
+      '{"store":"","date":"YYYY-MM-DD","total":0,"items":[{"raw":"","name":"","qty":1,"unit":"kom","price":0,"category":"","discount":0}],"confidence":{"total":"high"}}',
+      'Pravila:',
+      '- items: svaki red sa artiklom, redom kako stoje na računu. raw = tekst reda; name = kratko ime stvari na srpskom (npr. "Mleko", "Hleb", "Deterdžent").',
+      '- price = UKUPNA cena reda (količina × jedinična cena) kao JSON broj sa tačkom. Popust u posebnom redu = stavka sa negativnom cenom i "discount":1.',
+      '- category: jedna od ovih kategorija korisnika ili "": ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
+      '- total = UKUPNO za plaćanje (ako se na ovom delu ne vidi, stavi null). store i date samo ako se vide.',
+      '- Ne izmišljaj redove ni cene; nečitljivo = null. Ne vraćaj PDV rekapitulaciju, načine plaćanja ni kusur kao stavke.'
+    ].join('\n');
+  }
+  // "SAPUN DOVE 100G" -> "Sapun dove" (bez brojeva, jedinica i znakova)
+  const shortItemName = raw => {
+    const s = String(raw || '').replace(/\d+([.,]\d+)?\s*(%|kg|gr?|l|ml|kom|x)?(?![\p{L}])/giu, ' ').replace(/[^\p{L}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
+    return s ? s[0].toUpperCase() + s.slice(1) : '';
+  };
+  function cleanReceiptReading(raw, ctx){
+    const o = extractJson(raw);
+    if(!o) return null;
+    const cats = (ctx && ctx.categories) || [];
+    const catFor = c => cats.find(x => foldText(x) === foldText(c)) || '';
+    const items = (Array.isArray(o.items) ? o.items : []).filter(i => i && typeof i === 'object').map(i => {
+      const rawText = String(i.raw || '').trim().slice(0, 120);
+      const name = (String(i.name || '').trim() || shortItemName(rawText)).slice(0, 60);
+      const price = parseAmount(i.price);
+      const qty = parseAmount(i.qty);
+      const discount = !!i.discount || (Number.isFinite(price) && price < 0);
+      return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: String(i.unit || '').trim().slice(0, 8),
+        price: Number.isFinite(price) ? round2(price) : null, category: catFor(i.category), discount };
+    }).filter(i => i.name || i.price != null);
+    const total = parseAmount(o.total);
+    const out = { store: String(o.store || '').trim().slice(0, 60), date: readDate(o.date), total: Number.isFinite(total) && total > 0 ? round2(total) : null, items, low: [] };
+    if(!out.date) out.low.push('date');
+    if(out.total == null) out.low.push('total');
+    if(!items.length) out.low.push('items');
+    return out;
+  }
+  // Delovi dugackog racuna (vise slika) -> jedan; isti redovi na spoju (do 3, ime + cena) racunaju se jednom
+  function mergeReceiptParts(parts){
+    const list = (parts || []).filter(Boolean);
+    if(!list.length) return null;
+    const key = i => foldText(i.raw || i.name) + '|' + i.price;
+    const items = [];
+    list.forEach(p => {
+      const next = p.items.slice();
+      for(let k = Math.min(3, items.length, next.length); k >= 1; k--){
+        const tail = items.slice(items.length - k).map(key), head = next.slice(0, k).map(key);
+        if(tail.every((x, j) => x === head[j])){ next.splice(0, k); break; }
+      }
+      items.push(...next);
+    });
+    const first = f => (list.find(p => p[f]) || {})[f] || '';
+    const lastTotal = list.slice().reverse().find(p => p.total != null);
+    const out = { store: first('store'), date: first('date'), total: lastTotal ? lastTotal.total : null, items, low: [] };
+    if(!out.date) out.low.push('date');
+    if(out.total == null) out.low.push('total');
+    if(!items.length) out.low.push('items');
+    return out;
+  }
+  // Popust (negativna stavka) se oduzima od prethodne stavke; veci od nje ili bez prethodne -> srazmerno na sve sa cenom
+  function applyReceiptDiscounts(items){
+    const out = [];
+    const spread = (targets, d) => {
+      const sum = targets.reduce((s, x) => s + x.price, 0);
+      if(sum <= 0) return;
+      let left = Math.min(Math.round(-d * 100), Math.round(sum * 100));
+      targets.forEach((x, idx) => {
+        const cut = idx === targets.length - 1 ? left : Math.min(left, Math.round(-d * 100 * x.price / sum));
+        x.price = Math.max(0, (Math.round(x.price * 100) - cut) / 100); left -= cut;
+      });
+    };
+    const pending = [];
+    (items || []).forEach(i => {
+      if(!(i.discount && i.price != null && i.price < 0)){ out.push(Object.assign({}, i)); return; }
+      const prev = [...out].reverse().find(x => x.price > 0);
+      if(prev && prev.price + i.price >= 0) prev.price = round2(prev.price + i.price);
+      else if(out.some(x => x.price > 0)) spread(out.filter(x => x.price > 0), i.price);
+      else pending.push(i.price);
+    });
+    pending.forEach(d => spread(out.filter(x => x.price > 0), d));
+    return out;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1257,7 +1346,8 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
-    compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet, billsFromSheet,
+    compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, applyReceiptDiscounts, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });
