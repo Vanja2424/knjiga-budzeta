@@ -1482,6 +1482,79 @@
     return out;
   }
 
+  // ---------- Brzi unos obicnim recima: "kafa i kroasan 520 juce gotovinom" (lokalno, bez AI) ----------
+  const QS_WEEKDAYS = { nedelja: 0, nedelju: 0, nedelje: 0, ponedeljak: 1, ponedeljka: 1, utorak: 2, utorka: 2, sreda: 3, sredu: 3, srede: 3,
+    cetvrtak: 4, cetvrtka: 4, petak: 5, petka: 5, subota: 6, subotu: 6, subote: 6 };
+  const QS_RELATIVE = { danas: 0, juce: 1, prekjuce: 2 };
+  const QS_CURRENCY = { eur: 'EUR', evra: 'EUR', evro: 'EUR', '€': 'EUR', usd: 'USD', dolara: 'USD', dolar: 'USD', '$': 'USD', chf: 'CHF', franaka: 'CHF',
+    gbp: 'GBP', funti: 'GBP', '£': 'GBP', km: 'BAM', bam: 'BAM', din: 'RSD', dinara: 'RSD', rsd: 'RSD' };
+  const QS_UNITS = new Set(['kom', 'kg', 'g', 'gr', 'l', 'ml', 'pak', 'x']);
+  const QS_CASH = new Set(['gotovinom', 'gotovina', 'gotovinu', 'kes', 'kesom', 'cash']);
+  const QS_CARD = new Set(['karticom', 'kartica', 'kartici', 'karticu']);
+  const QS_PREP = new Set(['u', 'sa', 'na', 'iz', 'od', 'za']);
+  const qsIso = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+  function parseQuickSentence(text, ctx){
+    const c = ctx || {};
+    const [ty, tm, td] = String(c.today || '').split('-').map(Number);
+    const today = new Date(ty, tm - 1, td);
+    const tokens = String(text || '').trim().split(/\s+/).filter(Boolean);
+    const used = tokens.map(() => false);
+    const f = tokens.map(foldText);
+    const out = { desc: '', amount: null, currency: null, date: null, accountId: null };
+    const usePrep = i => { if(i > 0 && !used[i - 1] && QS_PREP.has(f[i - 1])) used[i - 1] = true; };
+    const setCur = code => { out.currency = code === 'RSD' ? null : code; };
+    let lastNum = -1;
+    tokens.forEach((tok, i) => {
+      if(used[i]) return;
+      // datum: 15.9. / 15.09.2026
+      const dm = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4})\.?)?$/.exec(tok);
+      if(dm && +dm[2] >= 1 && +dm[2] <= 12 && +dm[1] >= 1 && +dm[1] <= 31){
+        let y = dm[3] ? (+dm[3] < 100 ? 2000 + +dm[3] : +dm[3]) : today.getFullYear();
+        let d = new Date(y, +dm[2] - 1, +dm[1]);
+        if(!dm[3] && d > today) d = new Date(y - 1, +dm[2] - 1, +dm[1]);
+        out.date = qsIso(d); used[i] = true; return;
+      }
+      if(f[i] in QS_RELATIVE){ const d = new Date(today); d.setDate(d.getDate() - QS_RELATIVE[f[i]]); out.date = qsIso(d); used[i] = true; return; }
+      if(f[i] in QS_WEEKDAYS){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
+      // iznos sa valutom u istoj reci: 20€, €20, 15km
+      const a1 = /^(\d[\d.,]*)(€|\$|£|eur|din|rsd|km)$/i.exec(tok), a2 = /^(€|\$|£)(\d[\d.,]*)$/.exec(tok);
+      if(a1 || a2){ const n = parseAmount(a1 ? a1[1] : a2[2]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[(a1 ? a1[2] : a2[1]).toLowerCase()]); used[i] = true; lastNum = -2; return; } }
+      if(/^\d[\d.,]*$/.test(tok)){
+        const next = f[i + 1];
+        if(next && QS_UNITS.has(next)) return;                       // kolicina ("2 kom") ostaje u opisu
+        if(next && QS_CURRENCY[next] && lastNum !== -2){ const n = parseAmount(tok); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[next]); used[i] = used[i + 1] = true; lastNum = -2; return; } }
+        if(lastNum !== -2) lastNum = i;
+        return;
+      }
+      if(QS_CASH.has(f[i]) || QS_CARD.has(f[i])){
+        const type = QS_CASH.has(f[i]) ? 'gotovina' : 'kartica';
+        const acc = (c.accounts || []).find(a => a.type === type);
+        if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
+        return;
+      }
+      const acc = (c.accounts || []).find(a => foldText(a.name).split(/\s+/).some(w => w.length >= 4 && w === f[i]));
+      if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
+    });
+    if(lastNum >= 0){ const n = parseAmount(tokens[lastNum]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); used[lastNum] = true; } }
+    const rest = tokens.filter((_, i) => !used[i]);
+    while(rest.length && QS_PREP.has(foldText(rest[0]))) rest.shift();
+    while(rest.length && QS_PREP.has(foldText(rest[rest.length - 1]))) rest.pop();
+    out.desc = rest.join(' ');
+    return out;
+  }
+  function quickCategoryPrompt(categories, desc){
+    return [
+      'Za opis troška iz Srbije izaberi jednu kategoriju korisnika.',
+      'Vrati SAMO JSON: {"category":""}',
+      'Kategorije: ' + (categories || []).map(x => '"' + x + '"').join(', ') + '. Ako nijedna ne odgovara, vrati "".',
+      'Opis: ' + String(desc || '').slice(0, 100)
+    ].join('\n');
+  }
+  function cleanQuickCategory(raw, categories){
+    const o = extractJson(raw);
+    return o ? ((categories || []).find(x => foldText(x) === foldText(o.category)) || '') : '';
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1529,7 +1602,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

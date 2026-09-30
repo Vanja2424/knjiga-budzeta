@@ -1342,3 +1342,36 @@ test('uvoz + AI posle pregleda: maskirane cifre, opste/numericke kljucne reci, p
   assert.equal(sug.get(cands[3].key).keyword, 'PRENOS');
   assert.equal(C.suggestKeyword('PLACANJE KARTICOM 12'), '');
 });
+
+test('parseQuickSentence: iznos, valuta, datum, racun, opis', () => {
+  const ctx = { today: '2026-09-30', currencies: ['EUR', 'USD', 'CHF', 'GBP', 'BAM'],
+    accounts: [{ id: 'a1', name: 'Intesa tekući', type: 'tekuci' }, { id: 'a2', name: 'Novčanik', type: 'gotovina' }, { id: 'a3', name: 'Visa', type: 'kartica' }] };
+  const p = s => C.parseQuickSentence(s, ctx);
+  assert.deepEqual(p('kafa i kroasan 520 juče gotovinom'), { desc: 'kafa i kroasan', amount: 520, currency: null, date: '2026-09-29', accountId: 'a2' });
+  assert.deepEqual(p('ručak 1.250,50 u ponedeljak'), { desc: 'ručak', amount: 1250.5, currency: null, date: '2026-09-28', accountId: null });
+  assert.deepEqual(p('gorivo 20 eur 15.9.'), { desc: 'gorivo', amount: 20, currency: 'EUR', date: '2026-09-15', accountId: null });
+  assert.deepEqual(p('kafa 2 kom 300'), { desc: 'kafa 2 kom', amount: 300, currency: null, date: null, accountId: null });
+  assert.deepEqual(p('poklon za mamu'), { desc: 'poklon za mamu', amount: null, currency: null, date: null, accountId: null });
+  assert.equal(p('karte 15.10.').date, '2025-10-15');          // buduci datum bez godine -> prosla godina
+  assert.equal(p('u nedelju pica 900').date, '2026-09-27');
+  assert.equal(p('u nedelju pica 900').desc, 'pica');
+  assert.deepEqual(p('€15 knjiga'), { desc: 'knjiga', amount: 15, currency: 'EUR', date: null, accountId: null });
+  assert.equal(p('taksi 600 prekjuce').date, '2026-09-28');
+  assert.equal(p('struja 3000 sa intesa').accountId, 'a1');
+  assert.equal(p('struja 3000 sa intesa').desc, 'struja');
+  assert.equal(p('patike 8990 karticom').accountId, 'a3');
+  assert.equal(p('danas pijaca 740').date, '2026-09-30');
+  assert.equal(p('sreda 100').date, '2026-09-30');             // danas je sreda
+  assert.equal(p('15 km vožnja').currency, 'BAM');
+  assert.equal(p('knjiga 12,5 dinara').amount, 12.5);
+  assert.equal(p('knjiga 12,5 dinara').currency, null);
+  assert.equal(p('').desc, '');
+});
+
+test('quickCategoryPrompt i cleanQuickCategory', () => {
+  assert.match(C.quickCategoryPrompt(['Hrana', 'Prevoz'], 'kafa i kroasan'), /"Hrana", "Prevoz"/);
+  assert.match(C.quickCategoryPrompt(['Hrana'], 'kafa i kroasan'), /kafa i kroasan/);
+  assert.equal(C.cleanQuickCategory('```json\n{"category":"hrana"}\n```', ['Hrana', 'Prevoz']), 'Hrana');
+  assert.equal(C.cleanQuickCategory('{"category":"Kafane"}', ['Hrana']), '');
+  assert.equal(C.cleanQuickCategory('nista', ['Hrana']), '');
+});
