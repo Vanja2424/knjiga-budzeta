@@ -500,6 +500,8 @@
     'Iznos (RSD) — sa računa': 'Amount (RSD) — from the bill', 'Računa za uvoz: {0} · već postoje: {1}.': 'Bills to import: {0} · already exist: {1}.',
     'Nove lokacije: {0}.': 'New locations: {0}.', 'Nove vrste računa: {0}.': 'New bill types: {0}.',
     'Račun je prevelik za besplatni Groq limit ni posle smanjivanja. Popuni podatke ručno ili probaj ponovo za minut.': 'The bill is too large for the free Groq limit even after shrinking it. Fill in the details manually or try again in a minute.',
+    'Rashod ide u mesec': 'Expense goes to month', 'Izaberi mesec u koji ide rashod.': 'Choose the month the expense goes to.',
+    'Obriši kućni račun': 'Delete household bill',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

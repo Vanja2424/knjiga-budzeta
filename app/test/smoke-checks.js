@@ -871,8 +871,30 @@
       $('billSavePaid').click(); await sleep(300);
       check('kućni računi: bez kursa se ne čuva', B().bills.length === nBills && entries().length === nEntries && /Kurs za BAM/.test($('billStatus').textContent), $('billStatus').textContent);
       $('billCancel').click(); await d4; window.__setFxRate('BAM', savedRates.BAM); stan.currency = 'RSD';
+      // Mesec rashoda odvojen od obracunskog meseca
+      {
+        const nextM = monthKey(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 1));
+        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-06', amount: 1234 }) });
+        const dm = window.__addBillFiles([pdfFile]); await sleep(2000);
+        check('mesec rashoda: polje postoji, podrazumevano tekući mesec', !!$('billExpMonth') && $('billExpMonth').value === monthKey(new Date()), $('billExpMonth') && $('billExpMonth').value);
+        if ($('billExpMonth')) { $('billExpMonth').value = nextM; $('billExpMonth').dispatchEvent(new Event('change')); }
+        $('billSavePaid').click(); await dm; await sleep(150);
+        const mb = B().bills.find(b => b.billTypeId === struja.id && b.month === '2025-06');
+        const me = mb && entries().find(e => e.id === mb.entryId);
+        check('mesec rashoda: račun ostaje pod obračunskim mesecom, rashod u izabranom', !!mb && mb.expenseMonth === nextM && !!me && me.date.slice(0, 7) === nextM, JSON.stringify({ mb, me }));
+        // brisanje iz prozora za izmenu
+        if (mb && window.__openBillReview) {
+          const em = window.__openBillReview({ bill: mb }); await sleep(100);
+          check('brisanje: dugme u prozoru za izmenu', !!$('billDelete') && $('billDelete').style.display !== 'none');
+          if ($('billDelete')) { $('billDelete').click(); await sleep(150); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(200); } }
+          await Promise.race([em, sleep(300)]);
+          check('brisanje: račun obrisan iz prozora', !B().bills.some(b => b.id === mb.id) && !$('billOverlay').classList.contains('show'));
+          if (me) window.__deleteEntriesById([me.id]);
+        }
+      }
       // Veza sa ponavljajucom: "za placanje" -> zamena -> "Plati" nudi iznos sa racuna, jedan rashod
       const curM = monthKey(new Date());
+      const prevM = monthKey(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1));
       go('ponavljajuce'); await sleep(50);
       setVal('recDesc', 'Smoke EPS Struja'); setVal('recAmount', '3000'); setVal('recDay', '28');
       $('recCategory').value = struja.category; $('recAutoPay').checked = false;
@@ -881,16 +903,16 @@
       check('veza: ponavljajuća napravljena', !!epsRec && epsRec.category === struja.category, JSON.stringify(epsRec));
       if (epsRec) {
         const nE = entries().length;
-        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: curM, amount: 4456.16 }) });
+        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: prevM, amount: 4456.16 }) });
         const l1 = window.__addBillFiles([pdfFile]); await sleep(2000);
         check('veza: nudi ponavljajuću', $('billRecRow').style.display !== 'none' && $('billLinkRec').checked);
         $('billSavePending').click(); await l1; await sleep(150);
-        const lb = B().bills.find(b => b.billTypeId === struja.id && b.month === curM);
-        check('veza: račun vezan, bez rashoda', !!lb && lb.recurringId === epsRec.id && !lb.entryId && entries().length === nE, JSON.stringify(lb));
-        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: curM, amount: 4500 }) });
+        const lb = B().bills.find(b => b.recurringId === epsRec.id);
+        check('veza: račun vezan, bez rashoda', !!lb && lb.recurringId === epsRec.id && lb.month === prevM && lb.expenseMonth === curM && !lb.entryId && entries().length === nE, JSON.stringify(lb));
+        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: prevM, amount: 4500 }) });
         const l2 = window.__addBillFiles([pdfFile]); await sleep(2000);
         $('billSavePending').click(); await l2; await sleep(150);
-        const lb2 = B().bills.find(b => b.billTypeId === struja.id && b.month === curM);
+        const lb2 = B().bills.find(b => b.recurringId === epsRec.id);
         check('veza: zamena ne pravi drugi rashod', !!lb2 && lb2.amount === 4500 && lb2.recurringId === epsRec.id && entries().length === nE, JSON.stringify({ lb2, n: entries().length - nE }));
         go('ponavljajuce'); await sleep(80);
         const cb = document.querySelector(`input[type="checkbox"][data-id="${epsRec.id}"]`);
@@ -931,6 +953,11 @@
       $('rezijeYear').value = '2024'; $('rezijeYear').dispatchEvent(new Event('change')); await sleep(80);
       check('uvoz tabele: vidi se u tabeli 2024', /Smoke Drvar/.test($('rezijeTable').textContent) && /1\.000|1,000/.test($('rezijeTable').textContent), $('rezijeTable').textContent.slice(0, 200));
       check('uvoz tabele: grafikon potrošnje', $('rezijeChart').querySelectorAll('rect').length === 12);
+      check('grafikon: vrednosti iznad stubića', [...$('rezijeChart').querySelectorAll('text.rz-val')].some(x => x.textContent.trim() === '100'));
+      const ths = [...document.querySelectorAll('#rezijeTable thead th')].slice(1, 13).map(th => Math.round(th.getBoundingClientRect().width));
+      check('tabela: svi meseci iste širine', ths.length === 12 && Math.max(...ths) - Math.min(...ths) <= 1 && Math.min(...ths) > 30, JSON.stringify(ths));
+      const emptyRow = [...document.querySelectorAll('#rezijeTable tbody tr')].find(tr => /^Plin/.test(tr.cells[0] && tr.cells[0].textContent.trim()) && [...tr.cells].slice(1, 13).every(c => !c.textContent.trim()));
+      check('tabela: red bez podataka nema 0 u zbiru', !!emptyRow && emptyRow.cells[13].textContent.trim() === '', emptyRow && emptyRow.cells[13].textContent);
       const again = window.__importBillsSheet([['Računi 2024'], ['Mesec', '', '01. Januar', '02. Februar'], ['Kućni računi', 'Struja', 1000, 2000]], {});
       check('uvoz tabele: duplikati preskočeni', again.created === 0 && again.duplicates === 2, JSON.stringify(again));
       const B = window.__bills(); const loc = B.locations.find(l => l.name === 'Smoke Drvar');

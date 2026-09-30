@@ -1083,3 +1083,32 @@ test('compactBillText: razmaci, prazni redovi, redovi bez slova, ogranicenje', (
   assert.equal(C.compactBillText('a'.repeat(50) + '\n' + 'b'.repeat(50), 60).length <= 60, true);
   assert.equal(C.compactBillText('', 100), '');
 });
+
+test('billsTable: "fali" tek posle prvog racuna te vrste; red bez podataka nema zbir', () => {
+  const locations = [{ id: 'L1', name: 'Stan', currency: 'RSD' }];
+  const billTypes = [{ id: 'T1', locationId: 'L1', name: 'Struja', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }] }, { id: 'T2', locationId: 'L1', name: 'Plin', metrics: [{ key: 'm1', name: 'P', unit: 'm³' }] }];
+  const bills = [{ id: 'a', billTypeId: 'T1', month: '2026-08', amount: 12181.14, values: { m1: 136 } }];
+  const tb = C.billsTable(bills, billTypes, locations, 2026, '2026-11');
+  const r = tb.locations[0].rows[0];
+  assert.deepEqual(r.missing, [false, false, false, false, false, false, false, false, true, true, false, false]); // sep i okt (posle avg, pre nov)
+  assert.equal(tb.locations[0].rows[1].total, null);
+  assert.equal(tb.locations[0].metricRows[1].total, null);
+  assert.equal(r.total, 12181.14);
+  // prethodna godina: pre prvog racuna nista ne fali
+  const prev = C.billsTable(bills, billTypes, locations, 2025, '2026-11');
+  assert.equal(prev.locations[0].rows[0].missing.some(Boolean), false);
+});
+
+test('expenseDateFor: tekuci mesec -> danas; rok u mesecu -> rok; inace poslednji dan meseca', () => {
+  assert.equal(C.expenseDateFor('2026-09', '', '2026-09-30'), '2026-09-30');
+  assert.equal(C.expenseDateFor('2026-09', '2026-09-28', '2026-09-30'), '2026-09-30');
+  assert.equal(C.expenseDateFor('2026-10', '2026-10-15', '2026-09-30'), '2026-10-15');
+  assert.equal(C.expenseDateFor('2026-08', '2026-09-15', '2026-09-30'), '2026-08-31');
+  assert.equal(C.expenseDateFor('2026-02', '', '2026-09-30'), '2026-02-28');
+});
+
+test('cleanBills cuva mesec rashoda', () => {
+  const b = C.cleanBills([{ id: 'B1', billTypeId: 'T1', month: '2026-08', expenseMonth: '2026-09' }, { id: 'B2', billTypeId: 'T1', month: '2026-08', expenseMonth: 'x' }], ['T1']);
+  assert.equal(b[0].expenseMonth, '2026-09');
+  assert.equal(b[1].expenseMonth, undefined);
+});

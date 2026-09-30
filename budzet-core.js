@@ -980,6 +980,7 @@
         if(isoDateOk(b.periodFrom)) out.periodFrom = b.periodFrom;
         if(isoDateOk(b.periodTo)) out.periodTo = b.periodTo;
         if(isoDateOk(b.dueDate)) out.dueDate = b.dueDate;
+        if(/^\d{4}-(0[1-9]|1[0-2])$/.test(b.expenseMonth || '')) out.expenseMonth = b.expenseMonth;
         const payee = b.payee && cleanPayee(b.payee); if(payee) out.payee = payee;
         ['entryId', 'recurringId'].forEach(k => { if(isId(b[k])) out[k] = b[k]; });
         if(isStr(b.file) && /^[^\\/:*?"<>|]+\.(pdf|jpe?g|png|webp|heic)$/i.test(b.file) && b.file[0] !== '.') out.file = b.file;
@@ -1102,14 +1103,16 @@
     const inYear = (bills || []).filter(b => b.month && b.month.slice(0, 4) === String(year));
     const empty = () => Array(12).fill(null);
     const add = (arr, i, v) => { arr[i] = round2((arr[i] || 0) + v); };
-    const sum = cells => round2(cells.reduce((s, v) => s + (v || 0), 0));
+    // zbir je null kad red nema nijedan podatak (prikazuje se prazno, ne 0)
+    const sum = cells => cells.some(v => v != null) ? round2(cells.reduce((s, v) => s + (v || 0), 0)) : null;
     return { locations: (locations || []).map(l => {
       const types = (billTypes || []).filter(t => t.locationId === l.id);
       const rows = types.map(t => {
         const cells = empty(), billIds = months.map(() => []);
         inYear.filter(b => b.billTypeId === t.id).forEach(b => { const i = months.indexOf(b.month); add(cells, i, b.amount || 0); billIds[i].push(b.id); });
-        const any = billIds.some(x => x.length);
-        const missing = months.map((m, i) => any && m < currentMonth && !billIds[i].length);
+        // "fali" = posle prvog racuna te vrste (bilo koje godine) i pre tekuceg meseca, a racuna nema
+        const first = (bills || []).filter(b => b.billTypeId === t.id && b.month).reduce((mn, b) => (!mn || b.month < mn) ? b.month : mn, '');
+        const missing = months.map((m, i) => !!first && m > first && m < currentMonth && !billIds[i].length);
         return { typeId: t.id, name: t.name, cells, billIds, missing, total: sum(cells) };
       });
       const metricRows = [];
@@ -1118,8 +1121,14 @@
         inYear.filter(b => b.billTypeId === t.id && b.values && typeof b.values[m.key] === 'number').forEach(b => add(cells, months.indexOf(b.month), b.values[m.key]));
         metricRows.push({ typeId: t.id, key: m.key, label: t.metrics.length > 1 ? t.name + ' – ' + m.name : t.name, unit: m.unit, cells, total: sum(cells) });
       }));
-      return { id: l.id, name: l.name, currency: l.currency, rows, metricRows, total: round2(rows.reduce((s, r) => s + r.total, 0)) };
+      return { id: l.id, name: l.name, currency: l.currency, rows, metricRows, total: round2(rows.reduce((s, r) => s + (r.total || 0), 0)) };
     }) };
+  }
+  // Datum rashoda za izabrani mesec: tekuci mesec -> danas; rok placanja u tom mesecu -> rok; inace poslednji dan meseca
+  function expenseDateFor(mKey, dueDate, today){
+    if(today && today.slice(0, 7) === mKey) return today;
+    if(dueDate && dueDate.slice(0, 7) === mKey) return dueDate;
+    return mKey + '-' + pad2(daysInMonth(mKey));
   }
 
   // Uvoz godisnje tabele racuna iz Excela (korisnikov raspored): red sa mesecima "01. Januar"…,
@@ -1248,7 +1257,7 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
-    compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
+    compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

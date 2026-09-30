@@ -1770,7 +1770,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .rezije-toolbar .save-btn:hover{ background: var(--ledger-solid-hover); }
 .rezije-toolbar .btn-secondary{ height: 34px; }
 .rezije-table{ overflow-x:auto; margin-top: 8px; }
-.rezije-table table{ border-collapse: collapse; width: 100%; font-size: 0.86em; font-variant-numeric: tabular-nums; }
+.rezije-table table{ border-collapse: collapse; width: 100%; min-width: 980px; table-layout: fixed; font-size: 0.86em; font-variant-numeric: tabular-nums; }
+.rezije-table thead th:first-child{ width: 190px; }
+.rezije-table thead th.rz-total{ width: 100px; }
+.rezije-table td{ overflow: hidden; text-overflow: ellipsis; }
+#rezijeChart{ max-height: 260px; }
+.bill-del-btn{ margin-right: auto; color: var(--neg-text, var(--neg)) !important; }
 .rezije-table th, .rezije-table td{ padding: 5px 7px; border-bottom: 1px solid var(--separator); text-align: right; white-space: nowrap; }
 .rezije-table th{ color: var(--ink-soft); font-weight: 500; }
 .rezije-table th:first-child, .rezije-table td:first-child{ text-align: left; position: sticky; left: 0; background: var(--card); }
@@ -2432,7 +2437,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     </div>
     <div class="panel">
       <div class="rezije-toolbar"><h3 style="margin:0;">Potrošnja po mesecima</h3><span class="rezije-spacer"></span><select id="rezijeMetric" aria-label="Merenje"></select></div>
-      <svg id="rezijeChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Potrošnja po mesecima"></svg>
+      <svg id="rezijeChart" class="trend-svg" viewBox="0 0 760 190" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Potrošnja po mesecima"></svg>
       <div class="hint" id="rezijeChartNote"></div>
     </div>
   </div>
@@ -2907,8 +2912,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <label for="billType">Vrsta računa</label><select id="billType"></select>
         <div class="bill-row2">
           <div><label for="billMonth">Obračunski mesec</label><input type="month" id="billMonth"></div>
-          <div><label for="billAmount">Iznos <span id="billCurrency" translate="no"></span></label><input type="number" id="billAmount" step="0.01" min="0"></div>
+          <div><label for="billExpMonth">Rashod ide u mesec</label><input type="month" id="billExpMonth"></div>
         </div>
+        <label for="billAmount">Iznos <span id="billCurrency" translate="no"></span></label><input type="number" id="billAmount" step="0.01" min="0">
         <div id="billMetrics" class="bill-metrics"></div>
         <details class="bill-more"><summary>Više podataka</summary>
           <div class="bill-row2">
@@ -2927,6 +2933,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       </div>
     </div>
     <div class="modal-actions">
+      <button class="btn-link bill-del-btn" id="billDelete" style="display:none;">Obriši kućni račun</button>
       <button class="cancel-btn" id="billCancel">Otkaži</button>
       <button class="btn-secondary" id="billSavePending">Sačuvaj za plaćanje</button>
       <button class="save-btn" id="billSavePaid">Sačuvaj kao plaćen</button>
@@ -4151,7 +4158,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Rata (r.debtId) ciji je dug vec izmiren: ne pravi nista, vraca null — pozivaoci moraju da provere.
   function markRecurringPaid(r, mKey, amount){
     // Racun vezan za ovu stavku u tom mesecu ("Sacuvaj za placanje"): bez rucnog iznosa placa se iznos sa racuna
-    const linkedBill = bills.find(b=> b.recurringId === r.id && b.month === mKey);
+    const linkedBill = bills.find(b=> b.recurringId === r.id && (b.expenseMonth || b.month) === mKey);
     if(linkedBill && !(typeof amount === 'number' && amount > 0)){ const x = billAmountRsd(linkedBill); if(x && x.amount > 0) amount = x.amount; }
     // Rata ne sme da predje ostatak duga: izmiren dug -> nista; rucno unet veci iznos -> ostatak
     if(r.debtId){
@@ -4473,6 +4480,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     billEl('billMetrics').querySelectorAll('input[data-key]').forEach(i=>{ const v = parseFloat(i.value); if(Number.isFinite(v) && v >= 0) vals[i.dataset.key] = v; });
     const loc = locationById(billEl('billLocation').value);
     return { locationId: billEl('billLocation').value, billTypeId: billEl('billType').value, month: billEl('billMonth').value,
+      expenseMonth: billEl('billExpMonth').value || currentMonthKey(),
       amount: parseFloat(billEl('billAmount').value), currency: loc ? loc.currency : 'RSD', values: vals,
       periodFrom: billEl('billFrom').value, periodTo: billEl('billTo').value, dueDate: billEl('billDue').value, payeeName: billEl('billPayee').value.trim() };
   }
@@ -4484,7 +4492,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const dup = type && monthOk ? C.findBillDuplicate(bills, type.id, f.month, edit && edit.id) : null;
     billEl('billDupRow').style.display = dup && !edit ? '' : 'none';
     billEl('billDupLabel').textContent = dup ? t('Za {0} već postoji račun ({1}).', monthYearLabelSr(f.month), fmtOrig(dup.amount, dup.currency)) : '';
-    const rec = !edit && type && monthOk ? C.findRecurringForBill(recurring, type, f.month, { applied, skipped, entries }) : null;
+    const rec = !edit && type && monthOk ? C.findRecurringForBill(recurring, type, f.expenseMonth, { applied, skipped, entries }) : null;
     billReview.recurring = rec;
     billEl('billRecRow').style.display = rec ? '' : 'none';
     billEl('billRecLabel').textContent = rec ? t('Poveži sa ponavljajućom: {0}', rec.desc) : '';
@@ -4502,6 +4510,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     billEl('billLocation').innerHTML = locations.map(l=> `<option value="${l.id}"${l.id === locId ? ' selected' : ''} translate="no">${escapeHtml(l.name)}</option>`).join('');
     fillBillTypeOptions(locId, src.billTypeId || opts.typeId || '');
     billEl('billMonth').value = src.month || opts.month || '';
+    // mesec rashoda: za postojeci racun sacuvan (ili iz datuma rashoda), za nov tekuci mesec
+    const linkedE = b && b.entryId ? entries.find(e=> e.id === b.entryId) : null;
+    billEl('billExpMonth').value = b ? (b.expenseMonth || (linkedE && linkedE.date ? linkedE.date.slice(0, 7) : '') || b.month) : currentMonthKey();
+    billEl('billDelete').style.display = b ? '' : 'none';
     billEl('billAmount').value = src.amount != null && src.amount !== 0 ? String(src.amount) : '';
     billEl('billFrom').value = src.periodFrom || ''; billEl('billTo').value = src.periodTo || ''; billEl('billDue').value = src.dueDate || '';
     billEl('billPayee').value = (billReview.payee && billReview.payee.name) || '';
@@ -4525,6 +4537,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   billEl('billLocation').addEventListener('change', ()=>{ fillBillTypeOptions(billEl('billLocation').value, ''); renderBillMetrics('', {}, null); refreshBillLinks(); });
   billEl('billType').addEventListener('change', ()=>{ const old = billFormValues().values; renderBillMetrics(billEl('billType').value, old, null); billEl('billType').classList.remove('bill-low'); refreshBillLinks(); });
   billEl('billMonth').addEventListener('change', refreshBillLinks);
+  billEl('billExpMonth').addEventListener('change', refreshBillLinks);
+  billEl('billDelete').addEventListener('click', ()=>{ const b = billReview && billReview.bill; if(!b) return; closeBillReview(false); deleteBill(b.id); });
   ['billAmount', 'billMonth'].forEach(id=> billEl(id).addEventListener('input', ()=> billEl(id).classList.remove('bill-low')));
   billEl('billMetrics').addEventListener('input', e=>{ if(e.target.dataset.key) e.target.classList.remove('bill-low'); });
   const flipBillPage = d => { if(!billReview || !billReview.prepared) return; const n = billReview.prepared.images.length; if(n < 2) return; billReview.page = (billReview.page + n + d) % n; renderBillPreview(billReview.prepared, billReview.page); };
@@ -4548,7 +4562,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!type || !loc){ status.textContent = t('Izaberi lokaciju i vrstu računa.'); return; }
     if(!/^\d{4}-\d{2}$/.test(f.month)){ status.textContent = t('Upiši obračunski mesec.'); return; }
     if(!(f.amount > 0) && !Object.keys(f.values).length){ status.textContent = t('Upiši iznos ili bar jedno merenje.'); return; }
-    const draft = { billTypeId: type.id, month: f.month, amount: f.amount > 0 ? Math.round(f.amount * 100) / 100 : 0, currency: f.currency, values: f.values };
+    if(!/^\d{4}-\d{2}$/.test(f.expenseMonth)){ status.textContent = t('Izaberi mesec u koji ide rashod.'); return; }
+    const draft = { billTypeId: type.id, month: f.month, expenseMonth: f.expenseMonth, amount: f.amount > 0 ? Math.round(f.amount * 100) / 100 : 0, currency: f.currency, values: f.values };
     const rsd = draft.amount > 0 ? billAmountRsd(draft) : { amount: 0, rate: 1 };
     if(!rsd){ status.textContent = t('Kurs za {0} nije dostupan. Otvori Kursevi i osveži kursnu listu.', f.currency); return; }
     const edit = billReview.bill;
@@ -4576,18 +4591,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const linkedRec = !linkedEntry && bill.recurringId ? recurring.find(r=> r.id === bill.recurringId) || null : null;
     const rec = linkedRec || (!edit && !replace && billReview.recurring && billEl('billLinkRec').checked ? billReview.recurring : null);
     bills = bills.filter(b=> b.id !== bill.id).concat(bill);
+    const today = toISODateLocal(new Date());
     if(linkedEntry){
+      // obican rashod prati izabrani mesec; rashod ponavljajuce stavke ostaje u svom mesecu
+      if(!/^rec-/.test(linkedEntry.id) && (linkedEntry.date || '').slice(0, 7) !== f.expenseMonth) linkedEntry.date = C.expenseDateFor(f.expenseMonth, f.dueDate, today);
       if(draft.amount > 0){
         linkedEntry.amount = rsd.amount;
         if(draft.currency !== 'RSD') Object.assign(linkedEntry, { origAmount: draft.amount, currency: draft.currency, rate: rsd.rate });
       }
     } else if(rec){
       bill.recurringId = rec.id;
-      if(paid && !edit){ const id = markRecurringPaid(rec, f.month, rsd.amount > 0 ? rsd.amount : undefined); if(id) bill.entryId = id; }
+      if(paid && !edit){ const id = markRecurringPaid(rec, f.expenseMonth, rsd.amount > 0 ? rsd.amount : undefined); if(id) bill.entryId = id; }
     } else if(!edit && !bill.recurringId && draft.amount > 0){
-      const today = toISODateLocal(new Date());
       const entry = { id: newId(), type: 'expense', desc: locations.length > 1 ? `${type.name} – ${loc.name}` : type.name, amount: rsd.amount, category: type.category,
-        date: paid ? today : (f.dueDate || today), tags: [], billId: bill.id };
+        date: C.expenseDateFor(f.expenseMonth, f.dueDate, today), tags: [], billId: bill.id };
       if(!paid) entry.paid = false;
       if(draft.currency !== 'RSD') Object.assign(entry, { origAmount: draft.amount, currency: draft.currency, rate: rsd.rate });
       if(accounts.length) entry.accountId = defaultAccountId();
@@ -4669,12 +4686,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const cur = all.find(a=> a.id === rezijeMetric);
     const series = y => { const row = C.billsTable(bills, billTypes, locations, y, currentMonthKey()).locations.flatMap(l=> l.metricRows).find(m=> m.typeId === cur.typeId && m.key === cur.key); return row ? row.cells : Array(12).fill(null); };
     const now = tb.locations.flatMap(l=> l.metricRows).find(m=> m.typeId === cur.typeId && m.key === cur.key).cells, prev = series(rezijeYear - 1);
-    const W = 760, H = 220, padL = 10, padR = 10, padT = 15, padB = 30, plotW = W - padL - padR, plotH = H - padT - padB;
+    const W = 760, H = 190, padL = 10, padR = 10, padT = 22, padB = 26, plotW = W - padL - padR, plotH = H - padT - padB;
     const max = Math.max(1, ...now.map(v=> v || 0), ...prev.map(v=> v || 0));
-    const slot = plotW / 12, bw = Math.min(40, slot * 0.6), yFor = v => padT + plotH - v / max * plotH;
+    const slot = plotW / 12, bw = Math.min(26, slot * 0.45), yFor = v => padT + plotH - v / max * plotH;
     const bars = now.map((v, i)=>{
       const x = padL + i * slot + (slot - bw) / 2, y = yFor(v || 0);
       return `<rect class="analiza-bar-sel" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="3"><title>${escapeHtml(monthShort(i))}: ${fmtNum(v, 3)} ${escapeHtml(cur.unit)}</title></rect>`
+        + (v != null ? `<text class="rz-val" x="${(x + bw / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="600" fill="var(--ink)">${fmtNum(v, 1)}</text>` : '')
         + `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)">${escapeHtml(monthShort(i))}</text>`;
     }).join('');
     const pts = prev.map((v, i)=> v == null ? null : `${(padL + i * slot + slot / 2).toFixed(1)},${yFor(v).toFixed(1)}`).filter(Boolean);
@@ -4994,7 +5012,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // da predlog/podsetnik ne navode na iznos koji bi "prepunio" dug.
   // Racun sacuvan "za placanje" i vezan za stavku u tom mesecu -> njegov iznos (RSD) je predlog za placanje
   const linkedBillAmount = (r, mKey) => {
-    const b = bills.find(x=> x.recurringId === r.id && x.month === (mKey || currentMonthKey()) && !x.entryId);
+    const b = bills.find(x=> x.recurringId === r.id && (x.expenseMonth || x.month) === (mKey || currentMonthKey()) && !x.entryId);
     const a = b && b.amount > 0 ? billAmountRsd(b) : null;
     return a ? a.amount : null;
   };
@@ -9137,7 +9155,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(locations.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(locations.map(l=>({ID:l.id, Naziv:l.name, Valuta:l.currency}))), 'Lokacije');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source, PrimalacRacun:b.payee?b.payee.account:'', PrimalacNaziv:b.payee?b.payee.name:'', Model:b.payee?b.payee.model:'', PozivNaBroj:b.payee?b.payee.reference:''})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:'', PrimalacRacun:'', PrimalacNaziv:'', Model:'', PozivNaBroj:''}]), 'KucniRacuni');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, MesecRashoda:b.expenseMonth||'', Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source, PrimalacRacun:b.payee?b.payee.account:'', PrimalacNaziv:b.payee?b.payee.name:'', Model:b.payee?b.payee.model:'', PozivNaBroj:b.payee?b.payee.reference:''})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', MesecRashoda:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:'', PrimalacRacun:'', PrimalacNaziv:'', Model:'', PozivNaBroj:''}]), 'KucniRacuni');
     }
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
@@ -9182,7 +9200,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
     const locs = C.cleanLocations(sheetRows('Lokacije').map(r=>({ id: String(r.ID), name: String(r.Naziv), currency: String(r.Valuta) })), CURRENCIES);
     const types = C.cleanBillTypes(sheetRows('VrsteRacuna').filter(r=> r.ID).map(r=>({ id: String(r.ID), locationId: String(r.LokacijaID), name: String(r.Naziv), category: String(r.Kategorija), metrics: js(r.Merenja) })), locs.map(l=> l.id));
-    const list = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||''), payee: r.PrimalacRacun || r.PrimalacNaziv ? { account: String(r.PrimalacRacun||''), name: String(r.PrimalacNaziv||''), model: String(r.Model||''), reference: String(r.PozivNaBroj||'') } : undefined })), types.map(x=> x.id));
+    const list = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), expenseMonth: String(r.MesecRashoda||''), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||''), payee: r.PrimalacRacun || r.PrimalacNaziv ? { account: String(r.PrimalacRacun||''), name: String(r.PrimalacNaziv||''), model: String(r.Model||''), reference: String(r.PozivNaBroj||'') } : undefined })), types.map(x=> x.id));
     return { locations: locs, billTypes: types, bills: list };
   }
   window.__billsFromWorkbook = billsFromWorkbook;
