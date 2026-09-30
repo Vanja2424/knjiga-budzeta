@@ -12,7 +12,8 @@ fs.mkdirSync(dataDir);
 const src = process.argv[2];
 if (src) fs.copyFileSync(src, path.join(dataDir, 'podaci.json'));
 
-const env = { ...process.env, KNJIGA_TEST: '1', KNJIGA_DATA_DIR: dataDir, KNJIGA_BACKUP_DIR: path.join(tmp, 'backup'), KNJIGA_TEST_SCRIPT: path.join(__dirname, 'smoke-checks.js') };
+const env = { ...process.env, KNJIGA_TEST: '1', KNJIGA_DATA_DIR: dataDir, KNJIGA_BACKUP_DIR: path.join(tmp, 'backup'), KNJIGA_TEST_SCRIPT: path.join(__dirname, 'smoke-checks.js'),
+  KNJIGA_TEST_QUICK: 'expense', KNJIGA_TEST_QUICK_SCRIPT: path.join(__dirname, 'quick-checks.js') };
 delete env.ELECTRON_RUN_AS_NODE;
 const electron = require('electron');
 const r = spawnSync(electron, ['.', `--user-data-dir=${path.join(tmp, 'userdata')}`], { cwd: path.join(__dirname, '..'), env, encoding: 'utf8', timeout: 120000 });

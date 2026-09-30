@@ -1073,9 +1073,18 @@ if (process.env.KNJIGA_TEST_SCRIPT) {
           openQuickAdd(qType, { fromApp: true });
           await new Promise(r => setTimeout(r, 1500));
           if (qMore) { await quickAddWindow.webContents.executeJavaScript("document.getElementById('moreToggle').click(); document.getElementById('amount').value='240'; document.getElementById('desc').value='Namirnice'; document.getElementById('spreadOn').click();"); await new Promise(r => setTimeout(r, 700)); }
-          try { fs.writeFileSync(process.env.KNJIGA_TEST_QUICK_SHOT, (await quickAddWindow.webContents.capturePage()).toPNG()); } catch (err) { result.quickShotError = err.message; }
+          if (process.env.KNJIGA_TEST_QUICK_SHOT) { try { fs.writeFileSync(process.env.KNJIGA_TEST_QUICK_SHOT, (await quickAddWindow.webContents.capturePage()).toPNG()); } catch (err) { result.quickShotError = err.message; } }
           result.quickVisible = quickAddWindow.isVisible();
           result.quickBounds = quickAddWindow.getBounds();
+          // Provere u samom prozoru za brzi unos (test/quick-checks.js)
+          if (process.env.KNJIGA_TEST_QUICK_SCRIPT) {
+            let q;
+            try { q = await quickAddWindow.webContents.executeJavaScript(fs.readFileSync(process.env.KNJIGA_TEST_QUICK_SCRIPT, 'utf8'), true); }
+            catch (err) { q = { passed: [], failures: ['brzi unos: skripta nije izvrsena: ' + (err && err.message || err)] }; }
+            if (Array.isArray(result.passed)) result.passed.push(...(q.passed || []));
+            if (Array.isArray(result.failures)) result.failures.push(...(q.failures || []));
+            if ((q.failures || []).length) result.ok = false;
+          }
         }
         process.stdout.write('SMOKE_RESULT ' + JSON.stringify(result) + '\n');
         isQuitting = true;

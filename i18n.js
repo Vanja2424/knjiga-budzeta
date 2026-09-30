@@ -534,6 +534,8 @@
     'AI odgovor nije mogao da se pročita.': 'The AI answer couldn’t be read.', 'Nova pravila: {0}.': 'New rules: {0}.',
     'AI predlaže kategorije za {0} opisa… (deo {1}/{2})': 'AI is suggesting categories for {0} descriptions… (part {1}/{2})', 'Uvoz je već u toku — sačekaj da se završi.': 'An import is already running — wait for it to finish.',
     'Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš i, pri uvozu izvoda, opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica). Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill and payment-slip files you add and, when importing a statement, the descriptions of unknown items (no amounts, dates or card numbers). All other data stays on this computer only.',
+    'AI predlog': 'AI suggestion', 'Kurs za {0} nije dostupan — izaberi valutu ručno.': 'The {0} rate isn’t available — choose the currency manually.',
+    'npr. kafa i kroasan 520 juče gotovinom': 'e.g. coffee and croissant 520 yesterday cash',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

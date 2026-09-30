@@ -10525,7 +10525,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     window.__desktopBridge = {
       getQuickAddData(){
         return {
-          accounts: accounts.map(a=>({ id: a.id, name: a.name })),
+          accounts: accounts.map(a=>({ id: a.id, name: a.name, type: a.type })),
           defaultAccountId: defaultAccountId(),
           rates: Object.assign({}, fx.rates),
           currencies: fxFavorites.filter(c=> fx.rates[c]),

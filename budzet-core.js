@@ -1537,8 +1537,6 @@
     });
     if(lastNum >= 0){ const n = parseAmount(tokens[lastNum]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); used[lastNum] = true; } }
     const rest = tokens.filter((_, i) => !used[i]);
-    while(rest.length && QS_PREP.has(foldText(rest[0]))) rest.shift();
-    while(rest.length && QS_PREP.has(foldText(rest[rest.length - 1]))) rest.pop();
     out.desc = rest.join(' ');
     return out;
   }

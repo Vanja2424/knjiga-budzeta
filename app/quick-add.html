@@ -99,6 +99,9 @@
   body.appear .wrap{ animation-delay: 20ms; }
   @keyframes popIn{ from{ opacity: 0; transform: translateY(-3px) scale(0.985); } to{ opacity: 1; transform: none; } }
   .hint{ font-size: 12px; color: var(--ink-soft); margin-top: 6px; }
+  .parse-hint{ min-height: 0; margin-top: 4px; }
+  .parse-hint:empty{ display: none; }
+  .cat-hint{ font-weight: 500; color: var(--accent, #0a84ff); font-size: 11px; margin-left: 4px; }
   .split-row{ display:grid; grid-template-columns: 1fr 110px 26px; gap: 6px; margin-top: 6px; align-items: center; }
   .icon-btn{ border:none; background: none; color: var(--ink-tertiary); width: 26px; height: 26px; border-radius: 6px; cursor: default; font-size: 14px; }
   .icon-btn:hover{ color: var(--neg); background: color-mix(in srgb, var(--neg) 10%, transparent); }
@@ -153,12 +156,13 @@
     <div class="conv" id="conv"></div>
 
     <label class="l" for="desc">Opis</label>
-    <input class="f" id="desc" list="descList" placeholder="npr. Namirnice (ili Namirnice 1500)">
+    <input class="f" id="desc" list="descList" placeholder="npr. kafa i kroasan 520 juče gotovinom">
     <datalist id="descList"></datalist>
+    <div class="hint parse-hint" id="parseHint" aria-live="polite"></div>
 
     <div class="row">
       <div>
-        <label class="l" for="category">Kategorija</label>
+        <label class="l" for="category">Kategorija <span class="cat-hint" id="catHint"></span></label>
         <select class="f" id="category"></select>
       </div>
       <div>
@@ -212,6 +216,7 @@
   </div>
 
 <script src="i18n.js"></script>
+<script src="budzet-core.js"></script>
 <script>
   I18N.start();
   const t = I18N.t, LOCALE = I18N.locale;
@@ -244,15 +249,43 @@
     $('err').textContent = '';
     fit();
   }
-  // Predlog kategorije: pravila (duza kljucna rec ima prednost), pa poslednja upotrebljena za isti opis
+  // Recenica u opisu ("kafa i kroasan 520 juce gotovinom") -> iznos, valuta, datum, racun (lokalno, BudzetCore)
+  const C = window.BudzetCore;
+  let catTouched = false, dateTouched = false, aiTimer = 0, aiSeq = 0;
+  let fakeQuickCategory = null; // test: req -> { ok, content }
+  Object.defineProperty(window, '__fakeQuickCategory', { get: () => fakeQuickCategory, set: v => { fakeQuickCategory = v; }, configurable: true });
+  function parsedDesc(){ return C.parseQuickSentence($('desc').value, { today: today(), accounts: data.accounts || [], currencies: data.currencies || [] }); }
+  function renderParseHint(p){
+    const bits = [];
+    if(p.amount) bits.push(p.amount.toLocaleString(LOCALE) + ' ' + (p.currency || 'RSD'));
+    if(p.date && p.date !== today()){ const [y, m, d] = p.date.split('-').map(Number); bits.push(new Date(y, m - 1, d).toLocaleDateString(LOCALE, { weekday: 'short', day: 'numeric', month: 'numeric' })); }
+    if(p.accountId){ const a = (data.accounts || []).find(x => x.id === p.accountId); if(a) bits.push(a.name); }
+    $('parseHint').textContent = bits.length ? '→ ' + bits.join(' · ') : '';
+    fit();
+  }
+  // Predlog kategorije: pravila (duza kljucna rec ima prednost), pa poslednja upotrebljena za isti opis; inace AI (samo opis)
   function suggestCategory(){
-    const desc = $('desc').value.trim().toLowerCase().replace(/\s+[\d.,]*\d$/, '');
+    const p = parsedDesc();
+    renderParseHint(p);
+    $('catHint').textContent = '';
+    const desc = (p.desc || '').trim().toLowerCase().replace(/\s+[\d.,]*\d$/, '');
+    clearTimeout(aiTimer); aiSeq++;
     if(!desc) return;
     const rules = data.rules.slice().sort((a,b) => b.keyword.length - a.keyword.length);
     const rule = type === 'expense' && rules.find(r => r.keyword && desc.includes(r.keyword.toLowerCase()));
     const hist = data.history.find(h => h.type === type && h.desc.toLowerCase() === desc);
     const cat = (rule && rule.category) || (hist && hist.category);
-    if(cat && catsFor(type).includes(cat)) $('category').value = cat;
+    if(cat && catsFor(type).includes(cat)){ if(!catTouched) $('category').value = cat; return; }
+    if(type !== 'expense' || catTouched || desc.length < 3 || !(fakeQuickCategory || (window.desktop && window.desktop.bills))) return;
+    const seq = aiSeq;
+    aiTimer = setTimeout(async () => {
+      const req = { images: [], text: '', prompt: C.quickCategoryPrompt(data.expenseCats, p.desc) };
+      let res = null;
+      try{ res = fakeQuickCategory ? await fakeQuickCategory(req) : await window.desktop.bills.read(req); } catch(e){ res = null; }
+      if(seq !== aiSeq || catTouched || !res || !res.ok) return;
+      const aiCat = C.cleanQuickCategory(res.content, data.expenseCats);
+      if(aiCat){ $('category').value = aiCat; $('catHint').textContent = t('AI predlog'); }
+    }, 700);
   }
   function updateConv(){
     const cur = $('currency').value, v = parseFloat($('amount').value);
@@ -308,7 +341,10 @@
     $('done').classList.remove('show');
     $('addBtn').disabled = false;
     $('err').textContent = '';
+    $('parseHint').textContent = ''; $('catHint').textContent = '';
+    catTouched = false; dateTouched = false; clearTimeout(aiTimer); aiSeq++;
   }
+  window.__resetQuickForm = () => resetForm();
   function fillData(){
     const cur = ['RSD', ...(data.currencies || ['EUR','USD','CHF','GBP']).filter(c => data.rates[c])];
     $('currency').innerHTML = cur.map(c => `<option>${c}</option>`).join('');
@@ -327,6 +363,8 @@
 
   document.querySelectorAll('.seg button').forEach(b => b.addEventListener('click', () => { setType(b.dataset.type); $('amount').focus(); }));
   $('desc').addEventListener('input', suggestCategory);
+  $('category').addEventListener('change', () => { catTouched = true; $('catHint').textContent = ''; clearTimeout(aiTimer); aiSeq++; });
+  $('date').addEventListener('change', () => { dateTouched = true; });
   $('closeBtn').addEventListener('click', () => window.desktop.quick.close());
   $('moreToggle').addEventListener('click', () => {
     const open = !$('more').classList.contains('open');
@@ -360,6 +398,18 @@
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
     const stay = keepOpen; keepOpen = false;
+    // prepoznati delovi recenice idu u polja; rucno upisan iznos/datum ima prednost
+    const p = parsedDesc();
+    const fromSentence = !(parseFloat($('amount').value) > 0) && p.amount > 0;
+    if(fromSentence){
+      $('amount').value = String(p.amount);
+      const cur = p.currency || 'RSD';
+      if(![...$('currency').options].some(o => o.value === cur)){ $('err').textContent = t('Kurs za {0} nije dostupan — izaberi valutu ručno.', cur); fit(); return; }
+      $('currency').value = cur; updateConv();
+    }
+    if(p.date && !dateTouched) $('date').value = p.date;
+    if(p.accountId && (data.accounts || []).length >= 2) $('account').value = p.accountId;
+    if(p.desc && (p.amount || p.date || p.accountId || p.currency)) $('desc').value = p.desc;
     const entry = {
       type, desc: $('desc').value, amount: parseFloat($('amount').value), currency: $('currency').value,
       category: $('category').value, date: $('date').value || today(), paid: $('paid').checked,
@@ -371,6 +421,7 @@
       entry.split = [...document.querySelectorAll('.split-row')].map(r => ({ category: r.querySelector('.split-cat').value, amount: parseFloat(r.querySelector('.split-amt').value) }));
     }
     $('addBtn').disabled = true;
+    window.__lastQuickEntry = entry;
     try{
       const r = await window.desktop.quick.add(entry);
       if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; fit(); return; }

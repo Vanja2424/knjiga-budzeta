@@ -1375,3 +1375,10 @@ test('quickCategoryPrompt i cleanQuickCategory', () => {
   assert.equal(C.cleanQuickCategory('{"category":"Kafane"}', ['Hrana']), '');
   assert.equal(C.cleanQuickCategory('nista', ['Hrana']), '');
 });
+
+test('parseQuickSentence: predlozi u opisu ostaju kad nisu uz prepoznat deo', () => {
+  const ctx = { today: '2026-09-30', currencies: [], accounts: [] };
+  assert.equal(C.parseQuickSentence('Na pijaci 740', ctx).desc, 'Na pijaci');
+  assert.equal(C.parseQuickSentence('Za mamu poklon 2000', ctx).desc, 'Za mamu poklon');
+  assert.equal(C.parseQuickSentence('ručak u ponedeljak', ctx).desc, 'ručak');
+});
