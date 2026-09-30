@@ -1256,3 +1256,22 @@ test('receiptToExpenses: kategorija bez ijedne cene ne pravi rashod od 0', () =>
   assert.deepEqual(rows[0].itemPrices, [100, null]);
   assert.ok(C.receiptToExpenses([it('A', 0.004, 'X'), it('B', 50, 'Y')], 50).every(r => r.amount > 0));
 });
+
+test('slipPrompt i cleanSlipReading: nalog za uplatu', () => {
+  assert.match(C.slipPrompt(), /"reference"/);
+  const r = C.cleanSlipReading('```json\n{"name":"JKP Infostan Tehnologije, Beograd","account":"845-0000000404849-87","code":"","amount":"3.456,00","currency":"rsd","purpose":"Komunalne usluge","model":"(97)","reference":"12 3456 78"}\n```');
+  assert.equal(r.name, 'JKP Infostan Tehnologije, Beograd');
+  assert.equal(r.account, '845000000040484987');
+  assert.equal(r.code, '');
+  assert.equal(r.amount, 3456);
+  assert.equal(r.currency, 'RSD');
+  assert.equal(r.model, '97');
+  assert.equal(r.reference, '12345678');
+  assert.equal(r.purpose, 'Komunalne usluge');
+  const bad = C.cleanSlipReading({ name: 'X', account: '12', code: '1890', amount: null });
+  assert.equal(bad.account, '12');          // ostaje za ispravku; provera (ipsProblems) ga ne pusti do QR-a
+  assert.equal(bad.code, '');
+  assert.equal(bad.amount, null);
+  assert.equal(C.cleanSlipReading('nema'), null);
+  assert.equal(C.cleanSlipReading({ purpose: 'samo svrha' }), null);  // bez primaoca i racuna nema smisla
+});

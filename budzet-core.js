@@ -1370,6 +1370,39 @@
     return null;
   }
 
+  // ---------- Uplatnica (nalog za uplatu) bez QR koda -> podaci za IPS placanje ----------
+  function slipPrompt(){
+    return [
+      'Čitaš nalog za uplatu (uplatnicu) iz Srbije, sa slike ili iz teksta PDF-a.',
+      'Vrati SAMO jedan JSON objekat tačno ovog oblika:',
+      '{"name":"","account":"","code":"","amount":0,"currency":"RSD","purpose":"","model":"","reference":""}',
+      'Pravila:',
+      '- name = primalac (naziv i mesto), NE uplatilac. account = račun primaoca tačno kako piše (npr. 160-0000000012345-67).',
+      '- code = šifra plaćanja (3 cifre, npr. 189). amount = iznos kao JSON broj sa tačkom. purpose = svrha uplate.',
+      '- model = broj modela (npr. 97) ako postoji; reference = poziv na broj (odobrenje) primaoca.',
+      '- Prepiši cifre tačno, bez izmišljanja; ako se nešto ne vidi, stavi "" ili null.'
+    ].join('\n');
+  }
+  function cleanSlipReading(raw){
+    const o = extractJson(raw);
+    if(!o) return null;
+    const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+    const name = str(o.name, 70), accountRaw = str(o.account, 40);
+    if(!name && !accountRaw) return null;
+    const code = str(o.code, 5).replace(/\D/g, '');
+    const amount = parseAmount(o.amount);
+    const cur = str(o.currency, 3).toUpperCase();
+    return {
+      name, account: normalizeAccount(accountRaw) || accountRaw,
+      code: /^\d{3}$/.test(code) ? code : '',
+      amount: Number.isFinite(amount) && amount > 0 ? round2(amount) : null,
+      currency: /^[A-Z]{3}$/.test(cur) ? cur : 'RSD',
+      purpose: str(o.purpose, 35),
+      model: str(o.model, 6).replace(/\D/g, '').slice(0, 2),
+      reference: str(o.reference, 40).replace(/\s+/g, '').slice(0, 33)
+    };
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1417,7 +1450,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });
