@@ -1412,6 +1412,63 @@
     return out;
   }
 
+  // ---------- Uvoz izvoda: AI predlog kategorije za nepoznate opise (salju se samo opisi) ----------
+  const importDescKey = d => foldText(d).replace(/\s+/g, ' ');
+  // rashodi bez pravila/istorije (catSource 'default'), jedinstveni opisi sa brojem stavki
+  function importAiCandidates(rows){
+    const map = new Map();
+    (rows || []).forEach(r => {
+      if(!r || r.type !== 'expense' || r.catSource !== 'default' || !String(r.desc || '').trim()) return;
+      const key = importDescKey(r.desc);
+      if(!map.has(key)) map.set(key, { key, desc: String(r.desc).trim().replace(/\s+/g, ' '), count: 0 });
+      map.get(key).count++;
+    });
+    return [...map.values()];
+  }
+  function importCategoryPrompt(categories, candidates){
+    return [
+      'Za svaku stavku sa bankovnog izvoda (Srbija) predloži kategoriju rashoda i ključnu reč za pravilo.',
+      'Vrati SAMO JSON: {"items":[{"i":0,"category":"","keyword":""}]}',
+      '- category: tačno jedna od ovih kategorija korisnika ili "" ako nisi siguran: ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
+      '- keyword: kratak deo opisa koji označava prodavca/uslugu (npr. "LIDL", "WOLT", "NIS PETROL"), tačno kako piše u opisu; bez brojeva, grada i reči kao POS/KUPOVINA.',
+      'Stavke:',
+      ...(candidates || []).map((c, i) => i + ': ' + c.desc)
+    ].join('\n');
+  }
+  const KEYWORD_STOP = new Set(['pos', 'kupovina', 'placanje', 'uplata', 'isplata', 'kartica', 'karticom', 'visa', 'mastercard', 'maestro', 'dina', 'internet', 'web', 'order', 'beograd', 'novi', 'sad', 'doo', 'srbija', 'srb', 'ltd', 'www', 'com', 'rsd', 'trn', 'pmt']);
+  // prva rec od bar 3 slova koja nije opsta (POS, KUPOVINA, grad…) — rezerva kad AI ne da upotrebljivu kljucnu rec
+  function suggestKeyword(desc){
+    const w = String(desc || '').split(/[^\p{L}]+/u).find(x => x.length >= 3 && !KEYWORD_STOP.has(foldText(x)));
+    return w || '';
+  }
+  function cleanImportSuggestions(raw, categories, candidates){
+    const o = extractJson(raw);
+    if(!o || !Array.isArray(o.items)) return null;
+    const cats = categories || [];
+    const out = new Map();
+    o.items.forEach(x => {
+      const c = x && (candidates || [])[Number(x.i)];
+      if(!c || !Number.isInteger(Number(x.i))) return;
+      const category = cats.find(k => foldText(k) === foldText(x.category)) || '';
+      let keyword = String(x.keyword || '').trim().slice(0, 30);
+      if(keyword.length < 3 || !importDescKey(c.desc).includes(foldText(keyword))) keyword = suggestKeyword(c.desc);
+      out.set(c.key, { category, keyword });
+    });
+    return out;
+  }
+  // izabrani predlozi -> nova pravila (bez praznih, bez vec postojecih kljucnih reci)
+  function rulesFromSuggestions(choices, existingRules){
+    const have = new Set((existingRules || []).map(r => foldText(r.keyword)));
+    const out = [];
+    (choices || []).forEach(ch => {
+      const kw = String(ch.keyword || '').trim();
+      if(!ch.make || kw.length < 3 || !ch.category || have.has(foldText(kw))) return;
+      have.add(foldText(kw));
+      out.push({ keyword: kw, category: ch.category });
+    });
+    return out;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1459,7 +1516,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

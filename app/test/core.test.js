@@ -1288,3 +1288,30 @@ test('cleanSlipReading: propusten model 97 se vraca kad poziv na broj prolazi pr
   assert.match(C.slipWarnings(bad)[0], /Poziv na broj nije proveren/);
   assert.deepEqual(C.slipWarnings(C.cleanSlipReading({ name: 'X', account: '845-0000000404849-87' })), []);
 });
+
+test('uvoz + AI: kandidati, uputstvo, ciscenje predloga, pravila', () => {
+  const rows = [
+    { type: 'expense', desc: 'POS 4432 LIDL KRALJEVO', catSource: 'default' },
+    { type: 'expense', desc: 'pos 4432  lidl kraljevo', catSource: 'default' },
+    { type: 'expense', desc: 'WOLT *ORDER 123', catSource: 'default' },
+    { type: 'expense', desc: 'MAXI 12', catSource: 'rule' },
+    { type: 'income', desc: 'UPLATA', catSource: 'default' }
+  ];
+  const cands = C.importAiCandidates(rows);
+  assert.deepEqual(cands.map(c => [c.desc, c.count]), [['POS 4432 LIDL KRALJEVO', 2], ['WOLT *ORDER 123', 1]]);
+  const p = C.importCategoryPrompt(['Hrana', 'Restorani'], cands);
+  assert.match(p, /"Hrana", "Restorani"/);
+  assert.match(p, /0: POS 4432 LIDL KRALJEVO/);
+  assert.ok(!/4432\.|iznos/i.test(p.split('\n').slice(-2).join(' ')));
+  const sug = C.cleanImportSuggestions('```json\n{"items":[{"i":0,"category":"hrana","keyword":"LIDL"},{"i":1,"category":"Kafane","keyword":"BURGER"},{"i":7,"category":"Hrana","keyword":"X"}]}\n```', ['Hrana', 'Restorani'], cands);
+  assert.equal(sug.size, 2);
+  assert.deepEqual(sug.get(cands[0].key), { category: 'Hrana', keyword: 'LIDL' });
+  assert.equal(sug.get(cands[1].key).category, '');                 // nepoznata kategorija
+  assert.equal(sug.get(cands[1].key).keyword, 'WOLT');              // BURGER nije u opisu -> rec iz opisa
+  assert.equal(C.cleanImportSuggestions('nista', ['Hrana'], cands), null);
+  const existing = [{ keyword: 'lidl', category: 'Hrana' }];
+  const nr = C.rulesFromSuggestions([{ keyword: 'LIDL', category: 'Hrana', make: true }, { keyword: 'WOLT', category: 'Restorani', make: true }, { keyword: 'NIS', category: 'Gorivo', make: false }, { keyword: 'wolt', category: 'Restorani', make: true }, { keyword: '', category: 'X', make: true }], existing);
+  assert.deepEqual(nr, [{ keyword: 'WOLT', category: 'Restorani' }]);
+  assert.equal(C.suggestKeyword('POS 4432 NIS PETROL BG'), 'NIS');
+  assert.equal(C.suggestKeyword('KUPOVINA 12 BEOGRAD'), '');
+});
