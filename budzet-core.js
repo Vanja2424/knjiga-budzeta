@@ -1300,6 +1300,52 @@
     return out;
   }
 
+  // Kategorija po stvari: poslednji rashod u kome se pojavila; kategorija sa liste za kupovinu ima prednost
+  function itemCategoryMemory(entries, shoppingItems){
+    const m = new Map();
+    (entries || []).filter(e => e && e.type === 'expense' && Array.isArray(e.items) && e.category)
+      .slice().sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .forEach(e => e.items.forEach(l => { const k = itemKey(l); if(k) m.set(k, e.category); }));
+    (shoppingItems || []).forEach(i => { const k = itemKey(i && i.name); if(k && i.category) m.set(k, i.category); });
+    return m;
+  }
+  // Stavke racuna <-> trazene stavke sa liste: prvo tacno ime, pa ime sa liste kao pocetak ("Mleko" ~ "Mleko Imlek 2,8%"); svaka jednom
+  function matchReceiptToShopping(items, shoppingItems){
+    const cands = (shoppingItems || []).filter(s => s && s.needed);
+    const used = new Set(), taken = new Set(), out = [];
+    const pass = test => (items || []).forEach((it, idx) => {
+      if(taken.has(idx)) return;
+      const s = cands.find(c => !used.has(c.id) && test(it, foldText(c.name)));
+      if(s){ used.add(s.id); taken.add(idx); out.push({ receiptIndex: idx, shoppingId: s.id }); }
+    });
+    const starts = (text, word) => { const t = foldText(text); return !!word && t.startsWith(word) && !/\p{L}/u.test(t.charAt(word.length)); };
+    pass((it, w) => foldText(it.name) === w);
+    pass((it, w) => starts(it.name, w) || starts(it.raw, w));
+    return out;
+  }
+  // Stavke -> rashod po kategoriji; iznos = zbir cena, a razlika do unetog ukupnog ide srazmerno (tacno na pare)
+  function receiptToExpenses(items, total){
+    const groups = new Map();
+    (items || []).forEach(i => { const c = i.category || 'Ostalo'; if(!groups.has(c)) groups.set(c, []); groups.get(c).push(i); });
+    const rows = [...groups.entries()].map(([category, its]) => ({ category, items: its, itemPrices: its.map(i => i.price != null ? i.price : null),
+      cents: its.reduce((s, i) => s + (i.price > 0 ? Math.round(i.price * 100) : 0), 0) }));
+    if(!rows.length) return [];
+    const sumC = rows.reduce((s, r) => s + r.cents, 0);
+    const target = total > 0 ? Math.round(total * 100) : sumC;
+    if(sumC > 0 && target !== sumC) rows.forEach(r => { r.cents = Math.round(r.cents * target / sumC); });
+    else if(sumC === 0) rows.forEach((r, i) => { r.cents = i === 0 ? target : 0; });
+    rows.sort((a, b) => b.cents - a.cents || a.category.localeCompare(b.category));
+    rows[0].cents += target - rows.reduce((s, r) => s + r.cents, 0);
+    return rows.map(r => ({ category: r.category, amount: r.cents / 100, items: r.items, itemPrices: r.itemPrices }));
+  }
+  // Isti racun vec unet: rashodi iste grupe (receiptId) tog dana sa zbirom +-1 din
+  function findReceiptDuplicate(entries, date, total){
+    const sums = new Map();
+    (entries || []).forEach(e => { if(e && e.type === 'expense' && e.receiptId && e.date === date) sums.set(e.receiptId, (sums.get(e.receiptId) || 0) + e.amount); });
+    for(const [id, s] of sums) if(Math.abs(s - total) <= 1) return id;
+    return null;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1347,7 +1393,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, applyReceiptDiscounts, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, applyReceiptDiscounts, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

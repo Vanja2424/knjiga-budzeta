@@ -1172,3 +1172,44 @@ test('applyReceiptDiscounts: popust na prethodnu stavku, veci popust srazmerno, 
   const r4 = C.applyReceiptDiscounts([it('A', null), it('B', 20)]);
   assert.equal(r4[0].price, null);
 });
+
+test('itemCategoryMemory: poslednji rashod pobedjuje, lista ima prednost', () => {
+  const entries = [
+    { type: 'expense', date: '2026-08-01', category: 'Hrana', items: ['Mleko (2 kom)', 'Sapun'] },
+    { type: 'expense', date: '2026-09-01', category: 'Higijena', items: ['Sapun'] },
+    { type: 'income', date: '2026-09-02', category: 'Plata', items: ['Mleko'] }
+  ];
+  const m = C.itemCategoryMemory(entries, [{ name: 'Čokolada', category: 'Slatkiši' }, { name: 'Bez', category: '' }]);
+  assert.equal(m.get('mleko'), 'Hrana');
+  assert.equal(m.get('sapun'), 'Higijena');
+  assert.equal(m.get('cokolada'), 'Slatkiši');
+  assert.equal(m.has('bez'), false);
+});
+
+test('matchReceiptToShopping: tacno, prefiks, dijakritike, svaka stavka jednom, samo trazene', () => {
+  const items = [{ name: 'Mleko', raw: 'MLEKO IMLEK' }, { name: 'Hleb', raw: 'HLEB' }, { name: 'Hleb', raw: 'HLEB' }, { name: 'Čokolada milka', raw: 'COKOLADA MILKA 100G' }, { name: 'Jaja', raw: 'JAJA 10' }];
+  const list = [{ id: 's1', name: 'hleb', needed: true }, { id: 's2', name: 'Cokolada', needed: true }, { id: 's3', name: 'Mleko', needed: true }, { id: 's4', name: 'Jaja', needed: false }, { id: 's5', name: 'Mlekar', needed: true }];
+  const m = C.matchReceiptToShopping(items, list);
+  assert.deepEqual(m.sort((a, b) => a.receiptIndex - b.receiptIndex), [{ receiptIndex: 0, shoppingId: 's3' }, { receiptIndex: 1, shoppingId: 's1' }, { receiptIndex: 3, shoppingId: 's2' }]);
+});
+
+test('receiptToExpenses: grupe po kategoriji, razlika do ukupnog na pare tacno', () => {
+  const it = (name, price, category) => ({ raw: name, name, qty: 1, unit: '', price, category, discount: false });
+  const rows = C.receiptToExpenses([it('A', 100, 'Hrana'), it('B', 33.33, 'Higijena'), it('C', 50, 'Hrana'), it('D', null, 'Hrana')], 183.34);
+  assert.deepEqual(rows.map(r => r.category), ['Hrana', 'Higijena']);
+  assert.equal(rows[0].items.length, 3);
+  assert.deepEqual(rows[0].itemPrices, [100, 50, null]);
+  assert.equal(Math.round((rows[0].amount + rows[1].amount) * 100), 18334);
+  const noTotal = C.receiptToExpenses([it('A', 10.1, 'X'), it('B', 20.2, 'Y')], null);
+  assert.equal(Math.round(noTotal.reduce((s, r) => s + r.amount, 0) * 100), 3030);
+  const scaled = C.receiptToExpenses([it('A', 10, 'X'), it('B', 10, 'Y'), it('C', 10, 'Z')], 100);
+  assert.equal(Math.round(scaled.reduce((s, r) => s + r.amount, 0) * 100), 10000);
+  assert.deepEqual(C.receiptToExpenses([], 50), []);
+});
+
+test('findReceiptDuplicate', () => {
+  const entries = [{ type: 'expense', date: '2026-09-30', amount: 100, receiptId: 'R1' }, { type: 'expense', date: '2026-09-30', amount: 83.34, receiptId: 'R1' }, { type: 'expense', date: '2026-09-30', amount: 183.34 }];
+  assert.equal(C.findReceiptDuplicate(entries, '2026-09-30', 183.5), 'R1');
+  assert.equal(C.findReceiptDuplicate(entries, '2026-09-29', 183.34), null);
+  assert.equal(C.findReceiptDuplicate(entries, '2026-09-30', 200), null);
+});
