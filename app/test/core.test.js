@@ -1076,3 +1076,10 @@ test('kucni racuni: id-jevi i kljucevi merenja su bezbedni za HTML atribute', ()
   assert.deepEqual(b[0].values, { m1: 2 });
   assert.equal(C.cleanBills([{ id: 'B2', billTypeId: 'T1', month: '2025-01', file: '..\\podaci.json' }], ['T1'])[0].file, undefined);
 });
+
+test('compactBillText: razmaci, prazni redovi, redovi bez slova, ogranicenje', () => {
+  const raw = 'ЕПС   АД   Београд \n\n\n11000   Београд\n1500\n1250\n0   `   `   ` \nУтрошено   у   вишој   тарифи   136   kWh\n';
+  assert.equal(C.compactBillText(raw, 1000), 'ЕПС АД Београд\n11000 Београд\nУтрошено у вишој тарифи 136 kWh');
+  assert.equal(C.compactBillText('a'.repeat(50) + '\n' + 'b'.repeat(50), 60).length <= 60, true);
+  assert.equal(C.compactBillText('', 100), '');
+});

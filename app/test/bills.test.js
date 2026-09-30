@@ -103,3 +103,45 @@ test('prilozi: samo PDF i slike (nema .bat/.exe ni otvaranja drugih tipova)', ()
   assert.equal(api.filePath('podmetnut.bat'), null);
   assert.ok(api.filePath('a.pdf'));
 });
+
+test('read: 413 (limit tokena) -> automatski ponovi sa manje slika, pa samo tekst', async () => {
+  const bodies = [];
+  const tooLarge = { ok: false, status: 413, headers: new Map(), json: async () => ({ error: { message: 'Request too large ... (ITPM): Limit 7000, Requested 8134' } }) };
+  let n = 0;
+  const { api } = setup((url, opts) => { bodies.push(JSON.parse(opts.body)); n++; return n < 3 ? tooLarge : okResponse('{"amount":1}'); });
+  api.setKey('gsk_k');
+  const r = await api.read({ images: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'], text: 'Ukupno 100', prompt: 'P' });
+  assert.deepEqual(r, { ok: true, content: '{"amount":1}' });
+  const imgs = b => b.messages[1].content.filter(p => p.type === 'image_url').length;
+  assert.deepEqual(bodies.map(imgs), [2, 1, 0]);
+  assert.match(JSON.stringify(bodies[2]), /Ukupno 100/);
+});
+
+test('read: 413 i bez teksta -> jedna slika; ako i to ne prodje, jasna greska', async () => {
+  const bodies = [];
+  const tooLarge = { ok: false, status: 413, headers: new Map(), json: async () => ({ error: { message: 'too large' } }) };
+  const { api } = setup((url, opts) => { bodies.push(JSON.parse(opts.body)); return tooLarge; });
+  api.setKey('gsk_k');
+  const r = await api.read({ images: ['data:image/jpeg;base64,AAA', 'data:image/jpeg;base64,BBB'], text: '', prompt: 'P' });
+  assert.equal(r.kind, 'toolarge');
+  assert.deepEqual(bodies.map(b => b.messages[1].content.filter(p => p.type === 'image_url').length), [2, 1]);
+});
+
+test('read: 429 sa kratkim cekanjem -> saceka i pokusa jos jednom', async () => {
+  const waits = []; let n = 0;
+  const limited = { ok: false, status: 429, headers: new Map([['retry-after', '12']]), json: async () => ({ error: { message: 'rate' } }) };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'knjiga-bills-'));
+  const settings = {};
+  const safeStorage = { isEncryptionAvailable: () => true, encryptString: s => Buffer.from('X' + s), decryptString: b => b.toString().slice(1) };
+  const api = createBills({ fetch: async () => (++n === 1 ? limited : okResponse('{"x":1}')), safeStorage, getSettings: () => settings, saveSettings: () => {}, dataDir: () => dir, sleep: async ms => { waits.push(ms); } });
+  api.setKey('gsk_k');
+  assert.deepEqual(await api.read({ images: [], text: 't', prompt: 'p' }), { ok: true, content: '{"x":1}' });
+  assert.deepEqual(waits, [13000]);
+  n = 0;
+  const long = { ok: false, status: 429, headers: new Map([['retry-after', '120']]), json: async () => ({}) };
+  const settings2 = {};
+  const api2 = createBills({ fetch: async () => long, safeStorage, getSettings: () => settings2, saveSettings: () => {}, dataDir: () => dir, sleep: async ms => { waits.push(ms); } });
+  api2.setKey('gsk_k');
+  assert.equal((await api2.read({ images: [], text: 't', prompt: 'p' })).kind, 'limit');
+  assert.equal(waits.length, 1);   // predugo cekanje se ne radi
+});

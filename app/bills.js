@@ -11,7 +11,9 @@ const TIMEOUT_MS = 60000;
 const TRASH = '.obrisano';
 const ALLOWED_EXT = /\.(pdf|jpe?g|png|webp|heic)$/i; // prilog je samo racun (PDF ili slika) — nikad nesto sto se pokrece
 
-function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, now = () => Date.now() }) {
+const MAX_WAIT_S = 30; // 429 sa kracim cekanjem: saceka se jednom i pokusa ponovo
+
+function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
   const s = () => getSettings();
   const encryption = () => { try { return !!safeStorage.isEncryptionAvailable(); } catch { return false; } };
   const getKey = () => {
@@ -61,12 +63,30 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
       return { ok: false, kind: err && err.name === 'AbortError' ? 'timeout' : 'network', message: String(err && err.message || err).slice(0, 300) };
     } finally { clearTimeout(timer); }
   }
-  function read({ images, text, prompt }) {
-    const t = keyInfo().sendText && text ? String(text).slice(0, MAX_TEXT) : '';
+  const buildMessages = (imgs, t, prompt) => {
     const parts = [{ type: 'text', text: t ? 'Tekst iz PDF-a:\n' + t : 'Pročitaj račun sa slike.' }];
-    (Array.isArray(images) ? images : []).filter(u => /^data:image\/(jpeg|png|webp);base64,/.test(u)).slice(0, MAX_IMAGES)
-      .forEach(url => parts.push({ type: 'image_url', image_url: { url } }));
-    return call([{ role: 'system', content: String(prompt || '') }, { role: 'user', content: parts }]);
+    imgs.forEach(url => parts.push({ type: 'image_url', image_url: { url } }));
+    return [{ role: 'system', content: String(prompt || '') }, { role: 'user', content: parts }];
+  };
+  // Besplatan Groq nivo ima limit ulaznih tokena u minuti (npr. 7000); veci zahtev vraca 413.
+  // Zato: na 413 ponovi sa manje slika (tekst iz PDF-a ostaje), a na 429 sa kratkim cekanjem saceka jednom.
+  async function read({ images, text, prompt }) {
+    const t = keyInfo().sendText && text ? String(text).slice(0, MAX_TEXT) : '';
+    const imgs = (Array.isArray(images) ? images : []).filter(u => /^data:image\/(jpeg|png|webp);base64,/.test(u)).slice(0, MAX_IMAGES);
+    const ladder = [imgs];
+    if (imgs.length > 1) ladder.push(imgs.slice(0, 1));
+    if (t && imgs.length) ladder.push([]);
+    let res = null, waited = false;
+    for (let i = 0; i < ladder.length; i++) {
+      res = await call(buildMessages(ladder[i], t, prompt));
+      if (res.ok === false && res.kind === 'limit' && !waited && res.retryAfter != null && res.retryAfter <= MAX_WAIT_S) {
+        waited = true;
+        await sleep((res.retryAfter + 1) * 1000);
+        res = await call(buildMessages(ladder[i], t, prompt));
+      }
+      if (!(res.ok === false && res.status === 413)) return res;
+    }
+    return { ...res, kind: 'toolarge' };
   }
   const testKey = () => call([{ role: 'user', content: 'Vrati JSON {"ok":true}' }]);
 

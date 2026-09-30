@@ -4333,7 +4333,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   });
 
   // ---------- Kucni racuni: PDF/slika -> slike + tekst -> QR (lokalno) + Groq -> prozor za potvrdu ----------
-  const BILL_MAX_SIDE = 1600, BILL_JPEG_Q = 0.85, BILL_MAX_PAGES = 3, BILL_MAX_TEXT = 20000;
+  // Besplatan Groq nivo: ~7000 ulaznih tokena u minuti; slika ~2400. PDF sa tekstom: tekst + prva strana; sken: do 2 strane.
+  const BILL_MAX_SIDE = 1600, BILL_JPEG_Q = 0.85, BILL_MAX_PAGES = 2, BILL_MAX_TEXT = 6000, BILL_TEXT_PDF_MIN = 200;
   let pdfjsLib = null;
   async function loadPdfJs(){
     if(pdfjsLib) return pdfjsLib;
@@ -4359,12 +4360,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         const lib = await loadPdfJs();
         const doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
         let text = '';
-        for(let p = 1; p <= doc.numPages && text.length < BILL_MAX_TEXT; p++){
+        for(let p = 1; p <= doc.numPages && text.length < BILL_MAX_TEXT * 3; p++){
           const tc = await (await doc.getPage(p)).getTextContent();
           text += tc.items.map(i=> i.str + (i.hasEOL ? '\n' : ' ')).join('') + '\n';
         }
+        text = C.compactBillText(text, BILL_MAX_TEXT);
         const images = [], canvases = [];
-        for(let p = 1; p <= Math.min(BILL_MAX_PAGES, doc.numPages); p++){
+        const pages = Math.min(text.length >= BILL_TEXT_PDF_MIN ? 1 : BILL_MAX_PAGES, doc.numPages);
+        for(let p = 1; p <= pages; p++){
           const page = await doc.getPage(p);
           const vp1 = page.getViewport({ scale: 1 });
           const vp = page.getViewport({ scale: BILL_MAX_SIDE / Math.max(vp1.width, vp1.height) });
@@ -4373,7 +4376,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           await page.render({ canvasContext: ctx, viewport: vp }).promise;
           canvases.push(cv); images.push(cv.toDataURL('image/jpeg', BILL_JPEG_Q));
         }
-        return { images, canvases, text: text.trim().slice(0, BILL_MAX_TEXT), bytes, ext };
+        return { images, canvases, text, bytes, ext };
       } catch(e){
         return empty(t('PDF ne može da se otvori ({0}). Popuni podatke ručno.', e && e.name === 'PasswordException' ? t('zaštićen lozinkom') : t('oštećen fajl')));
       }
@@ -4401,6 +4404,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     model: ()=> t('Groq model ne postoji (404). Promeni ga u podešavanjima.'),
     network: ()=> t('Nema mreže — Groq nije dostupan.'),
     timeout: ()=> t('Groq nije odgovorio na vreme.'),
+    toolarge: ()=> t('Račun je prevelik za besplatni Groq limit ni posle smanjivanja. Popuni podatke ručno ili probaj ponovo za minut.'),
     http: r=> t('Groq greška ({0}).', r.status || '?')
   };
   async function readBill(prep){

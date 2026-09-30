@@ -1068,6 +1068,14 @@
   }
 
   // Kljuc novog merenja: posle svih kljuceva vrste I onih koji jos stoje u racunima (obrisano merenje ne sme da ozivi pod drugim imenom)
+  // Tekst iz PDF-a pre slanja AI-ju: bez visestrukih razmaka, praznih redova i redova bez ijednog slova
+  // (ose grafikona i sl.) — manje tokena (besplatan Groq nivo ima limit tokena u minuti)
+  function compactBillText(text, max){
+    const lines = String(text || '').split(/\r?\n/).map(l => l.replace(/[ \t ]+/g, ' ').trim()).filter(l => /\p{L}/u.test(l));
+    let out = lines.join('\n');
+    if(out.length > max){ out = out.slice(0, max); const nl = out.lastIndexOf('\n'); if(nl > max / 2) out = out.slice(0, nl); }
+    return out;
+  }
   function nextMetricKey(type, bills){
     const num = k => parseInt(String(k).slice(1), 10) || 0;
     let max = (type.metrics || []).reduce((mx, m) => Math.max(mx, num(m.key)), 0);
@@ -1240,7 +1248,7 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
-    nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
+    compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });
