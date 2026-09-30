@@ -8,7 +8,7 @@
   "scripts": {
     "copy-web": "node scripts/copy-web.js",
     "start": "npm run copy-web && electron .",
-    "test": "node --test test/core.test.js",
+    "test": "node --test test/core.test.js test/bills.test.js",
     "smoke": "npm run copy-web && node test/smoke.js",
     "dist": "npm test && npm run copy-web && electron-builder --win --publish never",
     "release": "npm run dist && node scripts/release.js",
@@ -44,6 +44,7 @@
       "xlsx.core.min.js",
       "qrcode-generator.js",
       "jsQR.js",
+      "bills.js",
       "build/icon.png"
     ],
     "win": {
