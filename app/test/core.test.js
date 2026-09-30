@@ -1362,7 +1362,7 @@ test('parseQuickSentence: iznos, valuta, datum, racun, opis', () => {
   assert.equal(p('patike 8990 karticom').accountId, 'a3');
   assert.equal(p('danas pijaca 740').date, '2026-09-30');
   assert.equal(p('sreda 100').date, '2026-09-30');             // danas je sreda
-  assert.equal(p('15 km vožnja').currency, 'BAM');
+  assert.equal(p('15 bam vožnja').currency, 'BAM');
   assert.equal(p('knjiga 12,5 dinara').amount, 12.5);
   assert.equal(p('knjiga 12,5 dinara').currency, null);
   assert.equal(p('').desc, '');
@@ -1381,4 +1381,23 @@ test('parseQuickSentence: predlozi u opisu ostaju kad nisu uz prepoznat deo', ()
   assert.equal(C.parseQuickSentence('Na pijaci 740', ctx).desc, 'Na pijaci');
   assert.equal(C.parseQuickSentence('Za mamu poklon 2000', ctx).desc, 'Za mamu poklon');
   assert.equal(C.parseQuickSentence('ručak u ponedeljak', ctx).desc, 'ručak');
+});
+
+test('parseQuickSentence posle pregleda: broj u sredini nije iznos, km nije valuta, nemoguc datum, bez iznosa', () => {
+  const ctx = { today: '2026-09-30', currencies: ['EUR', 'BAM'], accounts: [{ id: 'a2', name: 'Novčanik', type: 'gotovina' }] };
+  const p = (s, o) => C.parseQuickSentence(s, Object.assign({}, ctx, o || {}));
+  assert.equal(p('0641234567 dopuna').amount, null);
+  assert.equal(p('Račun 2025 za struju').amount, null);
+  assert.equal(p('Račun 2025 za struju').desc, 'Račun 2025 za struju');
+  assert.equal(p('iPhone 15 maska').amount, null);
+  assert.deepEqual([p('gorivo 3000 15.9').amount, p('gorivo 3000 15.9').date, p('gorivo 3000 15.9').desc], [3000, '2026-09-15', 'gorivo']);
+  assert.equal(p('knjiga 12.5').amount, 12.5);
+  assert.equal(p('dopuna 1234567').amount, null);                 // 7+ cifara nije iznos
+  assert.deepEqual([p('taxi 15 km 800').amount, p('taxi 15 km 800').currency, p('taxi 15 km 800').desc], [800, null, 'taxi 15 km']);
+  assert.equal(p('bus 20 bam').currency, 'BAM');
+  assert.equal(p('karte 31.2.').date, null);                       // nemoguc datum se ne pretvara u mart
+  assert.equal(p('karte 29.2.2025').date, null);
+  const noAmt = p('iPhone 15 juče gotovinom', { noAmount: true });
+  assert.deepEqual([noAmt.desc, noAmt.amount, noAmt.date, noAmt.accountId], ['iPhone 15', null, '2026-09-29', 'a2']);
+  assert.equal(p('kafa 20 eur', { noAmount: true }).desc, 'kafa 20 eur');
 });

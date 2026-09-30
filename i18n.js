@@ -536,6 +536,7 @@
     'Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš i, pri uvozu izvoda, opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica). Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill and payment-slip files you add and, when importing a statement, the descriptions of unknown items (no amounts, dates or card numbers). All other data stays on this computer only.',
     'AI predlog': 'AI suggestion', 'Kurs za {0} nije dostupan — izaberi valutu ručno.': 'The {0} rate isn’t available — choose the currency manually.',
     'npr. kafa i kroasan 520 juče gotovinom': 'e.g. coffee and croissant 520 yesterday cash',
+    'Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš, pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill and payment-slip files you add, the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), and in quick add the description of a new expense to suggest a category. All other data stays on this computer only.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

@@ -1487,7 +1487,7 @@
     cetvrtak: 4, cetvrtka: 4, petak: 5, petka: 5, subota: 6, subotu: 6, subote: 6 };
   const QS_RELATIVE = { danas: 0, juce: 1, prekjuce: 2 };
   const QS_CURRENCY = { eur: 'EUR', evra: 'EUR', evro: 'EUR', '€': 'EUR', usd: 'USD', dolara: 'USD', dolar: 'USD', '$': 'USD', chf: 'CHF', franaka: 'CHF',
-    gbp: 'GBP', funti: 'GBP', '£': 'GBP', km: 'BAM', bam: 'BAM', din: 'RSD', dinara: 'RSD', rsd: 'RSD' };
+    gbp: 'GBP', funti: 'GBP', '£': 'GBP', bam: 'BAM', din: 'RSD', dinara: 'RSD', rsd: 'RSD' };
   const QS_UNITS = new Set(['kom', 'kg', 'g', 'gr', 'l', 'ml', 'pak', 'x']);
   const QS_CASH = new Set(['gotovinom', 'gotovina', 'gotovinu', 'kes', 'kesom', 'cash']);
   const QS_CARD = new Set(['karticom', 'kartica', 'kartici', 'karticu']);
@@ -1503,27 +1503,28 @@
     const out = { desc: '', amount: null, currency: null, date: null, accountId: null };
     const usePrep = i => { if(i > 0 && !used[i - 1] && QS_PREP.has(f[i - 1])) used[i - 1] = true; };
     const setCur = code => { out.currency = code === 'RSD' ? null : code; };
-    let lastNum = -1;
+    const mkDate = (y, m, d) => { const x = new Date(y, m - 1, d); return x.getFullYear() === y && x.getMonth() === m - 1 && x.getDate() === d ? x : null; };
+    const dayMonth = (d, m, yTxt) => {
+      if(yTxt){ const y = +yTxt < 100 ? 2000 + +yTxt : +yTxt; return mkDate(y, m, d); }
+      const x = mkDate(today.getFullYear(), m, d);
+      return x && x > today ? mkDate(today.getFullYear() - 1, m, d) : x;   // buduci datum bez godine -> prosla godina
+    };
+    const nums = [];           // kandidati za iznos: { i, dm } (dm = "15.9" bez tacke na kraju, moze biti i datum)
     tokens.forEach((tok, i) => {
       if(used[i]) return;
-      // datum: 15.9. / 15.09.2026
       const dm = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4})\.?)?$/.exec(tok);
-      if(dm && +dm[2] >= 1 && +dm[2] <= 12 && +dm[1] >= 1 && +dm[1] <= 31){
-        let y = dm[3] ? (+dm[3] < 100 ? 2000 + +dm[3] : +dm[3]) : today.getFullYear();
-        let d = new Date(y, +dm[2] - 1, +dm[1]);
-        if(!dm[3] && d > today) d = new Date(y - 1, +dm[2] - 1, +dm[1]);
-        out.date = qsIso(d); used[i] = true; return;
-      }
+      if(dm){ const d = dayMonth(+dm[1], +dm[2], dm[3]); if(d){ out.date = qsIso(d); used[i] = true; } return; }
       if(f[i] in QS_RELATIVE){ const d = new Date(today); d.setDate(d.getDate() - QS_RELATIVE[f[i]]); out.date = qsIso(d); used[i] = true; return; }
       if(f[i] in QS_WEEKDAYS){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
-      // iznos sa valutom u istoj reci: 20€, €20, 15km
-      const a1 = /^(\d[\d.,]*)(€|\$|£|eur|din|rsd|km)$/i.exec(tok), a2 = /^(€|\$|£)(\d[\d.,]*)$/.exec(tok);
-      if(a1 || a2){ const n = parseAmount(a1 ? a1[1] : a2[2]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[(a1 ? a1[2] : a2[1]).toLowerCase()]); used[i] = true; lastNum = -2; return; } }
+      if(!c.noAmount){
+        const a1 = /^(\d[\d.,]*)(€|\$|£|eur|din|rsd|bam)$/i.exec(tok), a2 = /^(€|\$|£)(\d[\d.,]*)$/.exec(tok);
+        if((a1 || a2) && out.amount == null){ const n = parseAmount(a1 ? a1[1] : a2[2]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[(a1 ? a1[2] : a2[1]).toLowerCase()]); used[i] = true; return; } }
+      }
       if(/^\d[\d.,]*$/.test(tok)){
         const next = f[i + 1];
         if(next && QS_UNITS.has(next)) return;                       // kolicina ("2 kom") ostaje u opisu
-        if(next && QS_CURRENCY[next] && lastNum !== -2){ const n = parseAmount(tok); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[next]); used[i] = used[i + 1] = true; lastNum = -2; return; } }
-        if(lastNum !== -2) lastNum = i;
+        if(!c.noAmount && next && QS_CURRENCY[next] && out.amount == null){ const n = parseAmount(tok); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[next]); used[i] = used[i + 1] = true; return; } }
+        nums.push({ i, dm: /^\d{1,2}\.\d{1,2}$/.test(tok) });
         return;
       }
       if(QS_CASH.has(f[i]) || QS_CARD.has(f[i])){
@@ -1535,9 +1536,16 @@
       const acc = (c.accounts || []).find(a => foldText(a.name).split(/\s+/).some(w => w.length >= 4 && w === f[i]));
       if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
     });
-    if(lastNum >= 0){ const n = parseAmount(tokens[lastNum]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); used[lastNum] = true; } }
-    const rest = tokens.filter((_, i) => !used[i]);
-    out.desc = rest.join(' ');
+    if(!c.noAmount && out.amount == null && nums.length){
+      // "15.9" pored drugog broja je datum ("gorivo 3000 15.9"); sam je decimalni broj ("knjiga 12.5")
+      if(nums.length > 1) nums.filter(n => n.dm).forEach(n => { const [d, m] = tokens[n.i].split('.').map(Number); const x = dayMonth(d, m); if(x){ if(!out.date) out.date = qsIso(x); used[n.i] = true; } });
+      // iznos je samo broj na kraju (posle njega samo prepoznati datum/racun) — broj u sredini opisa ("iPhone 15 maska", "Racun 2025") ostaje opis
+      const tailFree = i => tokens.every((_, j) => j <= i || used[j]);
+      const ok = n => { const tk = tokens[n.i]; const digits = (tk.match(/\d/g) || []).length; return !used[n.i] && digits <= 6 && !/^0\d/.test(tk) && tailFree(n.i); };
+      const pick = nums.filter(ok).pop();
+      if(pick){ const n = parseAmount(tokens[pick.i]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); used[pick.i] = true; } }
+    }
+    out.desc = tokens.filter((_, i) => !used[i]).join(' ');
     return out;
   }
   function quickCategoryPrompt(categories, desc){

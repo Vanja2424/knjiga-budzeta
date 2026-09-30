@@ -33,7 +33,33 @@
     set('desc', 'smokeručak 450 danas');
     $('addBtn').click(); await sleep(300);
     const e2 = window.__lastQuickEntry;
-    check('ručno upisan iznos ima prednost', !!e2 && e2.amount === 999 && e2.desc === 'smokeručak', JSON.stringify(e2));
+    check('ručno upisan iznos ima prednost, brojevi ostaju u opisu', !!e2 && e2.amount === 999 && e2.desc === 'smokeručak 450', JSON.stringify(e2));
+    // izabrana valuta se ne vraca na RSD
+    await sleep(1000);
+    window.__resetQuickForm && window.__resetQuickForm();
+    if (![...$('currency').options].some(o => o.value === 'EUR')) $('currency').insertAdjacentHTML('beforeend', '<option>EUR</option>');
+    $('currency').value = 'EUR'; $('currency').dispatchEvent(new Event('change', { bubbles: true }));
+    set('desc', 'smokekafa 5');
+    $('addBtn').click(); await sleep(300);
+    const e3 = window.__lastQuickEntry;
+    check('izabrana valuta ostaje', !!e3 && e3.currency === 'EUR' && e3.amount === 5, JSON.stringify(e3));
+    // AI odgovor posle promene u prihod ne menja kategoriju
+    await sleep(1000);
+    window.__resetQuickForm && window.__resetQuickForm();
+    window.__fakeQuickCategory = async () => { await sleep(300); return { ok: true, content: '{"category":"Hrana"}' }; };
+    set('desc', 'smokenovi opis');
+    await sleep(750);
+    document.querySelector('.seg button[data-type="income"]').click();
+    await sleep(900);
+    check('AI ne menja kategoriju prihoda', $('catHint').textContent === '' && $('category').value !== 'Hrana', $('category').value);
+    document.querySelector('.seg button[data-type="expense"]').click();
+    // kratak opis ne ide AI-ju
+    window.__resetQuickForm && window.__resetQuickForm();
+    let askedShort = false;
+    window.__fakeQuickCategory = () => { askedShort = true; return { ok: true, content: '{"category":"Hrana"}' }; };
+    set('desc', 'kaf');
+    await sleep(1000);
+    check('opis kraći od 4 slova ne ide AI-ju', !askedShort);
     window.__fakeQuickCategory = null;
   } catch (err) { failures.push('brzi unos: izuzetak: ' + (err && err.stack || err)); }
   return { passed, failures };

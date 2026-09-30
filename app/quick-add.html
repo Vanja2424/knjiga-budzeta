@@ -234,6 +234,7 @@
   function catOptions(t, selected){ return catsFor(t).map(c => `<option${c === selected ? ' selected' : ''}>${esc(c)}</option>`).join(''); }
   function setType(t){
     type = t;
+    clearTimeout(aiTimer); aiSeq++; if($('catHint')) $('catHint').textContent = '';
     $('seg').className = 'seg ' + t;
     document.querySelectorAll('.seg button').forEach(b => { b.classList.toggle('on', b.dataset.type === t); b.setAttribute('aria-selected', b.dataset.type === t); });
     const sel = $('category'); const prev = sel.value;
@@ -276,13 +277,13 @@
     const hist = data.history.find(h => h.type === type && h.desc.toLowerCase() === desc);
     const cat = (rule && rule.category) || (hist && hist.category);
     if(cat && catsFor(type).includes(cat)){ if(!catTouched) $('category').value = cat; return; }
-    if(type !== 'expense' || catTouched || desc.length < 3 || !(fakeQuickCategory || (window.desktop && window.desktop.bills))) return;
+    if(type !== 'expense' || catTouched || desc.replace(/[^\p{L}]/gu, '').length < 4 || !(fakeQuickCategory || (window.desktop && window.desktop.bills))) return;
     const seq = aiSeq;
     aiTimer = setTimeout(async () => {
       const req = { images: [], text: '', prompt: C.quickCategoryPrompt(data.expenseCats, p.desc) };
       let res = null;
       try{ res = fakeQuickCategory ? await fakeQuickCategory(req) : await window.desktop.bills.read(req); } catch(e){ res = null; }
-      if(seq !== aiSeq || catTouched || !res || !res.ok) return;
+      if(seq !== aiSeq || catTouched || type !== 'expense' || !res || !res.ok) return;
       const aiCat = C.cleanQuickCategory(res.content, data.expenseCats);
       if(aiCat){ $('category').value = aiCat; $('catHint').textContent = t('AI predlog'); }
     }, 700);
@@ -399,13 +400,14 @@
     e.preventDefault();
     const stay = keepOpen; keepOpen = false;
     // prepoznati delovi recenice idu u polja; rucno upisan iznos/datum ima prednost
-    const p = parsedDesc();
-    const fromSentence = !(parseFloat($('amount').value) > 0) && p.amount > 0;
-    if(fromSentence){
+    clearTimeout(aiTimer); aiSeq++;
+    const manualAmount = parseFloat($('amount').value) > 0;
+    const p = manualAmount ? C.parseQuickSentence($('desc').value, { today: today(), accounts: data.accounts || [], noAmount: true }) : parsedDesc();
+    if(!manualAmount && p.amount > 0){
+      if(p.currency && ![...$('currency').options].some(o => o.value === p.currency)){ $('err').textContent = t('Kurs za {0} nije dostupan — izaberi valutu ručno.', p.currency); fit(); return; }
       $('amount').value = String(p.amount);
-      const cur = p.currency || 'RSD';
-      if(![...$('currency').options].some(o => o.value === cur)){ $('err').textContent = t('Kurs za {0} nije dostupan — izaberi valutu ručno.', cur); fit(); return; }
-      $('currency').value = cur; updateConv();
+      if(p.currency) $('currency').value = p.currency;
+      updateConv();
     }
     if(p.date && !dateTouched) $('date').value = p.date;
     if(p.accountId && (data.accounts || []).length >= 2) $('account').value = p.accountId;

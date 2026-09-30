@@ -1188,7 +1188,7 @@
       window.__setCatRules(rules0);
       window.__fakeImportCategorizing = null;
       go('podesavanja'); await sleep(80);
-      check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
+      check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent) && /brzom unosu/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
     } else check('uvoz AI: hook', false);
 
     // Cuvanje u fajl
