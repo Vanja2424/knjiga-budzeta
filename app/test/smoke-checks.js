@@ -823,7 +823,7 @@
       const pdf = tinyPdf(['JP EPS Snabdevanje', 'Obracunski period 01.01.2025 - 31.01.2025', 'Visa tarifa 215 kWh', 'Niza tarifa 154 kWh', 'Ukupno za uplatu 4.456,16']);
       const pdfFile = new File([pdf], 'eps-januar.pdf', { type: 'application/pdf' });
       let sent = null;
-      window.__fakeBillReading = req => { sent = req; return { ok: true, content: '```json\n' + JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-01', amount: '4.456,16', values: { m1: 215, m2: 154 }, confidence: { m2: 'low' } }) + '\n```' }; };
+      window.__fakeBillReading = req => { sent = req; return { ok: true, content: '```json\n' + JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-01', amount: '4.456,16', values: { m1: 215, m2: 154 }, payee: { name: 'JP EPS Snabdevanje', account: '160000000000000111' }, confidence: { m2: 'low' } }) + '\n```' }; };
       const done = window.__addBillFiles([pdfFile]);
       await sleep(2500);
       check('kućni računi: AI dobija tekst PDF-a i sliku strane', !!sent && /Ukupno za uplatu/.test(sent.text) && sent.images.length === 1 && /^data:image\/jpeg/.test(sent.images[0]), sent && JSON.stringify({ t: sent.text.slice(0, 80), n: sent.images.length }));
@@ -843,6 +843,21 @@
       const d2 = window.__addBillFiles([new File([pdf], 'eps2.pdf', { type: 'application/pdf' })]); await sleep(2000);
       check('kućni računi: duplikat prepoznat', $('billDupRow').style.display !== 'none');
       $('billCancel').click(); await d2;
+      // Excel: primalac racuna prezivi izvoz i ponovno citanje
+      if (saved && window.__billsFromWorkbook) {
+        const rt = window.__billsFromWorkbook(window.__buildWorkbook());
+        const rb = rt && rt.bills.find(b => b.id === saved.id);
+        check('Excel: primalac računa se čuva', !!rb && rb.payee && rb.payee.name === 'JP EPS Snabdevanje' && rb.payee.account === '160000000000000111', JSON.stringify(rb));
+      } else check('Excel: hook za čitanje računa', false);
+      // Zamena bez novog fajla (rucni unos) ne sme da baci postojeci prilog
+      if (saved && window.__openBillReview) {
+        const mp = window.__openBillReview({ typeId: struja.id, month: '2025-01' }); await sleep(100);
+        setVal('billAmount', '4460');
+        $('billSavePaid').click(); await mp; await sleep(150);
+        const after = B().bills.find(b => b.id === saved.id);
+        const opened = after && after.file ? await window.desktop.bills.openFile(after.file) : { ok: false };
+        check('kućni računi: zamena bez fajla čuva prilog', !!after && after.file === saved.file && opened.ok === true && after.amount === 4460, JSON.stringify({ after, opened }));
+      } else check('kućni računi: hook za ručni unos', false);
       // Ostecen PDF -> poruka, rucni unos i dalje moguc
       window.__fakeBillReading = null;
       const d3 = window.__addBillFiles([new File([new Uint8Array([1, 2, 3])], 'lose.pdf', { type: 'application/pdf' })]); await sleep(1500);
@@ -856,6 +871,41 @@
       $('billSavePaid').click(); await sleep(300);
       check('kućni računi: bez kursa se ne čuva', B().bills.length === nBills && entries().length === nEntries && /Kurs za BAM/.test($('billStatus').textContent), $('billStatus').textContent);
       $('billCancel').click(); await d4; window.__setFxRate('BAM', savedRates.BAM); stan.currency = 'RSD';
+      // Veza sa ponavljajucom: "za placanje" -> zamena -> "Plati" nudi iznos sa racuna, jedan rashod
+      const curM = monthKey(new Date());
+      go('ponavljajuce'); await sleep(50);
+      setVal('recDesc', 'Smoke EPS Struja'); setVal('recAmount', '3000'); setVal('recDay', '28');
+      $('recCategory').value = struja.category; $('recAutoPay').checked = false;
+      $('recurringForm').requestSubmit(); await sleep(100);
+      const epsRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoke EPS Struja');
+      check('veza: ponavljajuća napravljena', !!epsRec && epsRec.category === struja.category, JSON.stringify(epsRec));
+      if (epsRec) {
+        const nE = entries().length;
+        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: curM, amount: 4456.16 }) });
+        const l1 = window.__addBillFiles([pdfFile]); await sleep(2000);
+        check('veza: nudi ponavljajuću', $('billRecRow').style.display !== 'none' && $('billLinkRec').checked);
+        $('billSavePending').click(); await l1; await sleep(150);
+        const lb = B().bills.find(b => b.billTypeId === struja.id && b.month === curM);
+        check('veza: račun vezan, bez rashoda', !!lb && lb.recurringId === epsRec.id && !lb.entryId && entries().length === nE, JSON.stringify(lb));
+        window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: curM, amount: 4500 }) });
+        const l2 = window.__addBillFiles([pdfFile]); await sleep(2000);
+        $('billSavePending').click(); await l2; await sleep(150);
+        const lb2 = B().bills.find(b => b.billTypeId === struja.id && b.month === curM);
+        check('veza: zamena ne pravi drugi rashod', !!lb2 && lb2.amount === 4500 && lb2.recurringId === epsRec.id && entries().length === nE, JSON.stringify({ lb2, n: entries().length - nE }));
+        go('ponavljajuce'); await sleep(80);
+        const cb = document.querySelector(`input[type="checkbox"][data-id="${epsRec.id}"]`);
+        if (cb) { cb.checked = true; cb.dispatchEvent(new Event('change')); await sleep(100); }
+        check('veza: Plati nudi iznos sa računa', !!$('edit-field-amount') && $('edit-field-amount').value === '4500', $('edit-field-amount') && $('edit-field-amount').value);
+        if ($('editModalOverlay').classList.contains('show')) { $('editModalSave').click(); await sleep(150); }
+        const paidE = entries().find(e => e.id === 'rec-' + epsRec.id + '-' + curM);
+        const lb3 = lb2 && B().bills.find(b => b.id === lb2.id);
+        check('veza: plaćeno iznosom sa računa, jedan rashod', !!paidE && paidE.amount === 4500 && entries().length === nE + 1 && !!lb3 && lb3.entryId === paidE.id, JSON.stringify({ paidE, n: entries().length - nE, lb3 }));
+        if (lb2) window.__deleteBill(lb2.id, { confirm: false });
+        if (paidE) window.__deleteEntriesById([paidE.id]);
+        go('ponavljajuce'); await sleep(80);
+        const delR = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(epsRec.id)}"] .del-btn`);
+        if (delR) { delR.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
+      }
       // Brisanje i Ctrl+Z
       if (saved) {
         window.__deleteBill(saved.id, { confirm: false }); await sleep(100);
@@ -874,6 +924,8 @@
     check('kućni računi: podkartica u Izveštajima', [...document.querySelectorAll('#subtabs button')].some(b => b.dataset.screen === 'rezije'));
     if (typeof window.__importBillsSheet === 'function') {
       const before = window.__bills().bills.length;
+      const pv = window.__billsSheetPreview ? window.__billsSheetPreview([['Računi 2024'], ['Mesec', '', '01. Januar', '02. Februar'], ['Kućni računi', 'Struja', 1000, 2000], ['Kućni računi (Smoke Drvar)', 'Struja', 9.99, ''], ['Kućni računi (potrošnja)', 'Struja - skupa', 100, 90]], { 'Smoke Drvar': 'BAM' }) : '';
+      check('uvoz tabele: pregled pre uvoza (računi, duplikati, nove lokacije i vrste)', /za uvoz: 3\b/.test(pv) && /postoje: 0\b/.test(pv) && /Smoke Drvar/.test(pv) && /Struja/.test(pv), pv);
       const res = window.__importBillsSheet([['Računi 2024'], ['Mesec', '', '01. Januar', '02. Februar'], ['Kućni računi', 'Struja', 1000, 2000], ['Kućni računi (Smoke Drvar)', 'Struja', 9.99, ''], ['Kućni računi (potrošnja)', 'Struja - skupa', 100, 90]], { 'Smoke Drvar': 'BAM' });
       check('uvoz tabele: napravljeni računi i lokacija', res.created === 3 && window.__bills().locations.some(l => l.name === 'Smoke Drvar' && l.currency === 'BAM'), JSON.stringify(res));
       $('rezijeYear').value = '2024'; $('rezijeYear').dispatchEvent(new Event('change')); await sleep(80);

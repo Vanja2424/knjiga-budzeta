@@ -945,6 +945,9 @@
   // Poredjenje naziva bez velikih slova i dijakritika ("Struja" == "struja", "Potrošnja" == "potrosnja")
   const foldText = s => String(s == null ? '' : s).toLowerCase().replace(/đ/g, 'dj').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
   const isStr = v => typeof v === 'string' && v.trim() !== '';
+  // id-jevi i kljucevi merenja idu u HTML atribute (data-*, value) — samo slova, cifre, _ i -
+  const isId = v => typeof v === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(v);
+  const isMetricKey = v => typeof v === 'string' && /^m\d{1,4}$/.test(v);
   function defaultBillTypes(locationId, category, newId){
     const mk = (name, metrics) => ({ id: newId(), locationId, name, category, metrics });
     return [
@@ -955,31 +958,31 @@
     ];
   }
   function cleanLocations(arr, currencies){
-    return (Array.isArray(arr) ? arr : []).filter(l => l && isStr(l.id) && isStr(l.name))
+    return (Array.isArray(arr) ? arr : []).filter(l => l && isId(l.id) && isStr(l.name))
       .map(l => ({ id: l.id, name: l.name.trim().slice(0, 60), currency: (currencies || []).includes(l.currency) ? l.currency : 'RSD' }));
   }
   function cleanBillTypes(arr, locationIds){
-    return (Array.isArray(arr) ? arr : []).filter(t => t && isStr(t.id) && isStr(t.name) && (locationIds || []).includes(t.locationId))
+    return (Array.isArray(arr) ? arr : []).filter(t => t && isId(t.id) && isStr(t.name) && (locationIds || []).includes(t.locationId))
       .map(t => ({ id: t.id, locationId: t.locationId, name: t.name.trim().slice(0, 60), category: isStr(t.category) ? t.category : 'Ostalo',
-        metrics: (Array.isArray(t.metrics) ? t.metrics : []).filter(m => m && isStr(m.key) && isStr(m.name))
+        metrics: (Array.isArray(t.metrics) ? t.metrics : []).filter(m => m && isMetricKey(m.key) && isStr(m.name))
           .map(m => ({ key: m.key, name: m.name.trim().slice(0, 40), unit: String(m.unit || '').trim().slice(0, 12) })) }));
   }
   const isoDateOk = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
   function cleanBills(arr, typeIds){
-    return (Array.isArray(arr) ? arr : []).filter(b => b && isStr(b.id) && (typeIds || []).includes(b.billTypeId) && /^\d{4}-(0[1-9]|1[0-2])$/.test(b.month || ''))
+    return (Array.isArray(arr) ? arr : []).filter(b => b && isId(b.id) && (typeIds || []).includes(b.billTypeId) && /^\d{4}-(0[1-9]|1[0-2])$/.test(b.month || ''))
       .map(b => {
         const amount = parseAmount(b.amount);
         const values = {};
         const src = b.values && typeof b.values === 'object' ? b.values : {};
-        Object.keys(src).forEach(k => { const v = parseAmount(src[k]); if(Number.isFinite(v) && v >= 0) values[k] = v; });
+        Object.keys(src).forEach(k => { const v = parseAmount(src[k]); if(isMetricKey(k) && Number.isFinite(v) && v >= 0) values[k] = v; });
         const out = { id: b.id, billTypeId: b.billTypeId, month: b.month, amount: Number.isFinite(amount) && amount > 0 ? round2(amount) : 0,
           currency: /^[A-Z]{3}$/.test(b.currency || '') ? b.currency : 'RSD', values, source: ['ai', 'qr', 'manual', 'excel'].includes(b.source) ? b.source : 'manual' };
         if(isoDateOk(b.periodFrom)) out.periodFrom = b.periodFrom;
         if(isoDateOk(b.periodTo)) out.periodTo = b.periodTo;
         if(isoDateOk(b.dueDate)) out.dueDate = b.dueDate;
         const payee = b.payee && cleanPayee(b.payee); if(payee) out.payee = payee;
-        ['entryId', 'recurringId'].forEach(k => { if(isStr(b[k])) out[k] = b[k]; });
-        if(isStr(b.file) && !/[\/]/.test(b.file)) out.file = b.file;
+        ['entryId', 'recurringId'].forEach(k => { if(isId(b[k])) out[k] = b[k]; });
+        if(isStr(b.file) && /^[^\\/:*?"<>|]+\.(pdf|jpe?g|png|webp|heic)$/i.test(b.file) && b.file[0] !== '.') out.file = b.file;
         return out;
       });
   }
@@ -1064,6 +1067,13 @@
     return r;
   }
 
+  // Kljuc novog merenja: posle svih kljuceva vrste I onih koji jos stoje u racunima (obrisano merenje ne sme da ozivi pod drugim imenom)
+  function nextMetricKey(type, bills){
+    const num = k => parseInt(String(k).slice(1), 10) || 0;
+    let max = (type.metrics || []).reduce((mx, m) => Math.max(mx, num(m.key)), 0);
+    (bills || []).forEach(b => { if(b.billTypeId === type.id && b.values) Object.keys(b.values).forEach(k => { max = Math.max(max, num(k)); }); });
+    return 'm' + (max + 1);
+  }
   function findBillDuplicate(bills, billTypeId, month, exceptId){
     return (bills || []).find(b => b.billTypeId === billTypeId && b.month === month && b.id !== exceptId) || null;
   }
@@ -1152,7 +1162,7 @@
     const metricFor = (t, name) => {
       let m = name ? t.metrics.find(x => foldText(x.name) === foldText(name)) : (t.metrics.length === 1 ? t.metrics[0] : null);
       if(!m){
-        m = { key: 'm' + (t.metrics.reduce((mx, x) => Math.max(mx, parseInt(x.key.slice(1), 10) || 0), 0) + 1), name: name || 'Potrošnja', unit: '' };
+        m = { key: nextMetricKey(t, ctx.bills), name: name || 'Potrošnja', unit: '' };
         t.metrics.push(m);
         if(!out.newTypes.includes(t) && !out.changedTypes.includes(t)) out.changedTypes.push(t);
       }
@@ -1230,7 +1240,7 @@
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
-    findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
+    nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, parseBillsSheet, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

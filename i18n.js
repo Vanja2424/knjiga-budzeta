@@ -497,6 +497,8 @@
     'Fajl računa se šalje Groq-u na čitanje. Ostali podaci ostaju samo na ovom računaru.': 'The bill file is sent to Groq for reading. All other data stays on this computer only.',
     'upisan (…{0})': 'saved (…{0})', 'nije upisan': 'not set', 'Ključ sačuvan (…{0}).': 'Key saved (…{0}).', 'Ključ obrisan.': 'Key deleted.', 'Proveravam…': 'Checking…', 'Ključ radi ✓': 'Key works ✓',
     'Šifrovanje ključa nije dostupno na ovom računaru, pa ključ ne može da se sačuva.': 'Key encryption isn’t available on this computer, so the key can’t be saved.',
+    'Iznos (RSD) — sa računa': 'Amount (RSD) — from the bill', 'Računa za uvoz: {0} · već postoje: {1}.': 'Bills to import: {0} · already exist: {1}.',
+    'Nove lokacije: {0}.': 'New locations: {0}.', 'Nove vrste računa: {0}.': 'New bill types: {0}.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

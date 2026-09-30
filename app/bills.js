@@ -9,6 +9,7 @@ const MAX_IMAGES = 3;
 const MAX_TEXT = 20000;
 const TIMEOUT_MS = 60000;
 const TRASH = '.obrisano';
+const ALLOWED_EXT = /\.(pdf|jpe?g|png|webp|heic)$/i; // prilog je samo racun (PDF ili slika) — nikad nesto sto se pokrece
 
 function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, now = () => Date.now() }) {
   const s = () => getSettings();
@@ -79,11 +80,12 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
     const p = path.join(base, name);
     return path.dirname(p) === base ? p : null;
   }
-  const filePath = name => { const p = inside(dir(), name); return p && fs.existsSync(p) ? p : null; };
+  const filePath = name => { const p = ALLOWED_EXT.test(String(name || '')) && inside(dir(), name); return p && fs.existsSync(p) ? p : null; };
   function saveFile(bytes, name) {
     try {
       fs.mkdirSync(dir(), { recursive: true });
       const clean = safeName(name), ext = path.extname(clean), stem = clean.slice(0, clean.length - ext.length);
+      if (!ALLOWED_EXT.test(clean)) return { ok: false, error: 'nedozvoljen tip fajla' };
       let final = clean;
       for (let i = 2; fs.existsSync(path.join(dir(), final)); i++) final = `${stem}-${i}${ext}`;
       fs.writeFileSync(path.join(dir(), final), Buffer.from(bytes));

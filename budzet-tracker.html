@@ -4235,7 +4235,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       primary.textContent = t('Plaćeno');
       ipsEl('ipsPayHint').textContent = due ? t('Otvori aplikaciju svoje banke, izaberi skeniranje IPS QR koda i usmeri telefon na ekran. Posle plaćanja klikni „Plaćeno“.')
         : t('Ova stavka je za ovaj mesec već plaćena ili nije na redu — kod možeš da iskoristiš ako plaćaš ranije.');
-      const amt = r.debtId ? suggestedPayAmount(r) : recurringAmountNow(r);
+      const amt = suggestedPayAmount(r);
       ipsEl('ipsAmount').value = String(Math.round(amt * 100) / 100);
       renderIpsPay();
     }
@@ -4431,6 +4431,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   window.__addBillFiles = addBillFiles;
+  window.__openBillReview = opts => openBillReview(opts);
 
   let billReview = null; // { prepared, bill (izmena), source, payee, recurring, page, resolve }
   const billEl = id => document.getElementById(id);
@@ -4564,10 +4565,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(file) bill.file = file;
     const payee = (billReview.payee || f.payeeName) ? C.cleanPayee(Object.assign({}, billReview.payee || {}, { name: f.payeeName || (billReview.payee && billReview.payee.name) || '' })) : null;
     if(payee) bill.payee = payee;
-    if(replace && dup.file && dup.file !== file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(dup.file);
+    const newFile = file && file !== (edit ? edit.file : undefined);
+    if(replace && newFile && dup.file && dup.file !== file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(dup.file);
     // 2) rashod: postojeci se azurira; ponavljajuca stavka; ili nov rashod
     const linkedEntry = bill.entryId ? entries.find(e=> e.id === bill.entryId) : null;
-    const rec = !edit && !replace && billReview.recurring && billEl('billLinkRec').checked ? billReview.recurring : null;
+    const linkedRec = !linkedEntry && bill.recurringId ? recurring.find(r=> r.id === bill.recurringId) || null : null;
+    const rec = linkedRec || (!edit && !replace && billReview.recurring && billEl('billLinkRec').checked ? billReview.recurring : null);
     bills = bills.filter(b=> b.id !== bill.id).concat(bill);
     if(linkedEntry){
       if(draft.amount > 0){
@@ -4576,8 +4579,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       }
     } else if(rec){
       bill.recurringId = rec.id;
-      if(paid){ const id = markRecurringPaid(rec, f.month, rsd.amount > 0 ? rsd.amount : undefined); if(id) bill.entryId = id; }
-    } else if(!edit && draft.amount > 0){
+      if(paid && !edit){ const id = markRecurringPaid(rec, f.month, rsd.amount > 0 ? rsd.amount : undefined); if(id) bill.entryId = id; }
+    } else if(!edit && !bill.recurringId && draft.amount > 0){
       const today = toISODateLocal(new Date());
       const entry = { id: newId(), type: 'expense', desc: locations.length > 1 ? `${type.name} – ${loc.name}` : type.name, amount: rsd.amount, category: type.category,
         date: paid ? today : (f.dueDate || today), tags: [], billId: bill.id };
@@ -4715,6 +4718,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return { created: r.bills.length, duplicates: r.duplicates, year: parsed.year, newLocations: r.newLocations.map(l=> l.name) };
   }
   window.__importBillsSheet = importBillsSheet;
+  function billsSheetPreview(aoa, currencyByName){
+    const parsed = C.parseBillsSheet(aoa);
+    if(!parsed || !parsed.year) return '';
+    const probeLocs = locations.length ? locations : [{ id: '_', name: 'Stan', currency: 'RSD' }];
+    const r = C.billsFromSheet(parsed, { locations: probeLocs, billTypes, bills, primaryLocationId: probeLocs[0].id, category: defaultBillCategory(), newId, newLocationCurrency: currencyByName || {} });
+    const locName = id => (probeLocs.concat(r.newLocations).find(l=> l.id === id) || {}).name || '';
+    return [t('Računa za uvoz: {0} · već postoje: {1}.', r.bills.length, r.duplicates),
+      r.newLocations.length ? t('Nove lokacije: {0}.', r.newLocations.map(l=> l.name).join(', ')) : '',
+      r.newTypes.length ? t('Nove vrste računa: {0}.', r.newTypes.map(x=> x.name + ' (' + locName(x.locationId) + ')').join(', ')) : ''].filter(Boolean).join(' ');
+  }
+  window.__billsSheetPreview = billsSheetPreview;
   function removeLocation(id){
     const typeIds = billTypes.filter(x=> x.locationId === id).map(x=> x.id);
     const gone = bills.filter(b=> typeIds.includes(b.billTypeId));
@@ -4736,7 +4750,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const parsed = C.parseBillsSheet(pick.aoa);
     const names = [...new Set(parsed.blocks.map(b=> b.location).filter(n=> n && !locations.some(l=> C.foldText(l.name) === C.foldText(n))))];
     const curOpts = CURRENCIES.map(x=> `<option value="${x}"${x === 'RSD' ? ' selected' : ''}>${x}</option>`).join('');
-    const body = `<div>${escapeHtml(t('Godina {0}, list „{1}“.', parsed.year || '?', pick.n))}</div>`
+    const body = `<div>${escapeHtml(t('Godina {0}, list „{1}“.', parsed.year || '?', pick.n))}</div><div style="margin-top:.4em;" translate="no">${escapeHtml(billsSheetPreview(pick.aoa, {}))}</div>`
       + (names.length ? `<div style="margin-top:.6em;">${escapeHtml(t('Nove lokacije — izaberi valutu:'))}</div>` + names.map(n=> `<div class="file-row"><span translate="no" style="min-width:8em;">${escapeHtml(n)}</span><select data-loc="${escapeHtml(n)}">${curOpts}</select></div>`).join('') : '')
       + `<div class="hint" style="margin-top:.6em;">${escapeHtml(t('Uvezeni računi nemaju rashod ni prilog; postojeći računi za isti mesec se preskaču.'))}</div>`;
     if(!parsed.year){ appAlert(t('U tabeli nije pronađena godina (npr. „Računi 2025“ iznad meseci).')); return; }
@@ -4784,7 +4798,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const locEl = b.closest('.bill-loc'), typeEl = b.closest('.bill-type'), mEl = b.closest('.bt-metric');
     const loc = locEl && locationById(locEl.dataset.loc), type = typeEl && billTypeById(typeEl.dataset.type);
     if(b.classList.contains('bt-add') && loc){ billTypes.push({ id: newId(), locationId: loc.id, name: t('Nova vrsta'), category: defaultBillCategory(), metrics: [] }); }
-    else if(b.classList.contains('bm-add') && type){ const n = type.metrics.reduce((mx, x)=> Math.max(mx, parseInt(x.key.slice(1), 10) || 0), 0) + 1; type.metrics.push({ key: 'm' + n, name: t('Merenje'), unit: '' }); }
+    else if(b.classList.contains('bm-add') && type){ type.metrics.push({ key: C.nextMetricKey(type, bills), name: t('Merenje'), unit: '' }); }
     else if(b.classList.contains('bm-del') && type && mEl){
       const used = bills.some(x=> x.billTypeId === type.id && x.values[mEl.dataset.key] != null);
       if(used && !(await appConfirm(t('Ovo merenje ima upisane vrednosti. Ukloniti ga? Vrednosti ostaju u računima, ali se više ne prikazuju.')))) return;
@@ -4974,7 +4988,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const debtInstallment = d => recurring.find(r => r.debtId === d.id);
   // Predlozeni/prikazani iznos za placanje stavke — za ratu (r.debtId) ogranicen na ostatak duga,
   // da predlog/podsetnik ne navode na iznos koji bi "prepunio" dug.
+  // Racun sacuvan "za placanje" i vezan za stavku u tom mesecu -> njegov iznos (RSD) je predlog za placanje
+  const linkedBillAmount = (r, mKey) => {
+    const b = bills.find(x=> x.recurringId === r.id && x.month === (mKey || currentMonthKey()) && !x.entryId);
+    const a = b && b.amount > 0 ? billAmountRsd(b) : null;
+    return a ? a.amount : null;
+  };
   const suggestedPayAmount = r => {
+    const fromBill = linkedBillAmount(r);
+    if(fromBill != null) return fromBill;
     if(!r.debtId) return recurringAmountNow(r);
     const d = debts.find(x=> x.id === r.debtId);
     return d ? Math.min(recurringAmountNow(r), debtRemaining(d)) : recurringAmountNow(r);
@@ -7911,12 +7933,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           const lastAmount = lastActualAmountFor(r);
           const foreign = r.currency && r.currency !== 'RSD' && r.origAmount;
           const nowAmount = recurringAmountNow(r);
+          const billAmount = linkedBillAmount(r);
           const hasDifferentHistory = !foreign && lastAmount != null && lastAmount !== r.amount;
-          const label = foreign
+          const label = billAmount != null ? t('Iznos (RSD) — sa računa') : foreign
             ? t('Iznos (RSD) — {0} po današnjem kursu NBS', fmtOrig(r.origAmount, r.currency))
             : (hasDifferentHistory ? t('Iznos (RSD) — poslednji put: {0}', fmt(lastAmount)) : t('Iznos (RSD)'));
           openEditModal(t('Plati: {0}', r.desc), [
-            {key:'amount', label, type:'number', value: r.debtId ? suggestedPayAmount(r) : (hasDifferentHistory ? lastAmount : nowAmount)}
+            {key:'amount', label, type:'number', value: billAmount != null ? billAmount : r.debtId ? suggestedPayAmount(r) : (hasDifferentHistory ? lastAmount : nowAmount)}
           ], (vals)=>{
             if(isNaN(vals.amount) || vals.amount <= 0) return;
             togglePaid(r, true, vals.amount);
@@ -9110,7 +9133,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(locations.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(locations.map(l=>({ID:l.id, Naziv:l.name, Valuta:l.currency}))), 'Lokacije');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:''}]), 'KucniRacuni');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source, PrimalacRacun:b.payee?b.payee.account:'', PrimalacNaziv:b.payee?b.payee.name:'', Model:b.payee?b.payee.model:'', PozivNaBroj:b.payee?b.payee.reference:''})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:'', PrimalacRacun:'', PrimalacNaziv:'', Model:'', PozivNaBroj:''}]), 'KucniRacuni');
     }
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
@@ -9148,6 +9171,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   window.__workbookShapeError = workbookShapeError;
 
+  // Kucni racuni iz Excela (listovi Lokacije, VrsteRacuna, KucniRacuni); null = stari fajl bez njih (racuni ostaju)
+  function billsFromWorkbook(wb){
+    if(!(wb.Sheets['Lokacije'] && wb.Sheets['VrsteRacuna'] && wb.Sheets['KucniRacuni'])) return null;
+    const sheetRows = (name) => XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''});
+    const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
+    const locs = C.cleanLocations(sheetRows('Lokacije').map(r=>({ id: String(r.ID), name: String(r.Naziv), currency: String(r.Valuta) })), CURRENCIES);
+    const types = C.cleanBillTypes(sheetRows('VrsteRacuna').filter(r=> r.ID).map(r=>({ id: String(r.ID), locationId: String(r.LokacijaID), name: String(r.Naziv), category: String(r.Kategorija), metrics: js(r.Merenja) })), locs.map(l=> l.id));
+    const list = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||''), payee: r.PrimalacRacun || r.PrimalacNaziv ? { account: String(r.PrimalacRacun||''), name: String(r.PrimalacNaziv||''), model: String(r.Model||''), reference: String(r.PozivNaBroj||'') } : undefined })), types.map(x=> x.id));
+    return { locations: locs, billTypes: types, bills: list };
+  }
+  window.__billsFromWorkbook = billsFromWorkbook;
   function parseWorkbook(wb){
     const sheetRows = (name) => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''}) : [];
 
@@ -9250,12 +9284,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       accounts = sheetRows('Racuni').filter(r=>r.Naziv).map(r=>({ id: String(r.ID || newId()), name: String(r.Naziv), type: ['tekuci','gotovina','stednja','kartica'].includes(String(r.Vrsta)) ? String(r.Vrsta) : 'tekuci', openingBalance: Number(r.PocetnoStanje) || 0 }));
       sheetRows('Prenosi').filter(r=>r.Datum && r.SaRacuna && r.NaRacun).forEach(r=> entries.push({ id: String(r.ID || newId()), type: 'transfer', date: normalizeDateCell(r.Datum), desc: String(r.Opis||''), amount: Number(r.Iznos) || 0, fromAccount: String(r.SaRacuna), toAccount: String(r.NaRacun) }));
     }
-    if(wb.Sheets['Lokacije'] && wb.Sheets['VrsteRacuna'] && wb.Sheets['KucniRacuni']){
-      const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
-      locations = C.cleanLocations(sheetRows('Lokacije').map(r=>({ id: String(r.ID), name: String(r.Naziv), currency: String(r.Valuta) })), CURRENCIES);
-      billTypes = C.cleanBillTypes(sheetRows('VrsteRacuna').filter(r=> r.ID).map(r=>({ id: String(r.ID), locationId: String(r.LokacijaID), name: String(r.Naziv), category: String(r.Kategorija), metrics: js(r.Merenja) })), locations.map(l=> l.id));
-      bills = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||'') })), billTypes.map(x=> x.id));
-    }
+    const wbBills = billsFromWorkbook(wb);
+    if(wbBills){ locations = wbBills.locations; billTypes = wbBills.billTypes; bills = wbBills.bills; }
     entries.forEach(e=>{ if(e.accountName){ const a = accounts.find(x=> x.name === e.accountName); if(a) e.accountId = a.id; delete e.accountName; } });
 
     const incRows = sheetRows('KategorijePrihoda');

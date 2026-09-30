@@ -1050,3 +1050,29 @@ test('billsFromSheet: spaja iznos i potrosnju, nove lokacije i vrste, duplikati'
   assert.equal(again.bills.length, 0);
   assert.equal(again.duplicates, r.bills.length);
 });
+
+test('nextMetricKey: ne ponavlja kljuc koji jos postoji u racunima (obrisano merenje)', () => {
+  const type = { id: 'T1', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }] };
+  const bills = [{ billTypeId: 'T1', values: { m1: 1, m2: 154 } }, { billTypeId: 'T9', values: { m7: 1 } }];
+  assert.equal(C.nextMetricKey(type, bills), 'm3');
+  assert.equal(C.nextMetricKey({ id: 'T2', metrics: [] }, []), 'm1');
+  // uvoz tabele: novo merenje ne sme da preuzme kljuc obrisanog merenja
+  let n = 0; const newId = () => 'x' + (++n);
+  const t1 = { id: 'T1', locationId: 'L1', name: 'Struja', category: 'Stanovanje', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }] };
+  const r = C.billsFromSheet({ year: 2025, blocks: [{ location: '', consumption: true, rows: [{ label: 'Struja - Noćna', values: [5, null, null, null, null, null, null, null, null, null, null, null] }] }] },
+    { locations: [{ id: 'L1', name: 'Stan', currency: 'RSD' }], billTypes: [t1], bills, primaryLocationId: 'L1', category: 'Stanovanje', newId });
+  assert.equal(r.changedTypes[0].metrics[1].key, 'm3');
+});
+
+test('kucni racuni: id-jevi i kljucevi merenja su bezbedni za HTML atribute', () => {
+  const evil = '"><img src=x onerror=alert(1)>';
+  assert.deepEqual(C.cleanLocations([{ id: evil, name: 'X', currency: 'RSD' }, { id: 'ok_1-a', name: 'Y', currency: 'RSD' }], ['RSD']).map(l => l.id), ['ok_1-a']);
+  const bt = C.cleanBillTypes([{ id: 'T1', locationId: 'L1', name: 'S', metrics: [{ key: evil, name: 'a' }, { key: 'm2', name: 'b' }] }, { id: evil, locationId: 'L1', name: 'Z' }], ['L1']);
+  assert.deepEqual(bt.map(x => x.id), ['T1']);
+  assert.deepEqual(bt[0].metrics.map(m => m.key), ['m2']);
+  const b = C.cleanBills([{ id: evil, billTypeId: 'T1', month: '2025-01' }, { id: 'B1', billTypeId: 'T1', month: '2025-01', entryId: evil, recurringId: 'r1', values: { [evil]: 1, m1: 2 } }], ['T1']);
+  assert.deepEqual(b.map(x => x.id), ['B1']);
+  assert.equal(b[0].entryId, undefined);
+  assert.deepEqual(b[0].values, { m1: 2 });
+  assert.equal(C.cleanBills([{ id: 'B2', billTypeId: 'T1', month: '2025-01', file: '..\\podaci.json' }], ['T1'])[0].file, undefined);
+});

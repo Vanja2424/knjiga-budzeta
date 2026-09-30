@@ -94,3 +94,12 @@ test('prilozi: neuspelo upisivanje vraca gresku', () => {
   assert.equal(r.ok, false);
   assert.ok(r.error);
 });
+
+test('prilozi: samo PDF i slike (nema .bat/.exe ni otvaranja drugih tipova)', () => {
+  const { api, dir } = setup(() => okResponse('{}'));
+  for (const bad of ['x.bat', 'x.exe', 'x.hta', 'x.cmd', 'x.js', 'x', 'x.pdf.exe']) assert.equal(api.saveFile(new Uint8Array([1]), bad).ok, false, bad);
+  for (const good of ['a.pdf', 'b.JPG', 'c.jpeg', 'd.png', 'e.webp', 'f.heic']) assert.equal(api.saveFile(new Uint8Array([1]), good).ok, true, good);
+  fs.writeFileSync(path.join(dir, 'Prilozi', 'podmetnut.bat'), 'x');
+  assert.equal(api.filePath('podmetnut.bat'), null);
+  assert.ok(api.filePath('a.pdf'));
+});
