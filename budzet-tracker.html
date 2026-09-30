@@ -1747,6 +1747,22 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .month-review-actions{ display:flex; flex-wrap:wrap; gap:0.6em; }
 .analiza-whatif-action{ margin-top:0.7em; }
 .goal-plan{ display:flex; justify-content:space-between; align-items:center; gap:0.8em; font-size:12.5px; color:var(--ink-soft); margin-top:0.5em; }
+/* ---- Kucni racuni (v1.20) ---- */
+.bill-card{ width: min(880px, 94vw); max-height: 92vh; overflow: auto; }
+.bill-layout{ display:grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 720px){ .bill-layout{ grid-template-columns: 1fr; } }
+.bill-preview-img{ background: var(--fill); border-radius: 10px; min-height: 220px; max-height: 62vh; overflow:auto; display:flex; align-items:flex-start; justify-content:center; }
+.bill-preview-img img{ max-width: 100%; display:block; }
+.bill-pages{ display:flex; align-items:center; justify-content:center; gap: 10px; margin-top: 6px; }
+.bill-fields label{ display:block; margin: 10px 0 4px; font-size: 0.86em; color: var(--ink-soft); }
+.bill-fields label.paid-checkbox-label{ display:flex; font-size: 0.92em; color: var(--ink); }
+.bill-fields input:not([type="checkbox"]):not([type="radio"]), .bill-fields select{ width: 100%; }
+.bill-row2{ display:grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bill-metrics{ display:grid; grid-template-columns: 1fr 1fr; gap: 0 10px; }
+.bill-more{ margin-top: 10px; }
+.bill-more summary{ cursor: pointer; color: var(--ink-soft); font-size: 0.9em; }
+.bill-low{ background: color-mix(in srgb, var(--warn) 18%, var(--card)) !important; box-shadow: inset 0 0 0 1.5px var(--warn) !important; }
+.bill-dup{ margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
 </style>
 </head>
 <body>
@@ -2817,6 +2833,47 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 </div>
 
+<div class="modal-overlay" id="billOverlay">
+  <div class="modal-card bill-card" role="dialog" aria-modal="true" aria-labelledby="billTitle" tabindex="-1">
+    <h3 id="billTitle">Kućni račun</h3>
+    <div class="bill-layout">
+      <div class="bill-preview">
+        <div class="bill-preview-img" id="billPreview"></div>
+        <div class="bill-pages" id="billPages" style="display:none;"><button type="button" class="btn-link" id="billPrevPage" aria-label="Prethodna strana">‹</button><span id="billPageLabel"></span><button type="button" class="btn-link" id="billNextPage" aria-label="Sledeća strana">›</button></div>
+      </div>
+      <div class="bill-fields">
+        <div class="import-status" id="billStatus" aria-live="polite"></div>
+        <label for="billLocation">Lokacija</label><select id="billLocation"></select>
+        <label for="billType">Vrsta računa</label><select id="billType"></select>
+        <div class="bill-row2">
+          <div><label for="billMonth">Obračunski mesec</label><input type="month" id="billMonth"></div>
+          <div><label for="billAmount">Iznos <span id="billCurrency" translate="no"></span></label><input type="number" id="billAmount" step="0.01" min="0"></div>
+        </div>
+        <div id="billMetrics" class="bill-metrics"></div>
+        <details class="bill-more"><summary>Više podataka</summary>
+          <div class="bill-row2">
+            <div><label for="billFrom">Period od</label><input type="date" id="billFrom"></div>
+            <div><label for="billTo">Period do</label><input type="date" id="billTo"></div>
+          </div>
+          <label for="billDue">Rok plaćanja</label><input type="date" id="billDue">
+          <label for="billPayee">Primalac</label><input type="text" id="billPayee" maxlength="70" translate="no">
+        </details>
+        <label class="paid-checkbox-label" id="billRecRow" style="display:none;"><input type="checkbox" id="billLinkRec" checked> <span id="billRecLabel"></span></label>
+        <div class="bill-dup" id="billDupRow" style="display:none;">
+          <div id="billDupLabel"></div>
+          <label class="paid-checkbox-label"><input type="radio" name="billDup" value="replace" checked> Zameni postojeći</label>
+          <label class="paid-checkbox-label"><input type="radio" name="billDup" value="keep"> Zadrži oba</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="billCancel">Otkaži</button>
+      <button class="btn-secondary" id="billSavePending">Sačuvaj za plaćanje</button>
+      <button class="save-btn" id="billSavePaid">Sačuvaj kao plaćen</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dialogOverlay" style="z-index:1150;">
   <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody" tabindex="-1">
     <h3 id="dialogTitle">Potvrda</h3>
@@ -3011,6 +3068,26 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
   // Lista za kupovinu (Nabavka): stalni spisak stavki + delovi prodavnice. Proverava se pri ucitavanju.
+  // Kucni racuni: lokacije (valuta), vrste racuna (merenja) i racuni sa prilozima
+  const { locations: LOCATIONS_KEY, types: BILL_TYPES_KEY, bills: BILLS_KEY } = C.BILL_KEYS;
+  const readJsonKey = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch(e){ return d; } };
+  let locations = C.cleanLocations(readJsonKey(LOCATIONS_KEY, []), CURRENCIES);
+  let billTypes = C.cleanBillTypes(readJsonKey(BILL_TYPES_KEY, []), locations.map(l=> l.id));
+  let bills = C.cleanBills(readJsonKey(BILLS_KEY, []), billTypes.map(x=> x.id));
+  function saveBillsState(){
+    localStorage.setItem(LOCATIONS_KEY, JSON.stringify(locations));
+    localStorage.setItem(BILL_TYPES_KEY, JSON.stringify(billTypes));
+    localStorage.setItem(BILLS_KEY, JSON.stringify(bills));
+  }
+  const defaultBillCategory = () => expenseCats.includes('Stanovanje') ? 'Stanovanje' : (expenseCats[0] || 'Ostalo');
+  // Prvi put (kad korisnik otvori racune): lokacija "Stan" (RSD) sa vrstama Struja/Plin/Voda/Internet
+  function ensureBillDefaults(){
+    if(locations.length) return;
+    const loc = { id: newId(), name: 'Stan', currency: 'RSD' };
+    locations = [loc];
+    billTypes = C.defaultBillTypes(loc.id, defaultBillCategory(), newId);
+    saveBillsState();
+  }
   let shopping = C.normalizeShopping((()=>{ try{ return JSON.parse(localStorage.getItem(SHOPPING_KEY) || 'null'); } catch(e){ return null; } })(), newId);
   const monthKey = dateStr => dateStr.slice(0,7);
 
@@ -3270,6 +3347,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(document.getElementById('editModalOverlay').classList.contains('show')){ closeEditModal(); return; }
     if(document.getElementById('finishShopOverlay').classList.contains('show')){ closeFinishPurchase(); return; }
     if(document.getElementById('payOverdueOverlay').classList.contains('show')){ closePayOverdue(); return; }
+    if(document.getElementById('billOverlay').classList.contains('show')){ closeBillReview(false); return; }
     if(document.getElementById('ipsOverlay').classList.contains('show')){ closeIps(); return; }
     if(document.getElementById('dayDetailOverlay').classList.contains('show')){ closeDayDetail(); return; }
     if(document.getElementById('undoToast').classList.contains('show')){ dismissTopUndo(); }
@@ -4011,6 +4089,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Oznaci ponavljajucu stavku placenom za mesec i napravi njen rashod (bez iscrtavanja/zvuka) — vraca id rashoda.
   // Rata (r.debtId) ciji je dug vec izmiren: ne pravi nista, vraca null — pozivaoci moraju da provere.
   function markRecurringPaid(r, mKey, amount){
+    // Racun vezan za ovu stavku u tom mesecu ("Sacuvaj za placanje"): bez rucnog iznosa placa se iznos sa racuna
+    const linkedBill = bills.find(b=> b.recurringId === r.id && b.month === mKey);
+    if(linkedBill && !(typeof amount === 'number' && amount > 0)){ const x = billAmountRsd(linkedBill); if(x && x.amount > 0) amount = x.amount; }
     // Rata ne sme da predje ostatak duga: izmiren dug -> nista; rucno unet veci iznos -> ostatak
     if(r.debtId){
       const d = debts.find(x=> x.id === r.debtId);
@@ -4021,6 +4102,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(skipped[mKey] && skipped[mKey].includes(r.id)){ skipped[mKey] = skipped[mKey].filter(id => id !== r.id); saveSkipped(); }
     const entryId = recurringEntryId(r, mKey);
     if(!entries.some(e => e.id === entryId)) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
+    if(linkedBill && linkedBill.entryId !== entryId){ linkedBill.entryId = entryId; saveBillsState(); }
     return entryId;
   }
   function togglePaid(r, checked, customAmount){
@@ -4187,6 +4269,297 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const blob = item.getAsFile();
     if(ipsEl('ipsOverlay').classList.contains('show') && ipsState.mode === 'edit'){ e.preventDefault(); applySlipToEdit(blob); return; }
     if(activeScreen === 'ponavljajuce' && !document.querySelector('.modal-overlay.show')){ e.preventDefault(); applySlipToNew(blob); }
+  });
+
+  // ---------- Kucni racuni: PDF/slika -> slike + tekst -> QR (lokalno) + Groq -> prozor za potvrdu ----------
+  const BILL_MAX_SIDE = 1600, BILL_JPEG_Q = 0.85, BILL_MAX_PAGES = 3, BILL_MAX_TEXT = 20000;
+  let pdfjsLib = null;
+  async function loadPdfJs(){
+    if(pdfjsLib) return pdfjsLib;
+    pdfjsLib = await import('./pdf.min.mjs');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = './pdf.worker.min.mjs';
+    return pdfjsLib;
+  }
+  function scaledCanvas(src, w, h){
+    const s = Math.min(1, BILL_MAX_SIDE / Math.max(w, h));
+    const cv = document.createElement('canvas'); cv.width = Math.max(1, Math.round(w * s)); cv.height = Math.max(1, Math.round(h * s));
+    const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.drawImage(src, 0, 0, cv.width, cv.height);
+    return cv;
+  }
+  // Fajl -> { images (JPEG data URL za AI i pregled), canvases (za QR), text (iz PDF-a), bytes (prilog), ext, error? }
+  async function prepareBillFile(file){
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+    const extMatch = /\.(\w+)$/.exec(file.name || '');
+    const ext = isPdf ? 'pdf' : (extMatch ? extMatch[1].toLowerCase() : 'jpg');
+    const empty = err => ({ images: [], canvases: [], text: '', bytes, ext, error: err });
+    if(isPdf){
+      try{
+        const lib = await loadPdfJs();
+        const doc = await lib.getDocument({ data: bytes.slice(), isEvalSupported: false }).promise;
+        let text = '';
+        for(let p = 1; p <= doc.numPages && text.length < BILL_MAX_TEXT; p++){
+          const tc = await (await doc.getPage(p)).getTextContent();
+          text += tc.items.map(i=> i.str + (i.hasEOL ? '\n' : ' ')).join('') + '\n';
+        }
+        const images = [], canvases = [];
+        for(let p = 1; p <= Math.min(BILL_MAX_PAGES, doc.numPages); p++){
+          const page = await doc.getPage(p);
+          const vp1 = page.getViewport({ scale: 1 });
+          const vp = page.getViewport({ scale: BILL_MAX_SIDE / Math.max(vp1.width, vp1.height) });
+          const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+          const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, cv.width, cv.height);
+          await page.render({ canvasContext: ctx, viewport: vp }).promise;
+          canvases.push(cv); images.push(cv.toDataURL('image/jpeg', BILL_JPEG_Q));
+        }
+        return { images, canvases, text: text.trim().slice(0, BILL_MAX_TEXT), bytes, ext };
+      } catch(e){
+        return empty(t('PDF ne može da se otvori ({0}). Popuni podatke ručno.', e && e.name === 'PasswordException' ? t('zaštićen lozinkom') : t('oštećen fajl')));
+      }
+    }
+    try{
+      const bmp = await createImageBitmap(file);
+      const cv = scaledCanvas(bmp, bmp.width, bmp.height);
+      return { images: [cv.toDataURL('image/jpeg', BILL_JPEG_Q)], canvases: [cv], text: '', bytes, ext };
+    } catch(e){
+      return empty(t('Slika ne može da se otvori — sačuvaj je kao JPG ili PNG pa probaj ponovo.'));
+    }
+  }
+  async function findQrInPrepared(prep){
+    for(const cv of prep.canvases){
+      try{ const txt = await decodeQrImage(cv); const p = txt && C.parseIpsQr(txt); if(p) return p; } catch(e){ /* nema QR */ }
+    }
+    return null;
+  }
+  let fakeBillReading = null; // test: zamenjuje Groq poziv (req -> { ok, content })
+  Object.defineProperty(window, '__fakeBillReading', { get: ()=> fakeBillReading, set: v=>{ fakeBillReading = v; }, configurable: true });
+  const BILL_ERR = {
+    nokey: ()=> t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa). Popuni podatke ručno.'),
+    key: ()=> t('Groq ključ nije ispravan (401). Proveri ga u podešavanjima.'),
+    limit: r=> r.retryAfter ? t('Groq: dostignut limit (429), pokušaj za {0} s.', r.retryAfter) : t('Groq: dostignut limit (429), pokušaj malo kasnije.'),
+    model: ()=> t('Groq model ne postoji (404). Promeni ga u podešavanjima.'),
+    network: ()=> t('Nema mreže — Groq nije dostupan.'),
+    timeout: ()=> t('Groq nije odgovorio na vreme.'),
+    http: r=> t('Groq greška ({0}).', r.status || '?')
+  };
+  async function readBill(prep){
+    const ctx = { locations, billTypes, currencies: CURRENCIES };
+    const qr = await findQrInPrepared(prep);
+    let reading = null, message = prep.error || '';
+    const canAi = !!fakeBillReading || !!(window.desktop && window.desktop.bills);
+    if(!prep.error && canAi && (prep.images.length || prep.text)){
+      const req = { images: prep.images, text: prep.text, prompt: C.billsPrompt(locations, billTypes) };
+      let res;
+      try{ res = fakeBillReading ? await fakeBillReading(req) : await window.desktop.bills.read(req); }
+      catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
+      if(res && res.ok){ reading = C.cleanBillReading(res.content, ctx); if(!reading) message = t('AI odgovor nije mogao da se pročita. Popuni podatke ručno.'); }
+      else if(res) message = (BILL_ERR[res.kind] || BILL_ERR.http)(res);
+    }
+    const merged = C.mergeBillQr(reading, qr);
+    if(!merged.locationId) merged.locationId = locations[0] ? locations[0].id : '';
+    return { reading: merged, message, source: reading ? 'ai' : (qr ? 'qr' : 'manual') };
+  }
+  async function addBillFiles(files){
+    ensureBillDefaults();
+    for(const f of Array.from(files || [])){
+      openBillReviewShell(t('Čitam račun…'));
+      const prep = await prepareBillFile(f);
+      renderBillPreview(prep, 0);
+      const r = await readBill(prep);
+      await openBillReview({ prepared: prep, reading: r.reading, message: r.message, source: r.source });
+    }
+  }
+  window.__addBillFiles = addBillFiles;
+
+  let billReview = null; // { prepared, bill (izmena), source, payee, recurring, page, resolve }
+  const billEl = id => document.getElementById(id);
+  const billTypeById = id => billTypes.find(x=> x.id === id) || null;
+  const locationById = id => locations.find(l=> l.id === id) || null;
+  function setBillButtons(enabled){ ['billSavePaid', 'billSavePending'].forEach(id=> { billEl(id).disabled = !enabled; }); }
+  // Prozor se otvara odmah (dok traje citanje), polja se popune kad stigne odgovor
+  function openBillReviewShell(msg){
+    billEl('billStatus').textContent = msg || '';
+    billEl('billPreview').innerHTML = '';
+    billEl('billPages').style.display = 'none';
+    setBillButtons(false);
+    billEl('billOverlay').classList.add('show');
+  }
+  function renderBillPreview(prep, page){
+    const imgs = prep ? prep.images : [];
+    billEl('billPreview').innerHTML = imgs.length ? `<img src="${imgs[page]}" alt="${escapeHtml(t('Pregled računa'))}">` : `<div class="hint" style="padding:2em;">${escapeHtml(t('Nema pregleda.'))}</div>`;
+    billEl('billPages').style.display = imgs.length > 1 ? 'flex' : 'none';
+    billEl('billPageLabel').textContent = imgs.length > 1 ? `${page + 1} / ${imgs.length}` : '';
+  }
+  function fillBillTypeOptions(locId, selected){
+    const types = billTypes.filter(x=> x.locationId === locId);
+    billEl('billType').innerHTML = `<option value="">${escapeHtml(t('— izaberi —'))}</option>` + types.map(x=> `<option value="${x.id}"${x.id === selected ? ' selected' : ''} translate="no">${escapeHtml(x.name)}</option>`).join('');
+  }
+  function renderBillMetrics(typeId, values, low){
+    const type = billTypeById(typeId);
+    billEl('billMetrics').innerHTML = type ? type.metrics.map(m=> {
+      const v = values && values[m.key] != null ? values[m.key] : '';
+      const cls = (low && (low.includes(m.key) || v === '')) ? 'bill-low' : '';
+      return `<div><label for="billM_${m.key}" translate="no">${escapeHtml(m.name)}${m.unit ? ' (' + escapeHtml(m.unit) + ')' : ''}</label><input type="number" step="0.001" min="0" id="billM_${m.key}" data-key="${m.key}" value="${v}" class="${cls}"></div>`;
+    }).join('') : '';
+  }
+  function billFormValues(){
+    const vals = {};
+    billEl('billMetrics').querySelectorAll('input[data-key]').forEach(i=>{ const v = parseFloat(i.value); if(Number.isFinite(v) && v >= 0) vals[i.dataset.key] = v; });
+    const loc = locationById(billEl('billLocation').value);
+    return { locationId: billEl('billLocation').value, billTypeId: billEl('billType').value, month: billEl('billMonth').value,
+      amount: parseFloat(billEl('billAmount').value), currency: loc ? loc.currency : 'RSD', values: vals,
+      periodFrom: billEl('billFrom').value, periodTo: billEl('billTo').value, dueDate: billEl('billDue').value, payeeName: billEl('billPayee').value.trim() };
+  }
+  function refreshBillLinks(){
+    if(!billReview) return;
+    const f = billFormValues(), type = billTypeById(f.billTypeId);
+    const edit = billReview.bill;
+    const monthOk = /^\d{4}-\d{2}$/.test(f.month);
+    const dup = type && monthOk ? C.findBillDuplicate(bills, type.id, f.month, edit && edit.id) : null;
+    billEl('billDupRow').style.display = dup && !edit ? '' : 'none';
+    billEl('billDupLabel').textContent = dup ? t('Za {0} već postoji račun ({1}).', monthYearLabelSr(f.month), fmtOrig(dup.amount, dup.currency)) : '';
+    const rec = !edit && type && monthOk ? C.findRecurringForBill(recurring, type, f.month, { applied, skipped, entries }) : null;
+    billReview.recurring = rec;
+    billEl('billRecRow').style.display = rec ? '' : 'none';
+    billEl('billRecLabel').textContent = rec ? t('Poveži sa ponavljajućom: {0}', rec.desc) : '';
+    const loc = locationById(f.locationId);
+    billEl('billCurrency').textContent = loc ? '(' + loc.currency + ')' : '';
+  }
+  // opts: { prepared?, reading?, message?, source?, bill? (izmena), typeId?, month? (rucni unos iz tabele) }
+  function openBillReview(opts){
+    const b = opts.bill || null;
+    const r = opts.reading || C.mergeBillQr(null, null);
+    billReview = { prepared: opts.prepared || null, bill: b, source: opts.source || (b ? b.source : 'manual'), payee: (b ? b.payee : r.payee) || null, page: 0 };
+    const src = b ? Object.assign({}, b, { locationId: (billTypeById(b.billTypeId) || {}).locationId, low: [] }) : r;
+    const locId = src.locationId || (opts.typeId && (billTypeById(opts.typeId) || {}).locationId) || (locations[0] && locations[0].id) || '';
+    billEl('billTitle').textContent = b ? t('Izmeni kućni račun') : t('Kućni račun');
+    billEl('billLocation').innerHTML = locations.map(l=> `<option value="${l.id}"${l.id === locId ? ' selected' : ''} translate="no">${escapeHtml(l.name)}</option>`).join('');
+    fillBillTypeOptions(locId, src.billTypeId || opts.typeId || '');
+    billEl('billMonth').value = src.month || opts.month || '';
+    billEl('billAmount').value = src.amount != null && src.amount !== 0 ? String(src.amount) : '';
+    billEl('billFrom').value = src.periodFrom || ''; billEl('billTo').value = src.periodTo || ''; billEl('billDue').value = src.dueDate || '';
+    billEl('billPayee').value = (billReview.payee && billReview.payee.name) || '';
+    const low = (!b && opts.prepared) ? (src.low || []) : [];
+    [['billType', 'billTypeId'], ['billMonth', 'month'], ['billAmount', 'amount']].forEach(([id, k])=> billEl(id).classList.toggle('bill-low', low.includes(k)));
+    renderBillMetrics(billEl('billType').value, src.values, (!b && opts.prepared) ? low : null);
+    billEl('billStatus').textContent = opts.message || '';
+    billEl('billSavePending').style.display = b ? 'none' : '';
+    billEl('billSavePaid').textContent = b ? t('Sačuvaj') : t('Sačuvaj kao plaćen');
+    renderBillPreview(billReview.prepared, 0);
+    refreshBillLinks();
+    setBillButtons(true);
+    billEl('billOverlay').classList.add('show');
+    return new Promise(res=>{ billReview.resolve = res; });
+  }
+  function closeBillReview(saved){
+    billEl('billOverlay').classList.remove('show');
+    const res = billReview && billReview.resolve; billReview = null;
+    if(res) res(!!saved);
+  }
+  billEl('billLocation').addEventListener('change', ()=>{ fillBillTypeOptions(billEl('billLocation').value, ''); renderBillMetrics('', {}, null); refreshBillLinks(); });
+  billEl('billType').addEventListener('change', ()=>{ const old = billFormValues().values; renderBillMetrics(billEl('billType').value, old, null); billEl('billType').classList.remove('bill-low'); refreshBillLinks(); });
+  billEl('billMonth').addEventListener('change', refreshBillLinks);
+  ['billAmount', 'billMonth'].forEach(id=> billEl(id).addEventListener('input', ()=> billEl(id).classList.remove('bill-low')));
+  billEl('billMetrics').addEventListener('input', e=>{ if(e.target.dataset.key) e.target.classList.remove('bill-low'); });
+  const flipBillPage = d => { if(!billReview || !billReview.prepared) return; const n = billReview.prepared.images.length; if(n < 2) return; billReview.page = (billReview.page + n + d) % n; renderBillPreview(billReview.prepared, billReview.page); };
+  billEl('billPrevPage').addEventListener('click', ()=> flipBillPage(-1));
+  billEl('billNextPage').addEventListener('click', ()=> flipBillPage(1));
+  billEl('billCancel').addEventListener('click', ()=> closeBillReview(false));
+  billEl('billOverlay').addEventListener('click', e=>{ if(e.target.id === 'billOverlay') closeBillReview(false); });
+  billEl('billSavePaid').addEventListener('click', ()=> saveBillFromReview(true));
+  billEl('billSavePending').addEventListener('click', ()=> saveBillFromReview(false));
+
+  function billAmountRsd(b){
+    if(!b.currency || b.currency === 'RSD') return { amount: b.amount, rate: 1 };
+    const rate = fx.rates && fx.rates[b.currency];
+    return rate ? { amount: Math.round(b.amount * rate * 100) / 100, rate } : null;
+  }
+  const billSlug = s => C.foldText(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'racun';
+  async function saveBillFromReview(paid){
+    if(!billReview) return;
+    const f = billFormValues(), type = billTypeById(f.billTypeId), loc = locationById(f.locationId);
+    const status = billEl('billStatus');
+    if(!type || !loc){ status.textContent = t('Izaberi lokaciju i vrstu računa.'); return; }
+    if(!/^\d{4}-\d{2}$/.test(f.month)){ status.textContent = t('Upiši obračunski mesec.'); return; }
+    if(!(f.amount > 0) && !Object.keys(f.values).length){ status.textContent = t('Upiši iznos ili bar jedno merenje.'); return; }
+    const draft = { billTypeId: type.id, month: f.month, amount: f.amount > 0 ? Math.round(f.amount * 100) / 100 : 0, currency: f.currency, values: f.values };
+    const rsd = draft.amount > 0 ? billAmountRsd(draft) : { amount: 0, rate: 1 };
+    if(!rsd){ status.textContent = t('Kurs za {0} nije dostupan. Otvori Kursevi i osveži kursnu listu.', f.currency); return; }
+    const edit = billReview.bill;
+    const dup = !edit ? C.findBillDuplicate(bills, type.id, f.month) : null;
+    const replace = !!dup && (document.querySelector('input[name="billDup"]:checked') || {}).value === 'replace';
+    setBillButtons(false);
+    // 1) prilog — ako ne uspe, nista se ne cuva
+    let file = edit ? edit.file : undefined;
+    const prep = billReview.prepared;
+    if(!edit && prep && prep.bytes && window.desktop && window.desktop.bills){
+      const res = await window.desktop.bills.saveFile(prep.bytes, `${f.month}-${billSlug(type.name)}-${billSlug(loc.name)}.${prep.ext}`);
+      if(!res || !res.ok){ status.textContent = t('Prilog nije sačuvan ({0}). Račun nije upisan.', (res && res.error) || '?'); setBillButtons(true); return; }
+      file = res.name;
+    }
+    const base = edit || (replace ? dup : {});
+    const bill = Object.assign({}, base, draft, { id: base.id || newId(), source: edit ? edit.source : billReview.source });
+    ['periodFrom', 'periodTo', 'dueDate'].forEach(k=>{ if(f[k]) bill[k] = f[k]; else delete bill[k]; });
+    if(file) bill.file = file;
+    const payee = (billReview.payee || f.payeeName) ? C.cleanPayee(Object.assign({}, billReview.payee || {}, { name: f.payeeName || (billReview.payee && billReview.payee.name) || '' })) : null;
+    if(payee) bill.payee = payee;
+    if(replace && dup.file && dup.file !== file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(dup.file);
+    // 2) rashod: postojeci se azurira; ponavljajuca stavka; ili nov rashod
+    const linkedEntry = bill.entryId ? entries.find(e=> e.id === bill.entryId) : null;
+    const rec = !edit && !replace && billReview.recurring && billEl('billLinkRec').checked ? billReview.recurring : null;
+    bills = bills.filter(b=> b.id !== bill.id).concat(bill);
+    if(linkedEntry){
+      if(draft.amount > 0){
+        linkedEntry.amount = rsd.amount;
+        if(draft.currency !== 'RSD') Object.assign(linkedEntry, { origAmount: draft.amount, currency: draft.currency, rate: rsd.rate });
+      }
+    } else if(rec){
+      bill.recurringId = rec.id;
+      if(paid){ const id = markRecurringPaid(rec, f.month, rsd.amount > 0 ? rsd.amount : undefined); if(id) bill.entryId = id; }
+    } else if(!edit && draft.amount > 0){
+      const today = toISODateLocal(new Date());
+      const entry = { id: newId(), type: 'expense', desc: locations.length > 1 ? `${type.name} – ${loc.name}` : type.name, amount: rsd.amount, category: type.category,
+        date: paid ? today : (f.dueDate || today), tags: [], billId: bill.id };
+      if(!paid) entry.paid = false;
+      if(draft.currency !== 'RSD') Object.assign(entry, { origAmount: draft.amount, currency: draft.currency, rate: rsd.rate });
+      if(accounts.length) entry.accountId = defaultAccountId();
+      entries.push(entry);
+      bill.entryId = entry.id;
+    }
+    saveBillsState(); saveEntries(); saveApplied();
+    closeBillReview(true);
+    renderAll();
+  }
+  function deleteBill(id, opts){
+    const b = bills.find(x=> x.id === id);
+    if(!b) return;
+    const hasFile = !!(b.file && window.desktop && window.desktop.bills);
+    const run = ()=>{
+      bills = bills.filter(x=> x.id !== id); saveBillsState();
+      if(hasFile) window.desktop.bills.deleteFile(b.file);
+      renderAll();
+      showUndoToast(t('Račun obrisan'), ()=>{
+        bills = bills.concat(b); saveBillsState();
+        if(hasFile) window.desktop.bills.restoreFile(b.file);
+        renderAll();
+      });
+    };
+    if(opts && opts.confirm === false) return run();
+    appConfirm(t('Obrisati ovaj račun? Priloženi fajl ide u Prilozi/.obrisano i trajno se briše posle 30 dana.'), { okText: t('Obriši'), danger: true }).then(ok=>{ if(ok) run(); });
+  }
+  window.__deleteBill = deleteBill;
+  window.__bills = ()=> ({ locations, billTypes, bills });
+  window.__ensureBillDefaults = ensureBillDefaults;
+  window.__fxRates = ()=> Object.assign({}, fx.rates);
+  window.__setFxRate = (c, v)=>{ if(v === undefined) delete fx.rates[c]; else fx.rates[c] = v; };
+  // Prevlacenje PDF-a ili slike bilo gde u prozor
+  const isBillFile = f => /^(application\/pdf|image\/)/.test(f.type) || /\.(pdf|heic|jpe?g|png|webp)$/i.test(f.name);
+  document.addEventListener('dragover', e=>{ if(e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+  document.addEventListener('drop', e=>{
+    const files = e.dataTransfer ? [...e.dataTransfer.files].filter(isBillFile) : [];
+    if(!files.length || document.querySelector('.modal-overlay.show')) return;
+    e.preventDefault();
+    addBillFiles(files);
   });
 
   // ---- Plati sve zakasnele ----
@@ -8098,7 +8471,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, locations, billTypes, bills, exportedAt: new Date().toISOString() };
   }
   // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
   function downloadBackupJson(){
@@ -8210,6 +8583,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
       fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
       shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
+      ...(()=>{ // kucni racuni: vrste zavise od lokacija, racuni od vrsta
+        if(!('locations' in data)) return {};
+        const locs = C.cleanLocations(data.locations, CURRENCIES), types = C.cleanBillTypes(data.billTypes, locs.map(l=> l.id));
+        return { locations: locs, billTypes: types, bills: C.cleanBills(data.bills, types.map(x=> x.id)) };
+      })(),
     };
   }
   window.__sanitizeImportedBackup = sanitizeImportedBackup;
@@ -8253,6 +8631,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         savedScenarios = data.savedScenarios;
         fixedCategories = data.fixedCategories;
         if(data.shopping) shopping = data.shopping;
+        if(data.locations){ locations = data.locations; billTypes = data.billTypes; bills = data.bills; saveBillsState(); }
         saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';
@@ -8450,6 +8829,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
     const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||'', PrimalacRacun:r.payee?r.payee.account:'', PrimalacNaziv:r.payee?r.payee.name:'', SifraPlacanja:r.payee?r.payee.code:'', SvrhaPlacanja:r.payee?r.payee.purpose:'', Model:r.payee?r.payee.model:'', PozivNaBroj:r.payee?r.payee.reference:''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
+    if(locations.length){
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(locations.map(l=>({ID:l.id, Naziv:l.name, Valuta:l.currency}))), 'Lokacije');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:''}]), 'KucniRacuni');
+    }
     const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
     const paidRows = [];
@@ -8588,6 +8972,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       accounts = sheetRows('Racuni').filter(r=>r.Naziv).map(r=>({ id: String(r.ID || newId()), name: String(r.Naziv), type: ['tekuci','gotovina','stednja','kartica'].includes(String(r.Vrsta)) ? String(r.Vrsta) : 'tekuci', openingBalance: Number(r.PocetnoStanje) || 0 }));
       sheetRows('Prenosi').filter(r=>r.Datum && r.SaRacuna && r.NaRacun).forEach(r=> entries.push({ id: String(r.ID || newId()), type: 'transfer', date: normalizeDateCell(r.Datum), desc: String(r.Opis||''), amount: Number(r.Iznos) || 0, fromAccount: String(r.SaRacuna), toAccount: String(r.NaRacun) }));
     }
+    if(wb.Sheets['Lokacije'] && wb.Sheets['VrsteRacuna'] && wb.Sheets['KucniRacuni']){
+      const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
+      locations = C.cleanLocations(sheetRows('Lokacije').map(r=>({ id: String(r.ID), name: String(r.Naziv), currency: String(r.Valuta) })), CURRENCIES);
+      billTypes = C.cleanBillTypes(sheetRows('VrsteRacuna').filter(r=> r.ID).map(r=>({ id: String(r.ID), locationId: String(r.LokacijaID), name: String(r.Naziv), category: String(r.Kategorija), metrics: js(r.Merenja) })), locations.map(l=> l.id));
+      bills = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||'') })), billTypes.map(x=> x.id));
+    }
     entries.forEach(e=>{ if(e.accountName){ const a = accounts.find(x=> x.name === e.accountName); if(a) e.accountId = a.id; delete e.accountName; } });
 
     const incRows = sheetRows('KategorijePrihoda');
@@ -8601,7 +8991,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function persistAllToLocalStorage(){
     saveEntries(); saveCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals();
-    saveDebts(); saveSkipped(); saveCatColors(); saveMonthlyBudget(); saveIncomeCats(); saveCatRules(); saveAccounts();
+    saveDebts(); saveSkipped(); saveCatColors(); saveMonthlyBudget(); saveIncomeCats(); saveCatRules(); saveAccounts(); saveBillsState();
     populateAccountSelects();
   }
 

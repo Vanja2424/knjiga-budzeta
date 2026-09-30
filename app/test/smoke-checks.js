@@ -7,6 +7,19 @@
   const entries = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
   const setVal = (id, v) => { const el = $(id); el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); };
   const monthKey = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  // Mali tekstualni PDF (lazni racun) — nijedan pravi racun ne ulazi u test
+  function tinyPdf(lines){
+    const esc = s => s.replace(/[\\()]/g, m => '\\' + m);
+    const content = 'BT /F1 14 Tf 50 780 Td ' + lines.map((l, i) => (i ? '0 -20 Td ' : '') + '(' + esc(l) + ') Tj').join(' ') + ' ET';
+    const objs = ['<< /Type /Catalog /Pages 2 0 R >>', '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+      '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+      `<< /Length ${content.length} >>\nstream\n${content}\nendstream`, '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>'];
+    let out = '%PDF-1.4\n'; const offs = [];
+    objs.forEach((o, i) => { offs.push(out.length); out += `${i + 1} 0 obj\n${o}\nendobj\n`; });
+    const x = out.length;
+    out += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n` + offs.map(o => String(o).padStart(10, '0') + ' 00000 n \n').join('') + `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${x}\n%%EOF`;
+    return new Blob([out], { type: 'application/pdf' });
+  }
   try {
     check('SheetJS 0.20.3 učitan', window.XLSX && XLSX.version === '0.20.3', window.XLSX && XLSX.version);
     check('budzet-core.js učitan', !!window.BudzetCore);
@@ -797,6 +810,61 @@
         del && del.click(); await sleep(400);
         if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); }
       }
+    }
+
+    // ---- Kucni racuni: fajl -> citanje (lazni Groq) -> potvrda -> cuvanje ----
+    check('kućni računi: stanje postoji', typeof window.__bills === 'function');
+    if (typeof window.__bills === 'function') {
+      const B = () => window.__bills();
+      window.__ensureBillDefaults();
+      const stan = B().locations[0];
+      const struja = B().billTypes.find(x => x.locationId === stan.id && x.name === 'Struja');
+      check('kućni računi: podrazumevane vrste', !!struja && struja.metrics.length === 2);
+      const pdf = tinyPdf(['JP EPS Snabdevanje', 'Obracunski period 01.01.2025 - 31.01.2025', 'Visa tarifa 215 kWh', 'Niza tarifa 154 kWh', 'Ukupno za uplatu 4.456,16']);
+      const pdfFile = new File([pdf], 'eps-januar.pdf', { type: 'application/pdf' });
+      let sent = null;
+      window.__fakeBillReading = req => { sent = req; return { ok: true, content: '```json\n' + JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-01', amount: '4.456,16', values: { m1: 215, m2: 154 }, confidence: { m2: 'low' } }) + '\n```' }; };
+      const done = window.__addBillFiles([pdfFile]);
+      await sleep(2500);
+      check('kućni računi: AI dobija tekst PDF-a i sliku strane', !!sent && /Ukupno za uplatu/.test(sent.text) && sent.images.length === 1 && /^data:image\/jpeg/.test(sent.images[0]), sent && JSON.stringify({ t: sent.text.slice(0, 80), n: sent.images.length }));
+      check('kućni računi: prozor za potvrdu otvoren', $('billOverlay').classList.contains('show'));
+      check('kućni računi: iznos popunjen', $('billAmount').value === '4456.16', $('billAmount').value);
+      const m2 = document.querySelector('#billMetrics input[data-key="m2"]');
+      check('kućni računi: nesigurno polje žuto', !!m2 && m2.classList.contains('bill-low'));
+      $('billSavePaid').click(); await done; await sleep(200);
+      const saved = B().bills.find(b => b.billTypeId === struja.id && b.month === '2025-01');
+      check('kućni računi: sačuvan sa prilogom', !!saved && !!saved.file && saved.values.m1 === 215, JSON.stringify(saved));
+      check('kućni računi: rashod napravljen', !!saved && entries().some(e => e.id === saved.entryId && e.amount === 4456.16));
+      go('rezije'); await sleep(80);
+      check('kućni računi: ćelija u tabeli', !!(saved && document.querySelector(`#rezijeTable td[data-bill-ids*="${saved.id}"]`)));
+      // Duplikat
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-01', amount: 100 }) });
+      const d2 = window.__addBillFiles([new File([pdf], 'eps2.pdf', { type: 'application/pdf' })]); await sleep(2000);
+      check('kućni računi: duplikat prepoznat', $('billDupRow').style.display !== 'none');
+      $('billCancel').click(); await d2;
+      // Ostecen PDF -> poruka, rucni unos i dalje moguc
+      window.__fakeBillReading = null;
+      const d3 = window.__addBillFiles([new File([new Uint8Array([1, 2, 3])], 'lose.pdf', { type: 'application/pdf' })]); await sleep(1500);
+      check('kućni računi: oštećen PDF -> poruka', /PDF ne može da se otvori/.test($('billStatus').textContent), $('billStatus').textContent);
+      $('billCancel').click(); await d3;
+      // Valuta racuna = valuta lokacije; bez kursa se ne cuva nista
+      const nBills = B().bills.length, nEntries = entries().length;
+      const savedRates = window.__fxRates(); window.__setFxRate('BAM', undefined); stan.currency = 'BAM';
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ billTypeId: struja.id, month: '2025-05', amount: 10 }) });
+      const d4 = window.__addBillFiles([pdfFile]); await sleep(2000);
+      $('billSavePaid').click(); await sleep(300);
+      check('kućni računi: bez kursa se ne čuva', B().bills.length === nBills && entries().length === nEntries && /Kurs za BAM/.test($('billStatus').textContent), $('billStatus').textContent);
+      $('billCancel').click(); await d4; window.__setFxRate('BAM', savedRates.BAM); stan.currency = 'RSD';
+      // Brisanje i Ctrl+Z
+      if (saved) {
+        window.__deleteBill(saved.id, { confirm: false }); await sleep(100);
+        check('kućni računi: obrisan', !B().bills.some(b => b.id === saved.id));
+        window.__undoTop(); await sleep(150);
+        check('kućni računi: vraćen sa Ctrl+Z', B().bills.some(b => b.id === saved.id));
+        window.__deleteBill(saved.id, { confirm: false });
+        window.__deleteEntriesById([saved.entryId]);
+      }
+      window.__fakeBillReading = null;
     }
 
     // Cuvanje u fajl
