@@ -30,7 +30,7 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'rezije', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
@@ -836,6 +836,7 @@
       check('kućni računi: sačuvan sa prilogom', !!saved && !!saved.file && saved.values.m1 === 215, JSON.stringify(saved));
       check('kućni računi: rashod napravljen', !!saved && entries().some(e => e.id === saved.entryId && e.amount === 4456.16));
       go('rezije'); await sleep(80);
+      if ($('rezijeYear')) { $('rezijeYear').value = '2025'; $('rezijeYear').dispatchEvent(new Event('change')); await sleep(80); }
       check('kućni računi: ćelija u tabeli', !!(saved && document.querySelector(`#rezijeTable td[data-bill-ids*="${saved.id}"]`)));
       // Duplikat
       window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stan.id, billTypeId: struja.id, month: '2025-01', amount: 100 }) });
@@ -866,6 +867,25 @@
       }
       window.__fakeBillReading = null;
     }
+
+    // Kucni racuni: ekran i uvoz godisnje tabele
+    go('rezije'); await sleep(80);
+    check('kućni računi: ekran ima tabelu za lokaciju', !!document.querySelector('#rezijeTable table'));
+    check('kućni računi: podkartica u Izveštajima', [...document.querySelectorAll('#subtabs button')].some(b => b.dataset.screen === 'rezije'));
+    if (typeof window.__importBillsSheet === 'function') {
+      const before = window.__bills().bills.length;
+      const res = window.__importBillsSheet([['Računi 2024'], ['Mesec', '', '01. Januar', '02. Februar'], ['Kućni računi', 'Struja', 1000, 2000], ['Kućni računi (Smoke Drvar)', 'Struja', 9.99, ''], ['Kućni računi (potrošnja)', 'Struja - skupa', 100, 90]], { 'Smoke Drvar': 'BAM' });
+      check('uvoz tabele: napravljeni računi i lokacija', res.created === 3 && window.__bills().locations.some(l => l.name === 'Smoke Drvar' && l.currency === 'BAM'), JSON.stringify(res));
+      $('rezijeYear').value = '2024'; $('rezijeYear').dispatchEvent(new Event('change')); await sleep(80);
+      check('uvoz tabele: vidi se u tabeli 2024', /Smoke Drvar/.test($('rezijeTable').textContent) && /1\.000|1,000/.test($('rezijeTable').textContent), $('rezijeTable').textContent.slice(0, 200));
+      check('uvoz tabele: grafikon potrošnje', $('rezijeChart').querySelectorAll('rect').length === 12);
+      const again = window.__importBillsSheet([['Računi 2024'], ['Mesec', '', '01. Januar', '02. Februar'], ['Kućni računi', 'Struja', 1000, 2000]], {});
+      check('uvoz tabele: duplikati preskočeni', again.created === 0 && again.duplicates === 2, JSON.stringify(again));
+      const B = window.__bills(); const loc = B.locations.find(l => l.name === 'Smoke Drvar');
+      if (loc) window.__removeLocation(loc.id);
+      window.__bills().bills.filter(b => b.month.startsWith('2024-') && b.source === 'excel').forEach(b => window.__deleteBill(b.id, { confirm: false }));
+      check('uvoz tabele: pospremljeno', window.__bills().bills.length === before);
+    } else check('uvoz tabele: hook postoji', false);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();

@@ -1763,6 +1763,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .bill-more summary{ cursor: pointer; color: var(--ink-soft); font-size: 0.9em; }
 .bill-low{ background: color-mix(in srgb, var(--warn) 18%, var(--card)) !important; box-shadow: inset 0 0 0 1.5px var(--warn) !important; }
 .bill-dup{ margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
+.rezije-toolbar{ display:flex; align-items:center; gap:8px; margin-bottom: 10px; flex-wrap: wrap; }
+.rezije-spacer{ flex: 1; }
+.rezije-table{ overflow-x:auto; margin-top: 8px; }
+.rezije-table table{ border-collapse: collapse; width: 100%; font-size: 0.86em; font-variant-numeric: tabular-nums; }
+.rezije-table th, .rezije-table td{ padding: 5px 7px; border-bottom: 1px solid var(--separator); text-align: right; white-space: nowrap; }
+.rezije-table th{ color: var(--ink-soft); font-weight: 500; }
+.rezije-table th:first-child, .rezije-table td:first-child{ text-align: left; position: sticky; left: 0; background: var(--card); }
+.rezije-table td.rz-loc{ text-align:left; font-weight: 600; padding-top: 14px; }
+.rezije-table td.rz-cell{ cursor: pointer; }
+.rezije-table td.rz-cell:hover{ background: color-mix(in srgb, var(--ledger) 10%, var(--card)); }
+.rezije-table td.rz-missing{ background: color-mix(in srgb, var(--neg) 14%, var(--card)); }
+.rezije-table .rz-total{ font-weight: 600; background: color-mix(in srgb, var(--warn) 10%, var(--card)); }
+.bill-detail{ padding: 4px 0; }
+.bill-detail .file-row{ margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -2397,6 +2411,24 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 
   <!-- IZVESTAJ -->
+  <div class="screen" id="screen-rezije">
+    <div class="panel">
+      <div class="rezije-toolbar">
+        <select id="rezijeYear" aria-label="Godina"></select>
+        <span class="rezije-spacer"></span>
+        <button class="btn-secondary" id="rezijeImportBtn">Uvezi iz Excela…</button><input type="file" id="rezijeImportInput" accept=".xlsx,.xls" hidden>
+        <button class="save-btn" id="rezijeAddBtn">Dodaj račun…</button><input type="file" id="rezijeFileInput" accept="application/pdf,image/*,.heic" multiple hidden>
+      </div>
+      <div class="hint" id="rezijeHint">Prevuci PDF ili sliku računa bilo gde u prozor, ili klikni „Dodaj račun…“. Klik na polje otvara račun.</div>
+      <div id="rezijeTable" class="rezije-table"></div>
+    </div>
+    <div class="panel">
+      <div class="rezije-toolbar"><h3 style="margin:0;">Potrošnja po mesecima</h3><span class="rezije-spacer"></span><select id="rezijeMetric" aria-label="Merenje"></select></div>
+      <svg id="rezijeChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Potrošnja po mesecima"></svg>
+      <div class="hint" id="rezijeChartNote"></div>
+    </div>
+  </div>
+
   <div class="screen" id="screen-izvestaj">
     <div class="panel no-print">
       <h2>Izveštaj za štampu</h2>
@@ -3610,7 +3642,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     transakcije: [['rashodi', 'Rashodi'], ['prihodi', 'Prihodi'], ['ponavljajuce', 'Ponavljajuće'], ['racuni', 'Računi i prenosi'], ['pretraga', 'Pretraga']],
     budzet: [['kategorije', 'Budžet i kategorije']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
-    izvestaji: [['analiza', 'Analiza'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    izvestaji: [['analiza', 'Analiza'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     nabavka: [['nabavka', 'Nabavka']],
     podesavanja: [['podesavanja', 'Podešavanja']]
@@ -3630,6 +3662,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     ciljevi: ()=> renderGoals(),
     dugovi: ()=> renderDebts(),
     analiza: ()=> renderAnaliza(),
+    rezije: ()=> renderRezije(),
     izvestaj: ()=> renderReport(),
     uporedi: ()=> setCompareMode(compareMode),
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
@@ -4560,6 +4593,134 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!files.length || document.querySelector('.modal-overlay.show')) return;
     e.preventDefault();
     addBillFiles(files);
+  });
+
+  // ---------- Ekran "Kucni racuni": godisnja tabela po lokacijama ----------
+  let rezijeYear = new Date().getFullYear(), rezijeMetric = '';
+  const monthShort = i => new Date(2000, i, 1).toLocaleDateString(LOCALE, { month: 'short' }).replace('.', '');
+  const fmtNum = (v, dec) => v == null ? '' : v.toLocaleString(LOCALE, { minimumFractionDigits: 0, maximumFractionDigits: dec });
+  const pad2m = i => String(i + 1).padStart(2, '0');
+  function renderRezije(){
+    ensureBillDefaults();
+    // rashod obrisan -> racun ostaje, samo bez veze
+    let unlinked = false;
+    bills.forEach(b=>{ if(b.entryId && !entries.some(e=> e.id === b.entryId)){ delete b.entryId; unlinked = true; } });
+    if(unlinked) saveBillsState();
+    const years = [...new Set(bills.map(b=> +b.month.slice(0, 4)).concat([new Date().getFullYear(), rezijeYear]))].sort((a, b)=> b - a);
+    document.getElementById('rezijeYear').innerHTML = years.map(y=> `<option value="${y}"${y === rezijeYear ? ' selected' : ''}>${y}</option>`).join('');
+    document.getElementById('rezijeHint').style.display = window.desktop ? '' : 'none';
+    const tb = C.billsTable(bills, billTypes, locations, rezijeYear, currentMonthKey());
+    const head = `<tr><th></th>${Array.from({ length: 12 }, (_, i)=> `<th>${escapeHtml(monthShort(i))}</th>`).join('')}<th class="rz-total">${rezijeYear}</th></tr>`;
+    const cell = (row, i) => {
+      const cls = ['rz-cell', row.missing[i] ? 'rz-missing' : ''].filter(Boolean).join(' ');
+      return `<td class="${cls}" data-type="${row.typeId}" data-month="${rezijeYear}-${pad2m(i)}" data-bill-ids="${row.billIds[i].join(',')}"${row.missing[i] ? ` title="${escapeHtml(t('Račun fali'))}"` : ''}>${fmtNum(row.cells[i], 2)}</td>`;
+    };
+    const html = tb.locations.map(l=>{
+      const amountRows = l.rows.map(r=> `<tr><td translate="no">${escapeHtml(r.name)}</td>${r.cells.map((_, i)=> cell(r, i)).join('')}<td class="rz-total">${fmtNum(r.total, 2)}</td></tr>`).join('');
+      const metricRows = l.metricRows.map(m=> `<tr><td><span translate="no">${escapeHtml(m.label)}</span>${m.unit ? ' <span class="hint" translate="no">(' + escapeHtml(m.unit) + ')</span>' : ''}</td>${m.cells.map(v=> `<td>${fmtNum(v, 3)}</td>`).join('')}<td class="rz-total">${fmtNum(m.total, 3)}</td></tr>`).join('');
+      return `<tr><td class="rz-loc" colspan="14"><span translate="no">${escapeHtml(l.name)}</span> · ${escapeHtml(t('Iznos ({0}) — ukupno {1}', l.currency, fmtNum(l.total, 2)))}</td></tr>${amountRows}`
+        + (metricRows ? `<tr><td class="rz-loc" colspan="14"><span translate="no">${escapeHtml(l.name)}</span> · ${escapeHtml(t('Potrošnja'))}</td></tr>${metricRows}` : '');
+    }).join('');
+    document.getElementById('rezijeTable').innerHTML = `<table><thead>${head}</thead><tbody>${html}</tbody></table>`;
+    renderRezijeChart(tb);
+  }
+  function renderRezijeChart(tb){
+    const all = [];
+    tb.locations.forEach(l=> l.metricRows.forEach(m=> all.push({ id: m.typeId + ':' + m.key, label: (locations.length > 1 ? l.name + ' · ' : '') + m.label, unit: m.unit, typeId: m.typeId, key: m.key })));
+    const sel = document.getElementById('rezijeMetric'), svg = document.getElementById('rezijeChart'), note = document.getElementById('rezijeChartNote');
+    if(!all.length){ sel.innerHTML = ''; svg.innerHTML = ''; note.textContent = t('Nema merenja.'); return; }
+    if(!all.some(a=> a.id === rezijeMetric)) rezijeMetric = all[0].id;
+    sel.innerHTML = all.map(a=> `<option value="${a.id}"${a.id === rezijeMetric ? ' selected' : ''} translate="no">${escapeHtml(a.label)}</option>`).join('');
+    const cur = all.find(a=> a.id === rezijeMetric);
+    const series = y => { const row = C.billsTable(bills, billTypes, locations, y, currentMonthKey()).locations.flatMap(l=> l.metricRows).find(m=> m.typeId === cur.typeId && m.key === cur.key); return row ? row.cells : Array(12).fill(null); };
+    const now = tb.locations.flatMap(l=> l.metricRows).find(m=> m.typeId === cur.typeId && m.key === cur.key).cells, prev = series(rezijeYear - 1);
+    const W = 760, H = 220, padL = 10, padR = 10, padT = 15, padB = 30, plotW = W - padL - padR, plotH = H - padT - padB;
+    const max = Math.max(1, ...now.map(v=> v || 0), ...prev.map(v=> v || 0));
+    const slot = plotW / 12, bw = Math.min(40, slot * 0.6), yFor = v => padT + plotH - v / max * plotH;
+    const bars = now.map((v, i)=>{
+      const x = padL + i * slot + (slot - bw) / 2, y = yFor(v || 0);
+      return `<rect class="analiza-bar-sel" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${(padT + plotH - y).toFixed(1)}" rx="3"><title>${escapeHtml(monthShort(i))}: ${fmtNum(v, 3)} ${escapeHtml(cur.unit)}</title></rect>`
+        + `<text x="${(x + bw / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle" font-size="10" fill="var(--ink-soft)">${escapeHtml(monthShort(i))}</text>`;
+    }).join('');
+    const pts = prev.map((v, i)=> v == null ? null : `${(padL + i * slot + slot / 2).toFixed(1)},${yFor(v).toFixed(1)}`).filter(Boolean);
+    const line = pts.length > 1 ? `<polyline points="${pts.join(' ')}" fill="none" stroke="var(--ink-soft)" stroke-width="1.5" stroke-dasharray="5 4"/>` : '';
+    svg.innerHTML = bars + line;
+    note.textContent = pts.length > 1 ? t('Stubići: {0}. Isprekidana linija: {1}.', rezijeYear, rezijeYear - 1) : '';
+  }
+  document.getElementById('rezijeYear').addEventListener('change', e=>{ rezijeYear = +e.target.value; renderRezije(); });
+  document.getElementById('rezijeMetric').addEventListener('change', e=>{ rezijeMetric = e.target.value; renderRezije(); });
+  document.getElementById('rezijeAddBtn').addEventListener('click', ()=> document.getElementById('rezijeFileInput').click());
+  document.getElementById('rezijeFileInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addBillFiles(f); });
+  document.getElementById('rezijeTable').addEventListener('click', e=>{
+    const td = e.target.closest('td.rz-cell'); if(!td) return;
+    const ids = td.dataset.billIds ? td.dataset.billIds.split(',') : [];
+    if(!ids.length){ openBillReview({ typeId: td.dataset.type, month: td.dataset.month, source: 'manual' }); return; }
+    openBillDetail(ids);
+  });
+  function openBillDetail(ids){
+    const list = ids.map(id=> bills.find(b=> b.id === id)).filter(Boolean);
+    const body = list.map(b=>{
+      const type = billTypeById(b.billTypeId) || { metrics: [], name: '' };
+      const vals = type.metrics.filter(m=> b.values[m.key] != null).map(m=> `<span translate="no">${escapeHtml(m.name)}</span>: <b>${fmtNum(b.values[m.key], 3)}</b> ${escapeHtml(m.unit)}`).join(' · ');
+      return `<div class="bill-detail" data-id="${b.id}"><div><b translate="no">${escapeHtml(type.name)}</b> · ${escapeHtml(monthYearLabelSr(b.month))} · <b>${escapeHtml(fmtOrig(b.amount, b.currency))}</b></div>`
+        + (vals ? `<div>${vals}</div>` : '') + (b.periodFrom ? `<div class="hint">${escapeHtml(t('Period {0} – {1}', b.periodFrom, b.periodTo || ''))}</div>` : '')
+        + `<div class="file-row">${b.file && window.desktop ? `<button type="button" class="btn-secondary" data-act="open">${escapeHtml(t('Otvori prilog'))}</button>` : ''}<button type="button" class="btn-secondary" data-act="edit">${escapeHtml(t('Izmeni'))}</button><button type="button" class="btn-link" data-act="del">${escapeHtml(t('Obriši'))}</button></div></div>`;
+    }).join('<hr>');
+    openDialog(t('Kućni račun'), body, { html: true, alertOnly: true, okText: t('Zatvori') });
+    document.querySelectorAll('#dialogBody .bill-detail button').forEach(btn=> btn.addEventListener('click', ()=>{
+      const b = bills.find(x=> x.id === btn.closest('.bill-detail').dataset.id); if(!b) return;
+      if(btn.dataset.act === 'open') window.desktop.bills.openFile(b.file);
+      if(btn.dataset.act === 'edit'){ closeDialog(false); openBillReview({ bill: b }); }
+      if(btn.dataset.act === 'del'){ closeDialog(false); deleteBill(b.id); }
+    }));
+  }
+  // Uvoz godisnje tabele (korisnikov Excel) — racuni bez rashoda i priloga
+  function importBillsSheet(aoa, currencyByName){
+    ensureBillDefaults();
+    const parsed = C.parseBillsSheet(aoa);
+    if(!parsed || !parsed.year) return { created: 0, duplicates: 0, error: 'shape' };
+    const r = C.billsFromSheet(parsed, { locations, billTypes, bills, primaryLocationId: locations[0].id, category: defaultBillCategory(), newId, newLocationCurrency: currencyByName || {} });
+    locations = locations.concat(r.newLocations);
+    billTypes = billTypes.map(x=> r.changedTypes.find(c=> c.id === x.id) || x).concat(r.newTypes);
+    bills = bills.concat(r.bills);
+    saveBillsState(); renderAll();
+    return { created: r.bills.length, duplicates: r.duplicates, year: parsed.year, newLocations: r.newLocations.map(l=> l.name) };
+  }
+  window.__importBillsSheet = importBillsSheet;
+  function removeLocation(id){
+    const typeIds = billTypes.filter(x=> x.locationId === id).map(x=> x.id);
+    const gone = bills.filter(b=> typeIds.includes(b.billTypeId));
+    if(window.desktop && window.desktop.bills) gone.forEach(b=>{ if(b.file) window.desktop.bills.deleteFile(b.file); });
+    bills = bills.filter(b=> !typeIds.includes(b.billTypeId)); billTypes = billTypes.filter(x=> x.locationId !== id); locations = locations.filter(l=> l.id !== id);
+    saveBillsState(); renderAll();
+  }
+  window.__removeLocation = removeLocation;
+  document.getElementById('rezijeImportBtn').addEventListener('click', ()=> document.getElementById('rezijeImportInput').click());
+  document.getElementById('rezijeImportInput').addEventListener('change', async e=>{
+    const f = e.target.files[0]; e.target.value = ''; if(!f) return;
+    let pick = null;
+    try{
+      const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: 'array' });
+      pick = wb.SheetNames.map(n=> ({ n, aoa: XLSX.utils.sheet_to_json(wb.Sheets[n], { header: 1, defval: '', raw: true }) })).find(s=> C.parseBillsSheet(s.aoa));
+    } catch(err){ pick = null; }
+    if(!pick){ appAlert(t('U fajlu nije pronađena tabela kućnih računa (red sa mesecima „01. Januar“… i blokovi „Kućni računi“).')); return; }
+    ensureBillDefaults();
+    const parsed = C.parseBillsSheet(pick.aoa);
+    const names = [...new Set(parsed.blocks.map(b=> b.location).filter(n=> n && !locations.some(l=> C.foldText(l.name) === C.foldText(n))))];
+    const curOpts = CURRENCIES.map(x=> `<option value="${x}"${x === 'RSD' ? ' selected' : ''}>${x}</option>`).join('');
+    const body = `<div>${escapeHtml(t('Godina {0}, list „{1}“.', parsed.year || '?', pick.n))}</div>`
+      + (names.length ? `<div style="margin-top:.6em;">${escapeHtml(t('Nove lokacije — izaberi valutu:'))}</div>` + names.map(n=> `<div class="file-row"><span translate="no" style="min-width:8em;">${escapeHtml(n)}</span><select data-loc="${escapeHtml(n)}">${curOpts}</select></div>`).join('') : '')
+      + `<div class="hint" style="margin-top:.6em;">${escapeHtml(t('Uvezeni računi nemaju rashod ni prilog; postojeći računi za isti mesec se preskaču.'))}</div>`;
+    if(!parsed.year){ appAlert(t('U tabeli nije pronađena godina (npr. „Računi 2025“ iznad meseci).')); return; }
+    const pending = openDialog(t('Uvoz tabele kućnih računa'), body, { html: true, okText: t('Uvezi') });
+    const selections = {};
+    names.forEach(n=> selections[n] = 'RSD');
+    document.querySelectorAll('#dialogBody select[data-loc]').forEach(s=> s.addEventListener('change', ()=>{ selections[s.dataset.loc] = s.value; }));
+    if(!(await pending)) return;
+    const res = importBillsSheet(pick.aoa, selections);
+    rezijeYear = res.year || rezijeYear;
+    showScreen('rezije');
+    appAlert(t('Uvezeno računa: {0}. Preskočeno (već postoje): {1}.', res.created, res.duplicates));
   });
 
   // ---- Plati sve zakasnele ----

@@ -473,6 +473,17 @@
     'Prilog nije sačuvan ({0}). Račun nije upisan.': 'The attachment wasn’t saved ({0}). The bill wasn’t recorded.',
     'Račun obrisan': 'Bill deleted',
     'Obrisati ovaj račun? Priloženi fajl ide u Prilozi/.obrisano i trajno se briše posle 30 dana.': 'Delete this bill? The attached file goes to Prilozi/.obrisano and is permanently deleted after 30 days.',
+    'Kućni računi': 'Household bills', 'Uvezi iz Excela…': 'Import from Excel…', 'Dodaj račun…': 'Add bill…', 'Merenje': 'Reading',
+    'Prevuci PDF ili sliku računa bilo gde u prozor, ili klikni „Dodaj račun…“. Klik na polje otvara račun.': 'Drag a PDF or photo of a bill anywhere into the window, or click “Add bill…”. Click a cell to open its bill.',
+    'Potrošnja po mesecima': 'Usage by month', 'Račun fali': 'Bill missing', 'Iznos ({0}) — ukupno {1}': 'Amount ({0}) — total {1}', 'Nema merenja.': 'No readings.',
+    'Stubići: {0}. Isprekidana linija: {1}.': 'Bars: {0}. Dashed line: {1}.', 'Period {0} – {1}': 'Period {0} – {1}',
+    'Otvori prilog': 'Open attachment', 'Izmeni': 'Edit',
+    'U fajlu nije pronađena tabela kućnih računa (red sa mesecima „01. Januar“… i blokovi „Kućni računi“).': 'No household bills table was found in the file (a row with months “01. Januar”… and “Kućni računi” blocks).',
+    'U tabeli nije pronađena godina (npr. „Računi 2025“ iznad meseci).': 'No year was found in the table (e.g. “Računi 2025” above the months).',
+    'Godina {0}, list „{1}“.': 'Year {0}, sheet “{1}”.', 'Nove lokacije — izaberi valutu:': 'New locations — choose a currency:',
+    'Uvezeni računi nemaju rashod ni prilog; postojeći računi za isti mesec se preskaču.': 'Imported bills have no expense or attachment; existing bills for the same month are skipped.',
+    'Uvoz tabele kućnih računa': 'Import household bills table', 'Uvezi': 'Import', 'Uvezeno računa: {0}. Preskočeno (već postoje): {1}.': 'Bills imported: {0}. Skipped (already exist): {1}.',
+    'Potrošnja': 'Usage',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
