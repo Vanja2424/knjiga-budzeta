@@ -484,6 +484,19 @@
     'Uvezeni računi nemaju rashod ni prilog; postojeći računi za isti mesec se preskaču.': 'Imported bills have no expense or attachment; existing bills for the same month are skipped.',
     'Uvoz tabele kućnih računa': 'Import household bills table', 'Uvezi': 'Import', 'Uvezeno računa: {0}. Preskočeno (već postoje): {1}.': 'Bills imported: {0}. Skipped (already exist): {1}.',
     'Potrošnja': 'Usage',
+    'Kućni računi i lokacije': 'Household bills & locations', 'Dodaj lokaciju': 'Add location', 'Obriši lokaciju': 'Delete location', 'Nova lokacija': 'New location',
+    'Svaka lokacija ima svoju valutu i vrste računa. Merenja (npr. Skupa kWh) se prate u tabeli Kućni računi.': 'Each location has its own currency and bill types. Readings (e.g. Peak kWh) are tracked in the Household bills table.',
+    'Naziv lokacije': 'Location name', 'Jedinica': 'Unit', 'Nova vrsta': 'New type',
+    '+ merenje': '+ reading', '+ vrsta računa': '+ bill type', 'Ukloni merenje': 'Remove reading',
+    'Ovo merenje ima upisane vrednosti. Ukloniti ga? Vrednosti ostaju u računima, ali se više ne prikazuju.': 'This reading has recorded values. Remove it? The values stay in the bills but are no longer shown.',
+    'Vrsta „{0}“ ima {1} računa. Obrisati vrstu i te račune? (Rashodi ostaju.)': 'Type “{0}” has {1} bills. Delete the type and those bills? (Expenses stay.)',
+    'Obrisati lokaciju „{0}“ i {1} računa? (Rashodi ostaju.)': 'Delete location “{0}” and {1} bills? (Expenses stay.)',
+    'AI čitanje računa': 'AI bill reading', 'Groq čita PDF i slike računa. Ključ napravi na console.groq.com/keys.': 'Groq reads bill PDFs and photos. Create a key at console.groq.com/keys.',
+    'Otvori console.groq.com/keys': 'Open console.groq.com/keys', 'API ključ': 'API key', 'Sačuvaj ključ': 'Save key', 'Obriši ključ': 'Delete key',
+    'Model (mora da čita slike)': 'Model (must read images)', 'Proveri ključ': 'Test key', 'Šalji tekst iz PDF-a uz slike (pouzdanije čitanje brojeva)': 'Send PDF text along with images (more reliable numbers)',
+    'Fajl računa se šalje Groq-u na čitanje. Ostali podaci ostaju samo na ovom računaru.': 'The bill file is sent to Groq for reading. All other data stays on this computer only.',
+    'upisan (…{0})': 'saved (…{0})', 'nije upisan': 'not set', 'Ključ sačuvan (…{0}).': 'Key saved (…{0}).', 'Ključ obrisan.': 'Key deleted.', 'Proveravam…': 'Checking…', 'Ključ radi ✓': 'Key works ✓',
+    'Šifrovanje ključa nije dostupno na ovom računaru, pa ključ ne može da se sačuva.': 'Key encryption isn’t available on this computer, so the key can’t be saved.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

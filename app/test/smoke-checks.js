@@ -887,6 +887,31 @@
       check('uvoz tabele: pospremljeno', window.__bills().bills.length === before);
     } else check('uvoz tabele: hook postoji', false);
 
+    // Podesavanja: lokacije/vrste i AI kljuc (kljuc se ne vraca stranici)
+    go('podesavanja'); await sleep(80);
+    check('podešavanja: lista lokacija', !!$('billLocList') && document.querySelectorAll('#billLocList .bill-loc').length === window.__bills().locations.length);
+    if ($('billLocList')) {
+      const nLoc = window.__bills().locations.length;
+      $('billAddLoc').click(); await sleep(50);
+      const added = window.__bills().locations[nLoc];
+      check('podešavanja: dodata lokacija sa vrstama', !!added && window.__bills().billTypes.filter(x => x.locationId === added.id).length === 4);
+      if (added) {
+        const sel = document.querySelector(`#billLocList .bill-loc[data-loc="${added.id}"] .bl-cur`);
+        sel.value = 'BAM'; sel.dispatchEvent(new Event('change', { bubbles: true }));
+        check('podešavanja: valuta lokacije', window.__bills().locations.find(l => l.id === added.id).currency === 'BAM');
+        window.__removeLocation(added.id);
+      }
+    }
+    if (window.desktop && window.desktop.bills) {
+      check('AI podešavanja vidljiva', $('aiSettings') && $('aiSettings').style.display !== 'none');
+      const info0 = await window.desktop.bills.setKey('gsk_smoketest1234');
+      check('AI ključ: sačuvan, vidi se samo kraj', info0.set === true && info0.last4 === '1234' && !JSON.stringify(info0).includes('gsk_smoke'), JSON.stringify(info0));
+      check('AI ključ: nije u podacima', !Object.keys(localStorage).some(k => String(localStorage.getItem(k)).includes('gsk_smoke')));
+      const info1 = await window.desktop.bills.setKey('');
+      check('AI ključ: obrisan', info1.set === false);
+      check('AI: podrazumevani model', info1.model === 'qwen/qwen3.8-27b', info1.model);
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
