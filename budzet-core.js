@@ -984,6 +984,86 @@
       });
   }
 
+  // Uputstvo za AI model: oblik odgovora + spisak lokacija i vrsta (sa id-jevima) koje korisnik ima
+  function billsPrompt(locations, billTypes){
+    const lines = (locations || []).map(l => {
+      const types = (billTypes || []).filter(t => t.locationId === l.id).map(t =>
+        `${t.name} (id: ${t.id}; merenja: ${t.metrics.length ? t.metrics.map(m => `${m.key} = ${m.name} [${m.unit}]`).join(', ') : 'nema'})`);
+      return `- lokacija "${l.name}" (id: ${l.id}, valuta ${l.currency}): ${types.join('; ') || 'nema vrsta'}`;
+    });
+    return [
+      'Čitaš račun za komunalije (struja, plin, voda, internet, grejanje…) iz Srbije ili BiH, sa slike ili iz teksta PDF-a.',
+      'Vrati SAMO jedan JSON objekat, bez objašnjenja, tačno ovog oblika:',
+      '{"locationId":"","billTypeId":"","month":"YYYY-MM","periodFrom":"YYYY-MM-DD","periodTo":"YYYY-MM-DD","amount":0,"currency":"RSD","dueDate":"YYYY-MM-DD","values":{"m1":0},"payee":{"name":"","account":"","reference":""},"confidence":{"amount":"high"}}',
+      'Lokacije i vrste računa korisnika (izaberi id koji odgovara; ako ništa ne odgovara, stavi ""):',
+      ...lines,
+      'Pravila:',
+      '- amount je UKUPAN iznos za uplatu na ovom računu, kao JSON broj sa tačkom (4456.16).',
+      '- month je obračunski mesec (mesec potrošnje), ne mesec plaćanja.',
+      '- values: potrošnja u obračunskom periodu po ključu merenja (ne stanje brojila). Viša tarifa / VT / skupa → merenje "Skupa"; niža tarifa / NT / jeftina → "Jeftina".',
+      '- confidence: za svako polje koje si upisao "high" ili "low" (low ako nisi siguran).',
+      '- Ako nešto ne vidiš, stavi null. Ne izmišljaj brojeve.'
+    ].join('\n');
+  }
+  // JSON iz odgovora modela: prihvata i tekst oko njega ili ```json blok
+  function extractJson(raw){
+    if(raw && typeof raw === 'object') return raw;
+    const s = String(raw || '');
+    const a = s.indexOf('{'), b = s.lastIndexOf('}');
+    if(a < 0 || b <= a) return null;
+    try { const o = JSON.parse(s.slice(a, b + 1)); return o && typeof o === 'object' && !Array.isArray(o) ? o : null; } catch(e) { return null; }
+  }
+  const readDate = v => { if(!v) return ''; const s = String(v).trim(); if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; return parseFlexibleDate(s) || ''; };
+  // Odgovor modela -> polja za prozor potvrde; low = polja koja treba proveriti (nesigurna ili prazna)
+  function cleanBillReading(raw, ctx){
+    const o = extractJson(raw);
+    if(!o) return null;
+    const locs = ctx.locations || [], types = ctx.billTypes || [];
+    let loc = locs.find(l => l.id === o.locationId) || null;
+    let type = types.find(t => t.id === o.billTypeId) || null;
+    if(type && loc && type.locationId !== loc.id) type = null;
+    if(type && !loc) loc = locs.find(l => l.id === type.locationId) || null;
+    const conf = o.confidence && typeof o.confidence === 'object' ? o.confidence : {};
+    const low = new Set(Object.keys(conf).filter(k => conf[k] === 'low'));
+    const periodFrom = readDate(o.periodFrom), periodTo = readDate(o.periodTo);
+    let month = /^\d{4}-(0[1-9]|1[0-2])$/.test(o.month || '') ? o.month : '';
+    if(!month) month = (periodTo || periodFrom).slice(0, 7);
+    const amt = parseAmount(o.amount);
+    const cur = String(o.currency || '').toUpperCase();
+    const values = {};
+    if(type){
+      const src = o.values && typeof o.values === 'object' ? o.values : {};
+      type.metrics.forEach(m => { const v = parseAmount(src[m.key]); if(Number.isFinite(v) && v >= 0) values[m.key] = v; });
+    }
+    const p = o.payee && typeof o.payee === 'object' ? o.payee : null;
+    const payee = p && (p.name || p.account) ? { name: String(p.name || '').trim().slice(0, 70), account: normalizeAccount(p.account) || String(p.account || '').trim().slice(0, 40),
+      reference: String(p.reference || '').trim().slice(0, 33), model: String(p.model || '').trim().slice(0, 2) } : null;
+    const out = { locationId: loc ? loc.id : '', billTypeId: type ? type.id : '', month, periodFrom, periodTo,
+      amount: Number.isFinite(amt) && amt > 0 ? round2(amt) : null,
+      currency: (ctx.currencies || []).includes(cur) ? cur : (loc ? loc.currency : 'RSD'),
+      dueDate: readDate(o.dueDate), values, payee };
+    if(!out.billTypeId) low.add('billTypeId');
+    if(!out.month) low.add('month');
+    if(out.amount == null) low.add('amount');
+    out.low = [...low].filter(k => k !== 'values');
+    return out;
+  }
+  const EMPTY_READING = () => ({ locationId: '', billTypeId: '', month: '', periodFrom: '', periodTo: '', amount: null, currency: 'RSD', dueDate: '', values: {}, payee: null, low: ['billTypeId', 'month', 'amount'] });
+  // IPS QR sa uplatnice je pouzdaniji od AI-ja za iznos i podatke primaoca; razlika u iznosu -> polje za proveru
+  function mergeBillQr(reading, qr){
+    const r = Object.assign(EMPTY_READING(), reading || {});
+    r.low = (r.low || []).slice();
+    if(!qr) return r;
+    if(qr.amount > 0){
+      if(r.amount != null && Math.abs(r.amount - qr.amount) > 0.01){ if(!r.low.includes('amount')) r.low.push('amount'); }
+      else r.low = r.low.filter(k => k !== 'amount');
+      r.amount = round2(qr.amount);
+      if(qr.currency) r.currency = qr.currency;
+    }
+    r.payee = cleanPayee(Object.assign({}, r.payee || {}, { account: qr.account, name: qr.name || (r.payee && r.payee.name), code: qr.code, purpose: qr.purpose, model: qr.model, reference: qr.reference })) || r.payee;
+    return r;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1029,7 +1109,7 @@
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
-    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills,
+    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     checkWorkbookShape, checkDataFileShape
   };
 });

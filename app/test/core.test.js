@@ -889,3 +889,56 @@ test('kucni racuni: provera oblika fajla kopije pozna nove kljuceve', () => {
   assert.equal(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-kucni-racuni-v1': [] }).ok, true);
   assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-lokacije-v1': {} }).problems, ['budzet-lokacije-v1']);
 });
+
+const BILL_CTX = {
+  locations: [{ id: 'L1', name: 'Stan', currency: 'RSD' }, { id: 'L2', name: 'Drvar', currency: 'BAM' }],
+  billTypes: [
+    { id: 'T1', locationId: 'L1', name: 'Struja', category: 'Stanovanje', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }, { key: 'm2', name: 'Jeftina', unit: 'kWh' }] },
+    { id: 'T2', locationId: 'L2', name: 'Struja', category: 'Stanovanje', metrics: [{ key: 'm1', name: 'Skupa', unit: 'kWh' }] }
+  ],
+  currencies: ['RSD', 'BAM', 'EUR']
+};
+
+test('billsPrompt: spisak lokacija, vrsta i merenja sa id-jevima', () => {
+  const p = C.billsPrompt(BILL_CTX.locations, BILL_CTX.billTypes);
+  assert.match(p, /"Stan" \(id: L1, valuta RSD\)/);
+  assert.match(p, /Struja \(id: T1; merenja: m1 = Skupa \[kWh\], m2 = Jeftina \[kWh\]\)/);
+  assert.match(p, /"confidence"/);
+});
+
+test('cleanBillReading: JSON u bloku, zarez, nepoznat id, mesec iz perioda, low', () => {
+  const raw = 'Evo:\n```json\n{"locationId":"L1","billTypeId":"T1","month":"","periodFrom":"01.01.2025","periodTo":"2025-01-31","amount":"4.456,16","currency":"rsd","dueDate":"2025-02-15","values":{"m1":"215","m2":154,"m9":3},"payee":{"name":"EPS","account":"160-5100000000001-11","reference":"123"},"confidence":{"amount":"high","m2":"low"}}\n```';
+  const r = C.cleanBillReading(raw, BILL_CTX);
+  assert.equal(r.billTypeId, 'T1');
+  assert.equal(r.month, '2025-01');
+  assert.equal(r.periodFrom, '2025-01-01');
+  assert.equal(r.amount, 4456.16);
+  assert.equal(r.currency, 'RSD');
+  assert.deepEqual(r.values, { m1: 215, m2: 154 });
+  assert.deepEqual(r.low, ['m2']);
+  assert.equal(r.payee.name, 'EPS');
+
+  const bad = C.cleanBillReading({ locationId: 'L1', billTypeId: 'T2', amount: null, currency: 'XYZ' }, BILL_CTX);
+  assert.equal(bad.billTypeId, '');            // T2 je u drugoj lokaciji
+  assert.equal(bad.currency, 'RSD');           // valuta lokacije
+  assert.deepEqual(bad.low.sort(), ['amount', 'billTypeId', 'month']);
+
+  const byType = C.cleanBillReading({ billTypeId: 'T2', month: '2025-03', amount: 9.99 }, BILL_CTX);
+  assert.equal(byType.locationId, 'L2');       // lokacija iz vrste
+  assert.equal(byType.currency, 'BAM');
+  assert.equal(C.cleanBillReading('nema json-a', BILL_CTX), null);
+});
+
+test('mergeBillQr: QR ima prednost za iznos i primaoca, razlika -> low', () => {
+  const r = C.cleanBillReading({ locationId: 'L1', billTypeId: 'T1', month: '2025-01', amount: 4400 }, BILL_CTX);
+  const qr = { account: '160000000000000111', name: 'JP EPS', amount: 4456.16, currency: 'RSD', code: '189', purpose: 'Struja', model: '97', reference: '1234' };
+  const m = C.mergeBillQr(r, qr, BILL_CTX);
+  assert.equal(m.amount, 4456.16);
+  assert.ok(m.low.includes('amount'));
+  assert.equal(m.payee.account, '160000000000000111');
+  assert.equal(m.payee.code, '189');
+  const onlyQr = C.mergeBillQr(null, qr, BILL_CTX);
+  assert.equal(onlyQr.amount, 4456.16);
+  assert.equal(onlyQr.billTypeId, '');
+  assert.equal(C.mergeBillQr(r, null, BILL_CTX).amount, 4400);
+});
