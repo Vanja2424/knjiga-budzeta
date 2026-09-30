@@ -514,6 +514,17 @@
     'Upiši bar jednu stavku sa cenom ili ukupan iznos.': 'Enter at least one item with a price, or the total.',
     'Ovaj račun je možda već unet ({0}). Ipak dodati?': 'This receipt may already be entered ({0}). Add it anyway?',
     'Račun iz prodavnice dodat ({0} stavki)': 'Store receipt added ({0} items)',
+    // ---- Uplatnica bez QR koda (v1.22) ----
+    'Sa uplatnice…': 'From a payment slip…', 'Plati uplatnicu…': 'Pay a payment slip…', 'Učitaj sa uplatnice…': 'Load from payment slip…',
+    'Slika ili PDF uplatnice → IPS QR kod za m-banking i rashod.': 'Photo or PDF of a payment slip → IPS QR code for mobile banking, plus the expense.',
+    'Izaberi sliku ili PDF uplatnice, ili nalepi snimak ekrana sa Ctrl+V. Ako nema QR koda, podatke pročita AI — proveri ih pre plaćanja.': 'Choose a photo or PDF of the payment slip, or paste a screenshot with Ctrl+V. Without a QR code the AI reads the details — check them before paying.',
+    'Sačuvaj i kao ponavljajuću (svakog meseca)': 'Also save as recurring (every month)', 'Plati uplatnicu: {0}': 'Pay slip: {0}',
+    'Plaćena uplatnica: {0}': 'Slip paid: {0}', 'Uplatnica': 'Payment slip', 'Čitam uplatnicu…': 'Reading the payment slip…',
+    'QR kod nije pronađen, a AI čitanje nije podešeno (Podešavanja → AI čitanje računa).': 'No QR code found, and AI reading isn’t set up (Settings → AI bill reading).',
+    'QR kod nije pronađen — čitam uplatnicu preko AI…': 'No QR code found — reading the slip with AI…',
+    'Uplatnica nije pročitana — popuni podatke ručno.': 'The slip couldn’t be read — fill in the details manually.',
+    'Pročitano sa slike (AI) — proveri podatke: {0}{1}': 'Read from the image (AI) — check the details: {0}{1}',
+    'Upiši iznos veći od nule.': 'Enter an amount greater than zero.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

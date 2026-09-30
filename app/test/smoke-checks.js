@@ -1073,6 +1073,49 @@
       window.__fakeReceiptReading = null;
     } else check('račun: hook __addReceiptFiles', false);
 
+    // Uplatnica bez QR-a: AI cita (lazno), provera kontrolnog broja, ponavljajuca i jednokratno placanje
+    if ('__fakeSlipReading' in window) {
+      const slip = { name: 'JKP Smoke Infostan, Beograd', account: '845-0000000404849-87', code: '189', amount: '3.456,00', purpose: 'Komunalije', model: '', reference: '' };
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(slip) });
+      const blank = await new Promise(r => { const c = document.createElement('canvas'); c.width = 400; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 400, 200); c.toBlob(r, 'image/png'); });
+      const setFile = (id, f) => { const dt = new DataTransfer(); dt.items.add(f); $(id).files = dt.files; $(id).dispatchEvent(new Event('change')); };
+      // 1) nova ponavljajuca sa uplatnice
+      go('ponavljajuce'); await sleep(60);
+      setFile('recSlipInput', new File([blank], 'u.png', { type: 'image/png' })); await sleep(1500);
+      check('uplatnica: AI popunjava novu ponavljajuću', $('recDesc').value.startsWith('JKP Smoke Infostan') && $('recAmount').value === '3456' && /proveri/i.test($('recSlipStatus').textContent), $('recDesc').value + ' | ' + $('recSlipStatus').textContent);
+      setVal('recDay', '5'); $('recAutoPay').checked = false; $('recurringForm').requestSubmit(); await sleep(150);
+      const sr = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc.startsWith('JKP Smoke Infostan'));
+      check('uplatnica: ponavljajuća dobija podatke za plaćanje', !!sr && !!sr.payee && sr.payee.account === '845000000040484987', JSON.stringify(sr && sr.payee));
+      if (sr) {
+        go('ponavljajuce'); await sleep(80);
+        const delS = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(sr.id)}"] .del-btn`);
+        if (delS) { delS.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
+      }
+      // 2) jednokratno placanje iz Rashoda
+      go('rashodi'); await sleep(60);
+      check('uplatnica: dugme u Rashodima', !!$('expSlipBtn'));
+      if ($('expSlipInput')) {
+        setFile('expSlipInput', new File([blank], 'u2.png', { type: 'image/png' })); await sleep(1500);
+        check('uplatnica: prozor u izmeni sa podacima', $('ipsOverlay').classList.contains('show') && $('ipsEdit').style.display !== 'none' && $('ipsAccount').value.replace(/\D/g, '') === '845000000040484987', $('ipsAccount').value);
+        $('ipsPrimary').click(); await sleep(120);
+        check('uplatnica: QR kod i iznos sa uplatnice', !!$('ipsQr').querySelector('svg') && $('ipsAmount').value === '3456', $('ipsAmount').value);
+        $('ipsOneOffCat').value = 'Stanovanje';
+        const nE = entries().length;
+        $('ipsPrimary').click(); await sleep(250);
+        const ne = entries().slice(nE)[0];
+        check('uplatnica: rashod sa prilogom', !!ne && ne.amount === 3456 && ne.category === 'Stanovanje' && ne.desc.startsWith('JKP Smoke Infostan') && Array.isArray(ne.attachments) && ne.attachments.length === 1, JSON.stringify(ne));
+        if (ne) window.__deleteEntriesById([ne.id]);
+        // 3) pogresan kontrolni broj: ne dolazi do QR koda
+        window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { account: '845-0000000404849-88' })) });
+        setFile('expSlipInput', new File([blank], 'u3.png', { type: 'image/png' })); await sleep(1500);
+        check('uplatnica: pogrešan kontrolni broj odmah označen', /Kontrolni broj/.test($('ipsProblems').textContent), $('ipsProblems').textContent);
+        $('ipsPrimary').click(); await sleep(120);
+        check('uplatnica: bez QR koda dok se ne ispravi', $('ipsEdit').style.display !== 'none' && !$('ipsQr').querySelector('svg'));
+        $('ipsClose').click();
+      }
+      window.__fakeSlipReading = null;
+    } else check('uplatnica: hook __fakeSlipReading', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
