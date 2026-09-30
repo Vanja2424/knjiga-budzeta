@@ -145,3 +145,11 @@ test('read: 429 sa kratkim cekanjem -> saceka i pokusa jos jednom', async () => 
   assert.equal((await api2.read({ images: [], text: 't', prompt: 'p' })).kind, 'limit');
   assert.equal(waits.length, 1);   // predugo cekanje se ne radi
 });
+
+test('read: bez slike i teksta (npr. uvoz izvoda) poruka ne trazi citanje slike', async () => {
+  const { api, calls } = setup(() => okResponse('{}'));
+  api.setKey('gsk_k');
+  await api.read({ images: [], text: '', prompt: 'P' });
+  const parts = JSON.parse(calls[0].opts.body).messages[1].content;
+  assert.ok(!/sa slike/.test(parts[0].text), parts[0].text);
+});

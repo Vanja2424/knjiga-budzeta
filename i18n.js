@@ -527,6 +527,11 @@
     'Upiši iznos veći od nule.': 'Enter an amount greater than zero.',
     'Poziv na broj nije proveren kontrolnim brojem — uporedi ga sa uplatnicom pre plaćanja.': 'The payment reference has no check digit — compare it with the slip before paying.',
     'Podaci za plaćanje nisu sačuvani uz stavku — dodaj ih ispravne preko dugmeta QR.': 'The payment details weren’t saved with the item — add correct ones with the QR button.',
+    // ---- Uvoz izvoda + AI (v1.23) ----
+    'AI predlaže kategorije za {0} opisa…': 'AI is suggesting categories for {0} descriptions…', 'AI predlozi': 'AI suggestions',
+    'za opise koje pravila ne prepoznaju. Štiklirano = napravi pravilo, pa sledeći put AI nije potreban.': 'for descriptions no rule recognizes. Checked = create a rule, so next time AI isn’t needed.',
+    'Ključna reč za pravilo': 'Keyword for the rule', 'pravilo': 'rule', 'AI predlozi nisu dostupni ({0}).': 'AI suggestions aren’t available ({0}).',
+    'AI odgovor nije mogao da se pročita.': 'The AI answer couldn’t be read.', 'Nova pravila: {0}.': 'New rules: {0}.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

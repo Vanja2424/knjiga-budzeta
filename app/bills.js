@@ -64,7 +64,7 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
     } finally { clearTimeout(timer); }
   }
   const buildMessages = (imgs, t, prompt) => {
-    const parts = [{ type: 'text', text: t ? 'Tekst iz PDF-a:\n' + t : 'Pročitaj račun sa slike.' }];
+    const parts = [{ type: 'text', text: t ? 'Tekst iz PDF-a:\n' + t : imgs.length ? 'Pročitaj račun sa slike.' : 'Uradi zadatak iz uputstva i vrati JSON.' }];
     imgs.forEach(url => parts.push({ type: 'image_url', image_url: { url } }));
     return [{ role: 'system', content: String(prompt || '') }, { role: 'user', content: parts }];
   };

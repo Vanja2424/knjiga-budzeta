@@ -1154,6 +1154,34 @@
       window.__fakeSlipReading = null;
     } else check('uplatnica: hook __fakeSlipReading', false);
 
+    // Uvoz izvoda + AI predlozi kategorija i pravila (salju se samo opisi)
+    if ('__fakeImportCategorizing' in window && typeof window.__catRules === 'function') {
+      const m = monthKey(new Date());
+      const rules0 = window.__catRules().slice();
+      window.__setCatRules(rules0.concat([{ keyword: 'smokepoznato', category: 'Hrana' }]));
+      let sentPrompt = null;
+      window.__fakeImportCategorizing = req => { sentPrompt = req.prompt; return { ok: true, content: JSON.stringify({ items: [{ i: 0, category: 'Prevoz', keyword: 'SMOKEGORIVO' }, { i: 1, category: 'Zabava', keyword: 'SMOKEKINO' }, { i: 2, category: 'Nepostoji', keyword: 'SMOKEAPOTEKA' }, { i: 3, category: 'Hrana', keyword: 'nije u opisu' }] }) }; };
+      const csv = 'Datum;Opis;Iznos\n' + m + '-03;POS 11 SMOKEGORIVO BG;-3000,00\n' + m + '-04;POS 12 SMOKEKINO;-800,00\n' + m + '-05;SMOKEAPOTEKA 5;-450,00\n' + m + '-06;SMOKEPEKARA ZORA;-120,00\n' + m + '-07;SMOKEPOZNATO MARKET;-999,00\n' + m + '-08;POS 11 SMOKEGORIVO BG;-2500,00\n';
+      const pi = window.__runImportText([{ name: 'ai.csv', text: csv }]); await sleep(900);
+      check('uvoz AI: poslati samo nepoznati opisi, bez iznosa', !!sentPrompt && /SMOKEGORIVO/.test(sentPrompt) && !/SMOKEPOZNATO/.test(sentPrompt) && !/3000|2500|800,00/.test(sentPrompt), sentPrompt && sentPrompt.slice(-300));
+      const rowsAi = [...document.querySelectorAll('#dialogBody .import-ai-row')];
+      check('uvoz AI: 4 predloga u pregledu', rowsAi.length === 4, String(rowsAi.length));
+      const ap = rowsAi.find(r => /SMOKEAPOTEKA/.test(r.textContent));
+      if (ap) { const sl = ap.querySelector('select'); sl.value = 'Zdravlje'; sl.dispatchEvent(new Event('change', { bubbles: true })); }
+      const pk = rowsAi.find(r => /SMOKEPEKARA/.test(r.textContent));
+      if (pk) { const cb = pk.querySelector('input[type=checkbox]'); cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true })); }
+      $('dialogOk').click(); await pi; await sleep(150);
+      const imp = entries().filter(e => /SMOKE(GORIVO|KINO|APOTEKA|PEKARA|POZNATO)/.test(e.desc));
+      const catOf = d => (imp.find(e => e.desc.includes(d)) || {}).category;
+      check('uvoz AI: kategorije primenjene', imp.length === 6 && imp.filter(e => e.desc.includes('SMOKEGORIVO')).every(e => e.category === 'Prevoz') && catOf('SMOKEKINO') === 'Zabava' && catOf('SMOKEAPOTEKA') === 'Zdravlje' && catOf('SMOKEPEKARA') === 'Hrana' && catOf('SMOKEPOZNATO') === 'Hrana', JSON.stringify(imp.map(e => [e.desc, e.category])));
+      const rules = window.__catRules();
+      check('uvoz AI: pravila napravljena (bez isključenog)', rules.some(r => r.keyword === 'SMOKEGORIVO' && r.category === 'Prevoz') && rules.some(r => r.keyword === 'SMOKEAPOTEKA' && r.category === 'Zdravlje') && !rules.some(r => /SMOKEPEKARA/i.test(r.keyword)), JSON.stringify(rules));
+      window.__undoTop(); await sleep(150);
+      check('uvoz AI: opoziv briše stavke i nova pravila', !entries().some(e => /SMOKE(GORIVO|KINO|APOTEKA|PEKARA|POZNATO)/.test(e.desc)) && !window.__catRules().some(r => r.keyword === 'SMOKEGORIVO') && window.__catRules().some(r => r.keyword === 'smokepoznato'));
+      window.__setCatRules(rules0);
+      window.__fakeImportCategorizing = null;
+    } else check('uvoz AI: hook', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

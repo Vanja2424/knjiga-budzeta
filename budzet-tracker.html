@@ -1806,6 +1806,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .ips-oneoff-row{ display:grid; grid-template-columns: 1fr 1fr; gap: 0.6em; margin-top: 0.6em; }
 .ips-oneoff-row select, .ips-oneoff-row input{ width: 100%; }
 .ips-warn{ color: var(--warn-text, var(--warn)); }
+.import-ai{ margin-top: 0.8em; }
+.import-ai-row{ display: grid; grid-template-columns: minmax(0, 1fr) 9em 8em auto; gap: 6px; align-items: center; padding: 3px 0; border-bottom: 1px solid var(--separator); font-size: 0.9em; }
+.import-ai-row select, .import-ai-row input[type="text"]{ width: 100%; }
+.import-ai-desc{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.import-ai-make{ display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -3106,6 +3111,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // naziv kategorije iz bankovnog izvoda).
   let catRules = JSON.parse(localStorage.getItem(CATRULES_KEY) || '[]');
   const saveCatRules = () => localStorage.setItem(CATRULES_KEY, JSON.stringify(catRules));
+  window.__catRules = ()=> catRules;
+  window.__setCatRules = list => { catRules = list.slice(); saveCatRules(); if(typeof renderCatRules === 'function') renderCatRules(); };
   const categoryFromRules = desc => C.categoryFromRules(catRules, desc);
   // Kategorije prihoda su od v1.3 izmenljive (ranije fiksna lista).
   const INCOME_CATS_KEY = 'budzet-kategorije-prihoda-v1';
@@ -8992,14 +8999,35 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(name.endsWith('.qif') || /^!Type:/m.test(text)) return { format: 'QIF', rows: C.parseQIF(text), skipped: 0, error: null };
     return { format: 'CSV', ...C.tableToImportRows(C.parseCsv(text)) };
   }
+  // Kategorija stavke iz izvoda; r.catSource kaze odakle je (rule/bank/history/default) — 'default' ide AI-ju na predlog
   function importRowCategory(r){
     const ruleCat = categoryFromRules(r.desc);
-    if(ruleCat) return ruleCat;
-    if(r.category) return r.category;
+    if(ruleCat){ r.catSource = 'rule'; return ruleCat; }
+    if(r.category){ r.catSource = 'bank'; return r.category; }
     // Isti opis kao ranije unet — ista kategorija
     const prev = entries.filter(e=> e.type === r.type && (e.desc||'').trim().toLowerCase() === r.desc.trim().toLowerCase()).sort((a,b)=> b.date.localeCompare(a.date))[0];
-    if(prev) return prev.category;
+    if(prev){ r.catSource = 'history'; return prev.category; }
+    r.catSource = 'default';
     return r.type === 'expense' ? (expenseCats.includes('Ostalo') ? 'Ostalo' : expenseCats[0] || 'Ostalo') : (incomeCats.includes('Ostalo') ? 'Ostalo' : incomeCats[0] || 'Ostalo');
+  }
+  // AI predlog kategorije i kljucne reci za nepoznate opise; salju se SAMO opisi (bez iznosa i datuma), do 60 po zahtevu
+  let fakeImportCategorizing = null; // test: req -> { ok, content }
+  Object.defineProperty(window, '__fakeImportCategorizing', { get: ()=> fakeImportCategorizing, set: v=>{ fakeImportCategorizing = v; }, configurable: true });
+  async function suggestImportCategories(cands){
+    const map = new Map();
+    if(!(fakeImportCategorizing || (window.desktop && window.desktop.bills))) return { map, error: '' };
+    for(let i = 0; i < cands.length; i += 60){
+      const batch = cands.slice(i, i + 60);
+      const req = { images: [], text: '', prompt: C.importCategoryPrompt(expenseCats, batch) };
+      let res;
+      try{ res = fakeImportCategorizing ? await fakeImportCategorizing(req) : await window.desktop.bills.read(req); }
+      catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
+      if(!res || !res.ok) return { map, error: (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}) };
+      const got = C.cleanImportSuggestions(res.content, expenseCats, batch);
+      if(!got) return { map, error: t('AI odgovor nije mogao da se pročita.') };
+      got.forEach((v, k)=> map.set(k, v));
+    }
+    return { map, error: '' };
   }
   async function runImport(fileOrFiles, statusEl){
     const files = Array.isArray(fileOrFiles) ? fileOrFiles : [fileOrFiles];
@@ -9022,6 +9050,22 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const { clean, near } = C.findNearDuplicates(fresh, entries.filter(e=> e.type === 'income' || e.type === 'expense'), 3);
     clean.forEach(r=> r.category = importRowCategory(r));
     near.forEach(n=> n.row.category = importRowCategory(n.row));
+    // AI predlozi za rashode koje pravila i istorija ne prepoznaju
+    const aiCands = C.importAiCandidates(clean.concat(near.map(n=> n.row)));
+    let aiRes = { map: new Map(), error: '' };
+    if(aiCands.length){ statusEl.textContent = t('AI predlaže kategorije za {0} opisa…', aiCands.length); aiRes = await suggestImportCategories(aiCands); }
+    const fallbackCat = expenseCats.includes('Ostalo') ? 'Ostalo' : (expenseCats[0] || 'Ostalo');
+    const aiChoices = aiRes.map.size ? aiCands.map(c=>{ const sg = aiRes.map.get(c.key) || { category: '', keyword: C.suggestKeyword(c.desc) };
+      return { key: c.key, desc: c.desc, count: c.count, category: sg.category || fallbackCat, keyword: sg.keyword, make: !!sg.category }; }) : [];
+    const applyAiChoice = r => { if(r.type !== 'expense' || r.catSource !== 'default') return; const ch = aiChoices.find(x=> x.key === C.importDescKey(r.desc)); if(ch) r.category = ch.category; };
+    clean.forEach(applyAiChoice); near.forEach(n=> applyAiChoice(n.row));
+    const catOptsHtml = sel => expenseCats.map(c=> `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''} translate="no">${escapeHtml(c)}</option>`).join('');
+    const aiHtml = aiChoices.length ? `<div class="import-ai"><p><b>${escapeHtml(t('AI predlozi'))}</b> — ${escapeHtml(t('za opise koje pravila ne prepoznaju. Štiklirano = napravi pravilo, pa sledeći put AI nije potreban.'))}</p>
+        ${aiChoices.map((c, i)=> `<div class="import-ai-row" data-ai="${i}"><span class="import-ai-desc" translate="no" title="${escapeHtml(c.desc)}">${escapeHtml(c.desc.slice(0, 40))}${c.count > 1 ? ' ×' + c.count : ''}</span>
+          <select aria-label="${escapeHtml(t('Kategorija'))}">${catOptsHtml(c.category)}</select>
+          <input type="text" value="${escapeHtml(c.keyword)}" maxlength="30" translate="no" aria-label="${escapeHtml(t('Ključna reč za pravilo'))}">
+          <label class="import-ai-make"><input type="checkbox"${c.make ? ' checked' : ''}> ${escapeHtml(t('pravilo'))}</label></div>`).join('')}</div>`
+      : (aiRes.error ? `<p class="hint">${escapeHtml(t('AI predlozi nisu dostupni ({0}).', aiRes.error))}</p>` : '');
     const sum = list => list.reduce((a,r)=>a+r.amount,0);
     const inc = clean.filter(r=>r.type==='income'), exp = clean.filter(r=>r.type==='expense');
     const all = clean.concat(near.map(n=> n.row));
@@ -9046,6 +9090,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
          ${clean.length ? `<div class="table-scroll" style="margin-top:0.6em;"><table style="font-size:0.86em;"><tbody>${preview}</tbody></table></div>` : ''}
          ${clean.length > 8 ? `<p class="hint">${t('…i još {0}.', clean.length - 8)}</p>` : ''}
          ${nearHtml}
+         ${aiHtml}
          <p class="hint">Kategorije su dodeljene po pravilima i ranijim stavkama sa istim opisom — posle uvoza ih možeš promeniti.</p>`;
     if(!all.length){ await appAlert(msg, { title: 'Uvoz izvoda' }); statusEl.textContent = 'Ništa novo za uvoz.'; return; }
     const pickedNear = new Set();
@@ -9056,10 +9101,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(box.checked) pickedNear.add(i); else pickedNear.delete(i);
       document.getElementById('dialogOk').textContent = okText(clean.length + pickedNear.size);
     }));
+    document.querySelectorAll('#dialogBody .import-ai-row').forEach(row=>{
+      const ch = aiChoices[Number(row.dataset.ai)];
+      const sel = row.querySelector('select'), kw = row.querySelector('input[type="text"]'), mk = row.querySelector('input[type="checkbox"]');
+      sel.addEventListener('change', ()=>{ ch.category = sel.value; ch.make = true; mk.checked = true; });
+      kw.addEventListener('input', ()=>{ ch.keyword = kw.value; });
+      mk.addEventListener('change', ()=>{ ch.make = mk.checked; });
+    });
     const confirmed = await pending;
     const toImport = clean.concat(near.filter((n, i)=> pickedNear.has(i)).map(n=> n.row));
     if(!confirmed || !toImport.length){ statusEl.textContent = 'Uvoz je otkazan.'; return; }
     const importId = newId();
+    toImport.forEach(applyAiChoice);
+    const newRules = C.rulesFromSuggestions(aiChoices, catRules);
+    if(newRules.length){ catRules.push(...newRules); saveCatRules(); }
     toImport.forEach(r=>{
       if(r.type === 'expense' && !expenseCats.includes(r.category)) expenseCats.push(r.category);
       if(r.type === 'income' && !incomeCats.includes(r.category)) incomeCats.push(r.category);
@@ -9076,7 +9131,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       + (skippedNear ? ' ' + t('Preskočeno sličnih: {0}.', skippedNear) : '')
       + (problemTxt ? ' ' + problemTxt : '');
     renderAll();
-    showUndoToast(t('Uvezeno {0} stavki', toImport.length), ()=>{ entries = entries.filter(e=> e.importId !== importId); saveEntries(); renderAll(); statusEl.textContent = 'Uvoz je poništen.'; });
+    if(newRules.length) statusEl.textContent += ' ' + t('Nova pravila: {0}.', newRules.length);
+    showUndoToast(t('Uvezeno {0} stavki', toImport.length), ()=>{
+      entries = entries.filter(e=> e.importId !== importId); saveEntries();
+      if(newRules.length){ catRules = catRules.filter(r=> !newRules.includes(r)); saveCatRules(); renderCatRules(); }
+      renderAll(); statusEl.textContent = 'Uvoz je poništen.';
+    });
   }
   // Za testove: uvoz tekstualnih fajlova bez biranja fajla
   window.__runImportText = files => runImport(files.map(f=> new File([f.text], f.name, { type: 'text/plain' })), document.getElementById('csvImportStatus'));
