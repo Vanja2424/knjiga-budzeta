@@ -4968,7 +4968,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       <div class="rc-name"><input type="text" data-f="name" value="${escapeHtml(i.name)}" translate="no" aria-label="${escapeHtml(t('Stavka'))}" title="${escapeHtml(i.raw)}">${matched.has(idx) ? `<span class="rc-matched">${escapeHtml(t('sa liste ✓'))}</span>` : ''}</div>
       <select data-f="category" aria-label="${escapeHtml(t('Kategorija'))}">${catOpts(i.category)}</select>
       <input type="number" step="0.01" data-f="price" value="${i.price != null ? i.price : ''}" aria-label="${escapeHtml(t('Cena'))}">
-      <button type="button" class="btn-link rc-del" aria-label="${escapeHtml(t('Ukloni stavku'))}">×</button></div>`).join('');
+      <button type="button" class="del-btn rc-del" aria-label="${escapeHtml(t('Ukloni stavku'))}">×</button></div>`).join('');
     renderReceiptSums();
     const errs = receipt.parts.map((pp, i)=> pp.error ? (receipt.parts.length > 1 ? t('Deo {0} nije pročitan ({1})', i + 1, pp.error) : pp.error) : '').filter(Boolean);
     const dup = receipt.date && receipt.total > 0 ? C.findReceiptDuplicate(entries, receipt.date, receipt.total) : null;
