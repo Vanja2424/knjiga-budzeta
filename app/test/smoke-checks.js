@@ -1504,6 +1504,125 @@
         check('D Excel: cilj čuva račun (izvoz i uvoz)', !!row && row.RacunID === 'smoke-d-acc' && !!back && back.accountId === 'smoke-d-acc', JSON.stringify({ row, back }));
       } else check('D Excel: hook __goalsFromWorkbook', false);
     }
+    // Ispravke: racun iz prodavnice (popust, kategorija sa liste, duplikat, razlika, prilozi, undo) i pracenje cena
+    if (typeof window.__addReceiptFiles === 'function') {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+      const typeIn = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+      go('nabavka'); await sleep(60);
+      window.__addExpenseCategory('Smoke rc2');
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-fx-sapun', name: 'Smokesapun', section: 'Ostalo', store: '', category: 'Smoke rc2', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      const dA = monthKey(new Date()) + '-03', dB = monthKey(new Date()) + '-04';
+      window.__addEntriesRaw([{ id: 'smoke-fx-dup', type: 'expense', desc: 'Smoke dup', amount: 999, category: 'Hrana', date: dA, paid: true, receiptId: 'smokeFxDup' }]);
+      const img = await new Promise(r => { const c = document.createElement('canvas'); c.width = 200; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 300); c.toBlob(r, 'image/jpeg'); });
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke Fx', date: dA, total: 160, items: [
+        { raw: 'SMOKESAPUN DOVE 100G', name: 'Smokesapun Dove 100g', price: 150, category: '' },
+        { raw: 'SMOKEKESA', name: 'Smokekesa', qty: 1, unit: 'kom', price: 10, category: '' }] }) });
+      const pA = window.__addReceiptFiles([new File([img], 'fx.jpg', { type: 'image/jpeg' })]); await sleep(1200);
+      const stA = window.__receiptState();
+      check('račun fix: kategorija sa liste i kad je upareno po početku imena', !!stA && stA.items[0].category === 'Smoke rc2', stA && stA.items[0].category);
+      setVal('receiptTotal', '999'); await sleep(30);
+      check('račun fix: upozorenje o duplikatu posle izmene ukupnog', /već unet/.test($('receiptStatus').textContent), $('receiptStatus').textContent);
+      setVal('receiptTotal', '100'); await sleep(30);
+      check('račun fix: upozorenje kad su stavke veće od ukupnog', /veće od ukupnog/.test($('receiptDiff').textContent) && !/već unet/.test($('receiptStatus').textContent), $('receiptDiff').textContent + ' | ' + $('receiptStatus').textContent);
+      setVal('receiptTotal', '160'); await sleep(30);
+      // rucno upisano: popust -5 i red "Difference to total" 5
+      const addRow = async (name, price) => {
+        $('receiptAddItem').click(); await sleep(30);
+        const rows = document.querySelectorAll('#receiptItems .receipt-row'), row = rows[rows.length - 1];
+        typeIn(row.querySelector('input[data-f="name"]'), name); typeIn(row.querySelector('input[data-f="price"]'), price);
+      };
+      await addRow('Smokepopust', '-5');
+      await addRow('Difference to total', '5');
+      const n0 = entries().length;
+      $('receiptSave').click(); await pA; await sleep(250);
+      const madeA = entries().slice(n0);
+      const allItems = [].concat(...madeA.map(e => e.items || [])), allPrices = [].concat(...madeA.map(e => e.itemPrices || []));
+      check('račun fix: negativna upisana cena je popust, ne ide u itemPrices', madeA.length > 0 && allPrices.every(p => p == null || p >= 0) && !allItems.some(l => /Smokepopust/.test(l)) && allPrices[allItems.indexOf('Smokekesa')] === 5, JSON.stringify(madeA.map(e => [e.items, e.itemPrices])));
+      check('račun fix: red razlike se čuva na srpskom', allItems.includes('Razlika do ukupnog') && !allItems.includes('Difference to total'), JSON.stringify(allItems));
+      check('račun fix: bez oznake "1 kom"', allItems.includes('Smokekesa') && !allItems.some(l => /\(1 kom\)/.test(l)), JSON.stringify(allItems));
+      const attA = (madeA[0] && madeA[0].attachments) || [];
+      window.__undoTop(); await sleep(200);
+      let restored = attA.length > 0;
+      for (const n of attA) { const r = await window.desktop.bills.restoreFile(n); restored = restored && !!(r && r.ok); await window.desktop.bills.deleteFile(n); }
+      check('račun fix: undo sklanja slike iz Priloga', restored && !entries().some(e => madeA.some(m => m.id === e.id)), JSON.stringify(attA));
+      // racun bez stavki (samo ukupno) + neuspelo cuvanje slike
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke Fx2', date: dB, total: 77, items: [] }) });
+      window.__fakeSaveFile = () => ({ ok: false, error: 'test' });
+      const pB = window.__addReceiptFiles([new File([img], 'fx2.jpg', { type: 'image/jpeg' })]); await sleep(1200);
+      const n1 = entries().length;
+      $('receiptSave').click(); await pB; await sleep(250);
+      window.__fakeSaveFile = null;
+      const madeB = entries().slice(n1);
+      check('račun fix: neuspelo čuvanje slike se javlja', $('dialogOverlay').classList.contains('show') && /nije sačuvan/.test($('dialogBody').textContent), $('dialogBody').textContent);
+      if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      check('račun fix: račun bez stavki ne pravi lažni artikal', madeB.length === 1 && madeB[0].amount === 77 && !(madeB[0].items && madeB[0].items.length) && !BudzetCore.priceObservations(entries()).some(o => o.date === dB && o.store === 'Smoke Fx2'), JSON.stringify(madeB));
+      window.__undoTop(); await sleep(100);
+      // dupliranje rashoda sa racuna: bez receiptId i priloga, nema nove cene
+      const src = { id: 'smoke-fx-src', type: 'expense', desc: 'Smoke Fx3', amount: 50, category: 'Hrana', date: ago(1), paid: true, tags: ['nabavka'], items: ['Smokedupli'], itemPrices: [50], receiptId: 'smokeFx3', attachments: ['smoke-nema.jpg'] };
+      window.__addEntriesRaw([src]);
+      const nObs = BudzetCore.priceObservations(entries()).filter(o => o.key === 'smokedupli').length;
+      if (typeof window.__duplicateEntry === 'function') window.__duplicateEntry(src);
+      const copy = entries().find(e => e.desc === 'Smoke Fx3' && e.id !== src.id);
+      check('račun fix: kopija rashoda bez receiptId i priloga', !!copy && copy.receiptId === undefined && copy.attachments === undefined && BudzetCore.priceObservations(entries()).filter(o => o.key === 'smokedupli').length === nObs, JSON.stringify(copy));
+      window.__deleteEntriesById(['smoke-fx-dup', 'smoke-fx-src'].concat(copy ? [copy.id] : []));
+      // cene: istorija se racuna jednom po prikazu, a osvezava posle promene
+      const R = (id, date, store, items, prices, qty) => ({ id: 'smoke-fx-' + id, type: 'expense', receiptId: 'smokeFxR' + id, date, desc: store, amount: prices.reduce((a, b) => a + b, 0), category: 'Hrana', paid: true, tags: ['nabavka'], items, itemPrices: prices, itemQty: qty });
+      window.__addEntriesRaw([
+        R('d1', ago(0), 'Smoke Lidl', ['Smokedanas'], [100], [{ qty: 1, unit: 'kom' }]),
+        R('d2', ago(0), 'Smoke Maxi', ['Smokedanas'], [120], [{ qty: 1, unit: 'kom' }]),
+        R('s1', ago(10), 'Smoke Maxi', ['Smokesir'], [800], [{ qty: 1, unit: 'kg' }]),
+        R('s2', ago(5), 'Smoke Lidl', ['Smokesir'], [300], [{ qty: 1, unit: 'kom' }])
+      ]);
+      sh.items.push({ id: 'smoke-fx-danas', name: 'Smokedanas', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false },
+        { id: 'smoke-fx-sir', name: 'Smokesir', section: 'Ostalo', store: 'Smoke Maxi', category: 'Hrana', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      const origPH = BudzetCore.priceHistory; let phCalls = 0;
+      BudzetCore.priceHistory = (...a) => { phCalls++; return origPH(...a); };
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      const callsTwo = phCalls;
+      window.__addEntriesRaw([R('n1', ago(0), 'Smoke Maxi', ['Smokenovo'], [10], [{ qty: 1, unit: 'kom' }])]);
+      sh.items.push({ id: 'smoke-fx-novo', name: 'Smokenovo', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false }); window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      BudzetCore.priceHistory = origPH;
+      const rowNovo = document.querySelector('.shop-row[data-row-id="smoke-fx-novo"]');
+      check('cene fix: istorija cena jednom za dva prikaza, osvežena posle novog računa', callsTwo <= 1 && !!rowNovo && /~/.test(rowNovo.textContent), 'poziva: ' + callsTwo + ' | ' + (rowNovo && rowNovo.textContent));
+      const rowD = document.querySelector('.shop-row[data-row-id="smoke-fx-danas"]');
+      const ch = rowD && rowD.querySelector('.shop-cheapest');
+      check('cene fix: kupovina danas piše "danas"', !!ch && /danas/.test(ch.textContent) && !/pre 0/.test(ch.textContent), ch && ch.textContent);
+      const rowS = document.querySelector('.shop-row[data-row-id="smoke-fx-sir"]');
+      const tip = rowS && rowS.querySelector('.shop-meta span[title]');
+      check('cene fix: jedinica u opisu procene je iz korišćene kupovine', !!tip && /RSD\/kg/.test(tip.title), tip && tip.title);
+      window.__deleteEntriesById(['smoke-fx-d1', 'smoke-fx-d2', 'smoke-fx-s1', 'smoke-fx-s2', 'smoke-fx-n1']);
+      // preimenovanje stavke liste ne gubi istoriju kupovina; sakrivanje predloga cisti stara sakrivanja
+      const P = (id, n) => ({ id: 'smoke-fx-p' + id, type: 'expense', desc: 'Smoke Fx4', amount: 10, category: 'Hrana', date: ago(n), paid: true, items: ['Smokepreime'] });
+      window.__addEntriesRaw([P('1', 74), P('2', 67), P('3', 60)]);
+      sh.items.push({ id: 'smoke-fx-pre', name: 'Smokepreime', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: false, checked: false });
+      sh.dismissed = Object.assign({}, sh.dismissed, { 'smoke stara stvar': '2020-01-01' });
+      window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="all"]').click(); await sleep(80);
+      const editBtn = document.querySelector('.shop-edit[data-id="smoke-fx-pre"]');
+      if (editBtn) {
+        editBtn.click(); await sleep(60);
+        $('edit-field-name').value = 'Smokepreime novo';
+        $('editModalSave').click(); await sleep(100);
+      }
+      const sugg = [...document.querySelectorAll('#shopSuggest .shop-suggest-row')].find(r => /Smokepreime/.test(r.textContent));
+      check('nabavka fix: preimenovana stavka zadržava istoriju kupovina', !!sugg && /Smokepreime novo/.test(sugg.textContent) && (window.__shopping().items.find(i => i.id === 'smoke-fx-pre').aliases || []).includes('Smokepreime'), sugg ? sugg.textContent : 'nema predloga');
+      if (sugg) { sugg.querySelector('.shop-suggest-hide').click(); await sleep(60); }
+      const dis = window.__shopping().dismissed || {};
+      check('nabavka fix: sakrivanje predloga čisti zastarela sakrivanja', !!dis['smokepreime novo'] && !('smoke stara stvar' in dis), JSON.stringify(dis));
+      window.__deleteEntriesById(['smoke-fx-p1', 'smoke-fx-p2', 'smoke-fx-p3']);
+      window.__shopping().items = window.__shopping().items.filter(i => !i.id.startsWith('smoke-fx-'));
+      delete window.__shopping().dismissed['smokepreime novo'];
+      window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click();
+      window.__deleteExpenseCategory('Smoke rc2');
+      window.__fakeReceiptReading = null;
+    } else check('račun fix: hook __addReceiptFiles', false);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
