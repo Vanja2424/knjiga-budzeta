@@ -2668,7 +2668,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="file-row"><input type="text" id="aiModel" translate="no" style="max-width:320px;"><button class="btn-secondary" id="aiTest">Proveri ključ</button></div>
         <label class="paid-checkbox-label"><input type="checkbox" id="aiSendText"> Šalji tekst iz PDF-a uz slike (pouzdanije čitanje brojeva)</label>
         <div class="import-status" id="aiStatus" aria-live="polite"></div>
-        <div class="import-status">Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš, pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.</div>
+        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.</div>
       </div>
 
       <div id="desktopSettings" style="display:none;">
@@ -3036,7 +3036,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       <div class="bill-preview">
         <div class="bill-preview-img" id="docPreview"></div>
         <div class="doc-files" id="docFiles"></div>
-        <div class="file-row"><button type="button" class="btn-secondary" id="docAddFile">Dodaj prilog</button><input type="file" id="docFileInput" accept="application/pdf,image/*,.heic" hidden></div>
+        <div class="file-row"><button type="button" class="btn-secondary" id="docAddFile">Dodaj prilog</button><input type="file" id="docFileInput" accept="application/pdf,image/*,.heic" hidden><button type="button" class="save-btn doc-read-ai" id="docReadAi" style="display:none;">Pročitaj AI-jem</button></div>
         <div><label class="paid-checkbox-label"><input type="checkbox" id="docNoAi"> Ne šalji ovaj fajl AI-ju</label></div>
         <div class="hint" id="docNoAiHint" style="display:none;">Za lična dokumenta (pasoš, lična karta) podatke je bolje uneti ručno.</div>
       </div>
@@ -5405,17 +5405,43 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     docKindChanged(); docGroupChanged();
     dEl('docStatus').textContent = t('Pročitano sa slike (AI) — proveri podatke.');
   }
+  const docAiAvailable = ()=> !!(fakeDocReading || (window.desktop && window.desktop.bills));
+  function setDocBusy(st, d){
+    st.busy = Math.max(0, (st.busy || 0) + d);
+    if(docReview !== st) return;
+    dEl('docSave').disabled = st.busy > 0;
+    const unread = st.files.some(f=> f.prep && !f.prep.error && !f.read);
+    dEl('docReadAi').style.display = !st.busy && unread && docAiAvailable() ? '' : 'none';
+  }
+  // fajlovi se samo pripreme (pregled, prilog); AI cita tek na "Procitaj AI-jem" — da licni dokument ne ode pre prekidaca
   async function addFilesToDocReview(files){
     const st = docReview; if(!st) return;
-    for(const f of files){
-      const prep = await prepareBillFile(f);
-      if(docReview !== st) return;
-      st.files.push({ prep, label: f.name || t('prilog') });
-      renderDocFiles();
-      if(prep.error) dEl('docStatus').textContent = prep.error;
-      else await readDocFile(prep, st);
-    }
+    setDocBusy(st, +1);
+    try{
+      for(const f of files){
+        const prep = await prepareBillFile(f);
+        if(docReview !== st) return;
+        st.files.push({ prep, label: f.name || t('prilog') });
+        renderDocFiles();
+        if(prep.error) dEl('docStatus').textContent = prep.error;
+      }
+      if(docReview === st && st.files.some(f=> f.prep && !f.prep.error && !f.read) && docAiAvailable())
+        dEl('docStatus').textContent = t('Klikni „Pročitaj AI-jem“ da se podaci popune sami, ili ih upiši ručno.');
+    } finally { setDocBusy(st, -1); }
   }
+  dEl('docReadAi').addEventListener('click', async ()=>{
+    const st = docReview; if(!st || st.busy) return;
+    if(dEl('docNoAi').checked){ dEl('docStatus').textContent = t('Prekidač „Ne šalji ovaj fajl AI-ju“ je uključen — fajl nije poslat.'); return; }
+    setDocBusy(st, +1);
+    try{
+      for(const f of st.files){
+        if(!f.prep || f.prep.error || f.read) continue;
+        if(docReview !== st || dEl('docNoAi').checked) break;
+        f.read = true;
+        await readDocFile(f.prep, st);
+      }
+    } finally { setDocBusy(st, -1); }
+  });
   function addDocFiles(files){
     const p = openDocReview({});
     addFilesToDocReview(Array.from(files || []));
@@ -5432,7 +5458,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   dEl('docOverlay').addEventListener('click', e=>{ if(e.target.id === 'docOverlay') closeDocReview(false); });
   dEl('docDelete').addEventListener('click', ()=>{ const d = docReview && docReview.doc; if(!d) return; closeDocReview(false); deleteDocument(d.id); });
   dEl('docSave').addEventListener('click', async ()=>{
-    const st = docReview; if(!st) return;
+    const st = docReview; if(!st || st.busy) return;
     const title = dEl('docTitle').value.trim();
     if(!title){ dEl('docStatus').textContent = t('Upiši naziv.'); dEl('docTitle').classList.add('bill-low'); return; }
     dEl('docSave').disabled = true;
@@ -5456,7 +5482,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const clean = C.cleanDocuments([base])[0];
     dEl('docSave').disabled = false;
     if(!clean){ dEl('docStatus').textContent = t('Zapis nije sačuvan.'); return; }
-    if(window.desktop && window.desktop.bills) st.removed.forEach(n=> window.desktop.bills.deleteFile(n));
+    const sharedNames = new Set(entries.flatMap(e=> e.attachments || []).concat(documents.filter(d=> d.id !== clean.id).flatMap(d=> d.files)));
+    if(window.desktop && window.desktop.bills) st.removed.filter(n=> !sharedNames.has(n) && !clean.files.includes(n)).forEach(n=> window.desktop.bills.deleteFile(n));
     documents = documents.filter(d=> d.id !== clean.id).concat(clean);
     saveDocuments();
     closeDocReview(true);
@@ -5468,7 +5495,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const d = documents.find(x=> x.id === id); if(!d) return;
     const run = ()=>{
       documents = documents.filter(x=> x.id !== id); saveDocuments();
-      const shared = new Set(entries.flatMap(e=> e.attachments || []));
+      const shared = new Set(entries.flatMap(e=> e.attachments || []).concat(documents.flatMap(x=> x.files)));
       const own = d.files.filter(n=> !shared.has(n));
       if(window.desktop && window.desktop.bills) own.forEach(n=> window.desktop.bills.deleteFile(n));
       renderAll();
@@ -5513,6 +5540,24 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     dEl('docRemindersOpen').addEventListener('click', ()=> showScreen('dokumenti'));
   }
   window.__docNotifyKeys = ()=> C.documentReminders(documents, docToday()).map(x=> x.notifyKey);
+  const DOC_NOTIFIED_KEY = 'budzet-dokumenti-obavesteno-v1';
+  function runDocNotifications(){
+    const rem = C.documentReminders(documents, docToday());
+    const current = new Set(rem.map(x=> x.notifyKey));
+    const log = (readJsonKey(DOC_NOTIFIED_KEY, []) || []).filter(k=> current.has(k));
+    const toSend = rem.filter(x=> !log.includes(x.notifyKey));
+    toSend.forEach(x=>{
+      log.push(x.notifyKey);
+      if(!('Notification' in window) || Notification.permission !== 'granted') return;
+      try{
+        const n = new Notification(x.status.days === 0 ? t('Danas ističe') : t('Uskoro ističe'), { body: x.doc.title + ' — ' + docStatusLabel(x.doc).text, tag: x.notifyKey });
+        n.onclick = ()=>{ if(window.desktop) window.desktop.showWindow(); openNotificationTarget({ screen: 'dokumenti', rowId: x.doc.id }); };
+      } catch(e){ /* obavestenja nedostupna */ }
+    });
+    localStorage.setItem(DOC_NOTIFIED_KEY, JSON.stringify(log));
+    return toSend.map(x=> x.notifyKey);
+  }
+  window.__runDocNotifications = ()=> runDocNotifications();
   // Garancija iz rashoda: popunjen nov zapis sa prilozima rashoda
   function openWarrantyFromEntry(e){
     const first = Array.isArray(e.items) && e.items[0] ? C.purchasedItemName(e.items[0]) : '';
@@ -7682,9 +7727,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   window.__openNotificationTarget = openNotificationTarget;
   function checkAndSendNotifications(){
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
-    C.documentReminders(documents, toISODateLocal(new Date())).forEach(x=>{
-      sendNotificationOnce(x.notifyKey, x.status.days === 0 ? t('Danas ističe') : t('Uskoro ističe'), x.doc.title + ' — ' + docStatusLabel(x.doc).text, { screen: 'dokumenti', rowId: x.doc.id });
-    });
+    runDocNotifications();
     const todayDay = new Date().getDate();
     const curMonthKey = currentMonthKey();
     recurring.forEach(r=>{

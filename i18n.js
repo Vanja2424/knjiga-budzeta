@@ -557,6 +557,9 @@
     'Obnova: {0}': 'Renewal: {0}', 'Obnovljeno: {0} — važi do {1}': 'Renewed: {0} — valid until {1}',
     'Uskoro ističe': 'Expiring soon', 'Otvori Dokumenti': 'Open Documents', 'Danas ističe': 'Expires today', 'Dodaj garanciju za ovu kupovinu': 'Add a warranty for this purchase', '+ garancija': '+ warranty',
     'Podaci se čuvaju u fajlu na ovom računaru. AI čitanje šalje Groq-u samo ono što ubaciš (vidi Podešavanja).': 'Data is stored in a file on this computer. AI reading only sends Groq what you add (see Settings).',
+    'Pročitaj AI-jem': 'Read with AI', 'Klikni „Pročitaj AI-jem“ da se podaci popune sami, ili ih upiši ručno.': 'Click “Read with AI” to fill in the details automatically, or type them in.',
+    'Prekidač „Ne šalji ovaj fajl AI-ju“ je uključen — fajl nije poslat.': 'The “Don’t send this file to AI” switch is on — the file wasn’t sent.',
+    'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), and in quick add the description of a new expense to suggest a category. All other data stays on this computer only.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

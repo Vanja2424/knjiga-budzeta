@@ -1188,7 +1188,7 @@
       window.__setCatRules(rules0);
       window.__fakeImportCategorizing = null;
       go('podesavanja'); await sleep(80);
-      check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent) && /brzom unosu/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
+      check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent) && /brzom unosu/.test($('aiSettings').textContent) && /dokumen/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
     } else check('uvoz AI: hook', false);
 
     // Dokumenti: AI unos, stanje, licna dokumenta, obnova, brisanje sa opozivom, kopija i Excel
@@ -1200,19 +1200,31 @@
       window.__fakeDocReading = () => { docCalls++; return { ok: true, content: JSON.stringify({ kind: 'garancija', title: 'Smoke frižider', group: 'Tehnika', issued: bought, warrantyMonths: 24, vendor: 'Smoke Tehno' }) }; };
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 200); c.toBlob(r, 'image/png'); });
       go('dokumenti'); await sleep(80);
-      const pd = window.__addDocFiles([new File([png], 'g.png', { type: 'image/png' })]); await sleep(1500);
+      const pd = window.__addDocFiles([new File([png], 'g.png', { type: 'image/png' }), new File([png], 'g2.png', { type: 'image/png' }), new File([png], 'g3.png', { type: 'image/png' })]);
+      await sleep(20);
+      check('dokumenti: Sačuvaj isključeno dok se fajlovi pripremaju', $('docSave').disabled === true);
+      await sleep(1500);
+      check('dokumenti: AI ne čita sam, čeka dugme', docCalls === 0 && $('docReadAi').style.display !== 'none' && $('docSave').disabled === false && document.querySelectorAll('#docFiles .doc-file').length === 3, 'calls=' + docCalls);
+      $('docReadAi').click(); await sleep(800);
       check('dokumenti: prozor sa AI podacima', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke frižider' && $('docIssued').value === bought && $('docMonths').value === '24', $('docTitle').value + ' ' + $('docIssued').value);
       $('docSave').click(); await pd; await sleep(200);
       const dz = window.__documents().find(d => d.title === 'Smoke frižider');
-      check('dokumenti: sačuvan sa prilogom, uskoro ističe', !!dz && dz.files.length === 1 && window.BudzetCore.documentStatus(dz, iso(now)).state === 'soon', JSON.stringify(dz));
+      check('dokumenti: sačuvan sa prilozima, uskoro ističe', !!dz && dz.files.length === 3 && window.BudzetCore.documentStatus(dz, iso(now)).state === 'soon', JSON.stringify(dz));
       check('dokumenti: red na spisku sa stanjem', !!document.querySelector(`#docList .doc-row.doc-soon[data-id="${dz && dz.id}"]`));
       // licna dokumenta: prekidac ne salje sledece fajlove
       window.__fakeDocReading = () => { docCalls++; return { ok: true, content: JSON.stringify({ kind: 'dokument', title: 'Smoke pasoš', group: 'Lična dokumenta', expires: iso(new Date(now.getFullYear() + 5, 0, 1)) }) }; };
-      const pp = window.__addDocFiles([new File([png], 'p.png', { type: 'image/png' })]); await sleep(1500);
-      check('dokumenti: lična dokumenta uključuju „ne šalji AI-ju“', $('docNoAi').checked === true);
+      const pp = window.__addDocFiles([new File([png], 'p.png', { type: 'image/png' })]); await sleep(1200);
       const callsBefore = docCalls;
+      $('docNoAi').checked = true; $('docNoAi').dispatchEvent(new Event('change', { bubbles: true }));
+      $('docReadAi').click(); await sleep(600);
+      check('dokumenti: uključen prekidač — prvi fajl ne ide AI-ju', docCalls === callsBefore, docCalls + ' ' + callsBefore);
+      $('docNoAi').checked = false; $('docNoAi').dispatchEvent(new Event('change', { bubbles: true }));
+      $('docReadAi').click(); await sleep(800);
+      check('dokumenti: lična dokumenta uključuju „ne šalji AI-ju“', $('docNoAi').checked === true);
+      const callsBefore2 = docCalls;
       const dt = new DataTransfer(); dt.items.add(new File([png], 'p2.png', { type: 'image/png' })); $('docFileInput').files = dt.files; $('docFileInput').dispatchEvent(new Event('change')); await sleep(1200);
-      check('dokumenti: uz prekidač fajl ne ide AI-ju, ali se dodaje', docCalls === callsBefore && document.querySelectorAll('#docFiles .doc-file').length === 2, docCalls + ' ' + callsBefore);
+      $('docReadAi').click(); await sleep(400);
+      check('dokumenti: uz prekidač fajl ne ide AI-ju, ali se dodaje', docCalls === callsBefore2 && document.querySelectorAll('#docFiles .doc-file').length === 2, docCalls + ' ' + callsBefore2);
       $('docCancel').click(); await pp;
       // obnova sa rashodom i opozivom
       const regExp = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10));
@@ -1249,6 +1261,8 @@
       go('pregled'); await sleep(150);
       check('dokumenti: kartica Uskoro ističe na Pregledu', $('docReminders') && $('docReminders').style.display !== 'none' && /Smoke osiguranje/.test($('docReminders').textContent), $('docReminders') && $('docReminders').textContent.slice(0, 120));
       check('dokumenti: ključ obaveštenja', window.__docNotifyKeys().some(k => k.startsWith('doc-' + soonId + '-') && k.endsWith('-soon')), JSON.stringify(window.__docNotifyKeys()));
+      const sent1 = window.__runDocNotifications(), sent2 = window.__runDocNotifications({ newDay: true });
+      check('dokumenti: obaveštenje „uskoro“ samo jednom (i sledećeg dana)', sent1.some(k => k.startsWith('doc-' + soonId)) && !sent2.some(k => k.startsWith('doc-' + soonId)), JSON.stringify({ sent1, sent2 }));
       window.__deleteDocument(soonId, { confirm: false });
       const att = await window.desktop.bills.saveFile(new Uint8Array([1, 2, 3]), 'smoke-garancija.pdf');
       window.__addEntriesRaw([{ id: 'smoke-war-1', type: 'expense', desc: 'Smoke Tehno', amount: 50000, category: 'Ostalo', date: iso(now), paid: true, tags: [], items: ['Frižider Gorenje'], attachments: [att.name] }]);
@@ -1261,6 +1275,12 @@
         $('docSave').click(); await sleep(250);
         const wd = window.__documents().find(d => d.entryId === 'smoke-war-1');
         check('dokumenti: garancija vezana za rashod', !!wd && wd.files[0] === att.name);
+        if (wd) {
+          window.__openDocReview({ doc: wd }); await sleep(150);
+          document.querySelector('#docFiles .doc-file-del').click(); await sleep(50);
+          $('docSave').click(); await sleep(250);
+          check('dokumenti: uklanjanje deljenog priloga ne briše račun rashoda', (await window.desktop.bills.openFile(att.name)).ok === true);
+        }
         if (wd) { window.__deleteDocument(wd.id, { confirm: false }); await sleep(100); }
         check('dokumenti: prilog rashoda ostaje posle brisanja garancije', (await window.desktop.bills.openFile(att.name)).ok === true);
       }
