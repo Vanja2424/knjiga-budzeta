@@ -569,6 +569,7 @@
     'Razmišljam…': 'Thinking…', 'Mogu da odgovorim samo na pitanja o tvom budžetu.': 'I can only answer questions about your budget.',
     'Za ovo pitanje nema podataka u knjizi.': 'There’s no data in the book for this question.',
     'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), in quick add the description of a new expense to suggest a category, and in “Ask” the question plus the results of the calculations the app runs. All other data stays on this computer only.',
+    'Pitanje traži previše podataka za besplatni Groq limit — suzi period ili pokušaj za minut.': 'The question needs too much data for the free Groq limit — narrow the period or try again in a minute.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

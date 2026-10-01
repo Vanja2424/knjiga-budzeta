@@ -5604,6 +5604,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     document.getElementById('askBtn').disabled = askBusy || !ok;
     if(!ok) document.getElementById('askHint').textContent = window.desktop ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).') : t('Ova funkcija radi samo u desktop aplikaciji.');
   }
+  // greska za "Pitaj": prevelik zahtev nije "racun"
+  const askErr = r => r && r.kind === 'toolarge' ? t('Pitanje traži previše podataka za besplatni Groq limit — suzi period ili pokušaj za minut.') : (BILL_ERR[r && r.kind] || BILL_ERR.http)(r || {});
   async function askCall(req, step){
     try{ return fakeAsk ? await fakeAsk(req, step) : await window.desktop.bills.read(req); }
     catch(e){ return { ok: false, kind: 'http', message: String(e && e.message || e) }; }
@@ -5635,15 +5637,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const first = months[0] || currentMonthKey(), last = months.length ? (months[months.length - 1] > currentMonthKey() ? months[months.length - 1] : currentMonthKey()) : currentMonthKey();
       const req1 = { images: [], text: '', prompt: C.askPlanPrompt({ question, today: toISODateLocal(new Date()), first, last, expenseCats, incomeCats }) };
       const r1 = await askCall(req1, 1);
-      if(!r1 || !r1.ok){ addAskCard(question, (BILL_ERR[r1 && r1.kind] || BILL_ERR.http)(r1 || {}), [req1.prompt], null, true); return; }
+      if(!r1 || !r1.ok){ addAskCard(question, askErr(r1), [req1.prompt], null, true); return; }
       const plan = C.cleanAskPlan(r1.content, { first, last, categories: expenseCats.concat(incomeCats) });
       if(!plan){ addAskCard(question, t('AI odgovor nije mogao da se pročita.'), [req1.prompt], null, true); return; }
       if(plan.offTopic){ addAskCard(question, t('Mogu da odgovorim samo na pitanja o tvom budžetu.'), [req1.prompt], plan.notes); return; }
       if(!plan.calls.length){ addAskCard(question, t('Za ovo pitanje nema podataka u knjizi.'), [req1.prompt], plan.notes); return; }
-      const results = C.runAskTools(plan.calls, { entries, recurring });
+      const results = C.runAskTools(plan.calls, { entries, recurring, today: toISODateLocal(new Date()) });
       const req2 = { images: [], text: '', prompt: C.askAnswerPrompt({ question, today: toISODateLocal(new Date()), results }) };
       const r2 = await askCall(req2, 2);
-      if(!r2 || !r2.ok){ addAskCard(question, (BILL_ERR[r2 && r2.kind] || BILL_ERR.http)(r2 || {}), [req1.prompt, req2.prompt], plan.notes, true); return; }
+      if(!r2 || !r2.ok){ addAskCard(question, askErr(r2), [req1.prompt, req2.prompt], plan.notes, true); return; }
       addAskCard(question, C.cleanAskAnswer(r2.content).slice(0, 3000), [req1.prompt, req2.prompt], plan.notes);
     } finally {
       askBusy = false; btn.textContent = prevLabel; renderAsk();

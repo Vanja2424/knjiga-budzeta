@@ -1647,7 +1647,7 @@
       '- byCategory {months, type:"expense"|"income"}: zbir po kategoriji',
       '- compare {months, monthsB}: poređenje dva perioda po kategoriji',
       '- top {months, category?, n≤10}: najveći pojedinačni rashodi (opis, iznos)',
-      '- average {months, category?}: prosek po mesecu',
+      '- average {months, category?}: prosek rashoda po mesecu (samo rashodi)',
       '- recurring {}: ponavljajući rashodi i pretplate',
       'Vrati SAMO JSON: {"calls":[{"tool":"","months":[],"monthsB":[],"category":"","type":"expense","n":5}],"offTopic":false}',
       'Ako pitanje nije o budžetu korisnika, vrati {"calls":[],"offTopic":true}.',
@@ -1677,20 +1677,25 @@
       if(c.tool === 'byCategory') out.type = c.type === 'income' ? 'income' : 'expense';
       if(c.tool === 'compare'){ const b = months(c.monthsB, 'compare'); if(!b.length){ notes.push('compare: nema drugog perioda'); return; } out.monthsB = b; }
       if(c.tool === 'top'){ const n = parseInt(c.n, 10); out.n = n > 0 ? Math.min(n, ASK_MAX_TOP) : 5; }
-      if((c.tool === 'top' || c.tool === 'average') && cat(c.category)) out.category = cat(c.category);
+      if((c.tool === 'top' || c.tool === 'average') && c.category){
+        if(!cat(c.category)){ notes.push(c.tool + ': kategorija "' + String(c.category).slice(0, 40) + '" nije pronađena — proračun preskočen'); return; }
+        out.category = cat(c.category);
+      }
       calls.push(out);
     });
     return { calls, offTopic: !!o.offTopic, notes };
   }
   function runAskTools(calls, data){
-    const entries = (data && data.entries) || [], recurring = (data && data.recurring) || [];
+    const entries = (data && data.entries) || [];
+    const curMonth = data && /^\d{4}-\d{2}/.test(data.today || '') ? data.today.slice(0, 7) : '';
+    const recurring = ((data && data.recurring) || []).filter(r => !r.until || !curMonth || r.until >= curMonth);   // zavrsene (npr. otplacena rata) se ne racunaju
     const sumBy = (months, type) => {
       const map = new Map();
       entries.forEach(e => {
         if(e.type !== type || (type === 'expense' && !isPaidExp(e))) return;
         months.forEach(m => { const s = shareInMonth(e, m); if(s){ const r = map.get(e.category) || { category: e.category, total: 0, perMonth: {} }; r.total += s; r.perMonth[m] = round2((r.perMonth[m] || 0) + s); map.set(e.category, r); } });
       });
-      return [...map.values()].map(r => Object.assign(r, { total: round2(r.total) })).sort((a, b) => b.total - a.total);
+      return [...map.values()].map(r => { r.total = round2(r.total); if(months.length > 6) delete r.perMonth; return r; }).sort((a, b) => b.total - a.total);
     };
     return (calls || []).map(c => {
       let result;
@@ -1705,8 +1710,10 @@
           .sort((p, q) => Math.abs(q.razlika) - Math.abs(p.razlika)).slice(0, 15);
         result = { ranije: early, kasnije: late, rows };
       }
-      else if(c.tool === 'top') result = entries.filter(e => isPaidExp(e) && c.months.includes(String(e.date).slice(0, 7)) && (!c.category || e.category === c.category))
-        .sort((p, q) => q.amount - p.amount).slice(0, c.n || 5).map(e => ({ desc: String(e.desc || '').slice(0, 60), amount: e.amount, category: e.category, month: String(e.date).slice(0, 7) }));
+      else if(c.tool === 'top') result = entries.filter(e => isPaidExp(e) && (!c.category || e.category === c.category))
+        .map(e => ({ e, part: round2(shareInMonths(e, c.months)) })).filter(x => x.part > 0)
+        .sort((p, q) => q.part - p.part).slice(0, c.n || 5).map(({ e, part }) => Object.assign({ desc: String(e.desc || '').slice(0, 60), amount: e.amount, uPeriodu: part, category: e.category, month: String(e.date).slice(0, 7) },
+          (parseInt(e.spreadMonths, 10) || 1) > 1 ? { spreadMonths: parseInt(e.spreadMonths, 10) } : {}));
       else if(c.tool === 'average') result = sumBy(c.months, 'expense').filter(r => !c.category || r.category === c.category).map(r => ({ category: r.category, avgPerMonth: round2(r.total / c.months.length) }));
       else if(c.tool === 'recurring'){
         const items = recurring.filter(r => r.type !== 'income').map(r => ({ desc: String(r.desc || '').slice(0, 60), amount: Number(r.amount) || 0, frequency: r.frequency || 'monthly', category: r.category }));
@@ -1726,6 +1733,7 @@
   function askAnswerPrompt(o){
     return ['Ti si pomoćnik za lični budžet. Odgovori na srpskom (latinica), kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
+      'U rezultatu "top": "amount" je pun iznos stavke, a "uPeriodu" deo koji pripada traženim mesecima (stavka raspodeljena na "spreadMonths" meseci); za zbirove koristi "uPeriodu".',
       'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',
       'Vrati SAMO JSON: {"odgovor":"tekst odgovora"}',
       'Danas je ' + o.today + '.',

@@ -1469,7 +1469,7 @@ test('pitaj: alati nad stavkama (raspodela, neplaceno), plan, uputstva', () => {
   const cmpRev = run([{ tool: 'compare', months: ['2026-09'], monthsB: ['2026-08'] }])[0].result;   // obrnut redosled -> isto: ranije je avgust
   assert.deepEqual(cmpRev.rows[0], cmp.rows[0]);
   const top = run([{ tool: 'top', months: ['2026-08', '2026-09'], n: 2 }])[0].result;
-  assert.deepEqual(top, [{ desc: 'Nabavka velika', amount: 42000, category: 'Hrana', month: '2026-09' }, { desc: 'Maxi', amount: 30000, category: 'Hrana', month: '2026-08' }]);
+  assert.deepEqual(top, [{ desc: 'Nabavka velika', amount: 42000, uPeriodu: 42000, category: 'Hrana', month: '2026-09' }, { desc: 'Maxi', amount: 30000, uPeriodu: 30000, category: 'Hrana', month: '2026-08' }]);
   assert.deepEqual(run([{ tool: 'average', months: ['2026-08', '2026-09'], category: 'Hrana' }])[0].result, [{ category: 'Hrana', avgPerMonth: 36000 }]);
   const rec = run([{ tool: 'recurring' }])[0].result;
   assert.deepEqual([rec.monthly, rec.yearly, rec.items.length], [1200, 14400, 1]);
@@ -1501,4 +1501,32 @@ test('pitaj: odgovor iz JSON-a (bills.read trazi JSON) i obican tekst', () => {
   assert.equal(C.cleanAskAnswer('Samo tekst.'), 'Samo tekst.');
   assert.equal(C.cleanAskAnswer('{"nesto":1}'), '{"nesto":1}');
   assert.match(C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [] }), /"odgovor"/);
+});
+
+test('pitaj posle pregleda: top i raspodela, zavrsene ponavljajuce, perMonth za duge periode, nepoznata kategorija', () => {
+  const entries = [
+    { id: 'k', type: 'expense', amount: 12000, date: '2026-09-01', category: 'Osiguranje', desc: 'Kasko', spreadMonths: 12 },
+    { id: 'm', type: 'expense', amount: 5000, date: '2026-10-03', category: 'Hrana', desc: 'Maxi' }
+  ];
+  const recurring = [
+    { id: 'r1', type: 'expense', desc: 'Netflix', amount: 1200, category: 'Zabava', frequency: 'monthly' },
+    { id: 'r2', type: 'expense', desc: 'Rata', amount: 5000, category: 'Dug', frequency: 'monthly', until: '2025-01' },
+    { id: 'r3', type: 'expense', desc: 'Osiguranje', amount: 12000, category: 'Osiguranje', frequency: 'yearly' },
+    { id: 'r4', type: 'expense', desc: 'Grejanje', amount: 3000, category: 'Stanovanje', frequency: 'quarterly' }
+  ];
+  const run = calls => C.runAskTools(calls, { entries, recurring, today: '2026-10-01' });
+  const top = run([{ tool: 'top', months: ['2026-10'], n: 5 }])[0].result;
+  assert.deepEqual(top.map(t => [t.desc, t.uPeriodu]), [['Maxi', 5000], ['Kasko', 1000]]);
+  assert.equal(top[1].amount, 12000);
+  assert.equal(top[1].spreadMonths, 12);
+  const rec = run([{ tool: 'recurring' }])[0].result;
+  assert.deepEqual([rec.monthly, rec.items.length], [1200 + 1000 + 1000, 3]);   // rata zavrsena; godisnje/12, kvartalno/3
+  const long = run([{ tool: 'byCategory', months: C.monthRange('2025-11', '2026-10') }])[0].result;
+  assert.equal(long[0].perMonth, undefined);
+  assert.ok(run([{ tool: 'byCategory', months: ['2026-09', '2026-10'] }])[0].result[0].perMonth);
+  const plan = C.cleanAskPlan(JSON.stringify({ calls: [{ tool: 'top', months: ['2026-10'], category: 'hrana i piće' }, { tool: 'average', months: ['2026-10'], category: 'Hrana' }] }), { first: '2026-01', last: '2026-10', categories: ['Hrana'] });
+  assert.equal(plan.calls.length, 1);
+  assert.ok(plan.notes.some(n => /hrana i piće/.test(n)));
+  assert.match(C.askPlanPrompt({ question: 'q', today: '2026-10-01', first: '2026-01', last: '2026-10', expenseCats: [], incomeCats: [] }), /prosek rashoda/);
+  assert.match(C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [] }), /uPeriodu/);
 });

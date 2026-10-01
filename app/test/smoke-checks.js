@@ -1313,6 +1313,9 @@
       window.__fakeAsk = async () => ({ ok: false, kind: 'network' });
       $('askInput').value = 'Koliko imam?'; $('askBtn').click(); await sleep(500);
       check('pitaj: greška u prvom koraku daje poruku', /Nema mreže/.test(document.querySelector('#askList .ask-card').textContent));
+      window.__fakeAsk = async (req, step) => step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'monthSummary', months: [cm] }] }) } : { ok: false, kind: 'toolarge', status: 413 };
+      $('askInput').value = 'Pregled svega?'; $('askBtn').click(); await sleep(500);
+      check('pitaj: prevelik zahtev daje poruku za Pitaj (ne za račun)', /suzi period/.test(document.querySelector('#askList .ask-card').textContent), document.querySelector('#askList .ask-card').textContent.slice(0, 120));
       window.__deleteEntriesById(['smoke-ask-1']);
       window.__fakeAsk = null;
     } else check('pitaj: hook __fakeAsk', false);
