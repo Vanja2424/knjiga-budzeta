@@ -1383,6 +1383,48 @@ test('parseQuickSentence: predlozi u opisu ostaju kad nisu uz prepoznat deo', ()
   assert.equal(C.parseQuickSentence('ručak u ponedeljak', ctx).desc, 'ručak');
 });
 
+test('importRulePlan: bez pravila za Ostalo, sukob kljucnih reci se prijavljuje', () => {
+  const existing = [{ keyword: 'wolt', category: 'Restorani' }];
+  const plan = C.importRulePlan([
+    { keyword: 'LIDL', category: 'Hrana', make: true },
+    { keyword: 'MAXI', category: 'Ostalo', make: true },          // pravilo za podrazumevanu kategoriju nema smisla
+    { keyword: 'WOLT', category: 'Hrana', make: true },           // vec postoji pravilo za drugu kategoriju
+    { keyword: 'wolt', category: 'Restorani', make: true },       // isto pravilo kao postojece -> tiho
+    { keyword: 'lidl', category: 'Kućne potrepštine', make: true }, // ista rec dvaput u uvozu, druga kategorija
+    { keyword: 'lidl', category: 'Hrana', make: true }            // isto kao vec izabrano -> tiho
+  ], existing, 'Ostalo');
+  assert.deepEqual(plan.rules, [{ keyword: 'LIDL', category: 'Hrana' }]);
+  assert.deepEqual(plan.conflicts, [{ keyword: 'WOLT', category: 'Hrana', existing: 'Restorani' }, { keyword: 'lidl', category: 'Kućne potrepštine', existing: 'Hrana' }]);
+  assert.deepEqual(C.rulesFromSuggestions([{ keyword: 'MAXI', category: 'Ostalo', make: true }], [], 'Ostalo'), []);
+  assert.deepEqual(C.rulesFromSuggestions([{ keyword: 'MAXI', category: 'Ostalo', make: true }], []), []);   // podrazumevano 'Ostalo'
+});
+
+test('parseQuickSentence: "nedelju dana" nije nedelja, ime racuna kao obicna rec', () => {
+  const ctx = { today: '2026-09-30', currencies: [], accounts: [{ id: 'a1', name: 'Intesa tekući', type: 'tekuci' }, { id: 'a3', name: 'Visa', type: 'kartica' }] };
+  const p = s => C.parseQuickSentence(s, ctx);
+  assert.deepEqual([p('parking nedelju dana 1500').date, p('parking nedelju dana 1500').desc, p('parking nedelju dana 1500').amount], [null, 'parking nedelju dana', 1500]);
+  assert.equal(p('kurs nedelja dana 900').date, null);
+  assert.equal(p('u nedelju pica 900').date, '2026-09-27');       // obicna nedelja i dalje radi
+  assert.deepEqual([p('visa za Ameriku 16000').accountId, p('visa za Ameriku 16000').desc], [null, 'visa za Ameriku']);
+  assert.deepEqual([p('taksa za vizu i visa obrazac 900').accountId, p('taksa za vizu i visa obrazac 900').desc], [null, 'taksa za vizu i visa obrazac']);
+  assert.deepEqual([p('kafa 200 visa').accountId, p('kafa 200 visa').desc], ['a3', 'kafa']);   // na kraju = racun
+  assert.deepEqual([p('kafa visa 200').accountId, p('kafa visa 200').desc], ['a3', 'kafa']);   // posle samo iznos = racun
+  assert.deepEqual([p('kafa sa visa 200 juče').accountId, p('kafa sa visa 200 juče').desc], ['a3', 'kafa']);
+  assert.equal(p('struja 3000 sa intesa').accountId, 'a1');
+  assert.equal(p('Intesa banka provizija 300').accountId, null);
+});
+
+test('prozor za brzi unos: test kuke postoje samo u test okruzenju', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '..', 'quick-add.html'), 'utf8');
+  const hookLines = html.split(/\r?\n/).filter(l => /window\.__\w+\s*=[^=]|defineProperty\(window,\s*'__/.test(l));
+  assert.ok(hookLines.length >= 3, 'kuke nisu pronadjene');
+  hookLines.forEach(l => assert.match(l, /\bIS_TEST\b/, l.trim()));
+  assert.match(html, /const IS_TEST = !!\(window\.desktop && window\.desktop\.info && window\.desktop\.info\.test\)/);
+  const main = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  assert.match(main, /'desktop:info'[\s\S]{0,300}test: !!process\.env\.KNJIGA_TEST/);
+});
+
 test('parseQuickSentence posle pregleda: broj u sredini nije iznos, km nije valuta, nemoguc datum, bez iznosa', () => {
   const ctx = { today: '2026-09-30', currencies: ['EUR', 'BAM'], accounts: [{ id: 'a2', name: 'Novčanik', type: 'gotovina' }] };
   const p = (s, o) => C.parseQuickSentence(s, Object.assign({}, ctx, o || {}));

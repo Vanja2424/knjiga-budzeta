@@ -234,7 +234,7 @@
   function catOptions(t, selected){ return catsFor(t).map(c => `<option${c === selected ? ' selected' : ''}>${esc(c)}</option>`).join(''); }
   function setType(t){
     type = t;
-    clearTimeout(aiTimer); aiSeq++; if($('catHint')) $('catHint').textContent = '';
+    clearTimeout(aiTimer); aiSeq++; aiJob = null; autoCat = null; if($('catHint')) $('catHint').textContent = '';
     $('seg').className = 'seg ' + t;
     document.querySelectorAll('.seg button').forEach(b => { b.classList.toggle('on', b.dataset.type === t); b.setAttribute('aria-selected', b.dataset.type === t); });
     const sel = $('category'); const prev = sel.value;
@@ -252,9 +252,16 @@
   }
   // Recenica u opisu ("kafa i kroasan 520 juce gotovinom") -> iznos, valuta, datum, racun (lokalno, BudzetCore)
   const C = window.BudzetCore;
-  let catTouched = false, dateTouched = false, aiTimer = 0, aiSeq = 0;
+  let catTouched = false, dateTouched = false, spreadStartTouched = false, aiTimer = 0, aiSeq = 0;
+  let aiJob = null;    // AI predlog koji ceka pauzu ili odgovor: { seq, start() -> Promise }
+  let autoCat = null;  // kategorija koju je postavio predlog (pravilo/istorija/AI): { prev, set } — vraca se kad predlog vise ne vazi
+  let submitting = false;
+  // test kuke samo kad je KNJIGA_TEST postavljen (main.js -> desktop.info.test)
+  const IS_TEST = !!(window.desktop && window.desktop.info && window.desktop.info.test);
   let fakeQuickCategory = null; // test: req -> { ok, content }
-  Object.defineProperty(window, '__fakeQuickCategory', { get: () => fakeQuickCategory, set: v => { fakeQuickCategory = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeQuickCategory', { get: () => fakeQuickCategory, set: v => { fakeQuickCategory = v; }, configurable: true });
+  function setAutoCat(cat){ if(catTouched) return; const sel = $('category'); if(!autoCat) autoCat = { prev: sel.value }; sel.value = cat; autoCat.set = sel.value; }
+  function dropAutoCat(){ if(autoCat && !catTouched && $('category').value === autoCat.set) $('category').value = autoCat.prev; autoCat = null; }
   function parsedDesc(){ return C.parseQuickSentence($('desc').value, { today: today(), accounts: data.accounts || [], currencies: data.currencies || [] }); }
   function renderParseHint(p){
     const bits = [];
@@ -268,25 +275,31 @@
   function suggestCategory(){
     const p = parsedDesc();
     renderParseHint(p);
+    updateSpreadHint();
     $('catHint').textContent = '';
     const desc = (p.desc || '').trim().toLowerCase().replace(/\s+[\d.,]*\d$/, '');
-    clearTimeout(aiTimer); aiSeq++;
+    clearTimeout(aiTimer); aiSeq++; aiJob = null;
+    // raniji predlog (npr. AI kategorija za stari opis) ne ostaje ako ga novi opis ne potvrdi
+    dropAutoCat();
     if(!desc) return;
     const rules = data.rules.slice().sort((a,b) => b.keyword.length - a.keyword.length);
     const rule = type === 'expense' && rules.find(r => r.keyword && desc.includes(r.keyword.toLowerCase()));
     const hist = data.history.find(h => h.type === type && h.desc.toLowerCase() === desc);
     const cat = (rule && rule.category) || (hist && hist.category);
-    if(cat && catsFor(type).includes(cat)){ if(!catTouched) $('category').value = cat; return; }
+    if(cat && catsFor(type).includes(cat)){ setAutoCat(cat); return; }
     if(type !== 'expense' || catTouched || desc.replace(/[^\p{L}]/gu, '').length < 4 || !(fakeQuickCategory || (window.desktop && window.desktop.bills))) return;
     const seq = aiSeq;
-    aiTimer = setTimeout(async () => {
+    const run = async () => {
       const req = { images: [], text: '', prompt: C.quickCategoryPrompt(data.expenseCats, p.desc) };
       let res = null;
       try{ res = fakeQuickCategory ? await fakeQuickCategory(req) : await window.desktop.bills.read(req); } catch(e){ res = null; }
       if(seq !== aiSeq || catTouched || type !== 'expense' || !res || !res.ok) return;
       const aiCat = C.cleanQuickCategory(res.content, data.expenseCats);
-      if(aiCat){ $('category').value = aiCat; $('catHint').textContent = t('AI predlog'); }
-    }, 700);
+      if(aiCat){ setAutoCat(aiCat); $('catHint').textContent = t('AI predlog'); }
+    };
+    let started = null;
+    aiJob = { seq, start: () => started || (started = run()) };
+    aiTimer = setTimeout(aiJob.start, 700);
   }
   function updateConv(){
     const cur = $('currency').value, v = parseFloat($('amount').value);
@@ -302,7 +315,11 @@
   function updateSpreadHint(){
     $('spreadSub').classList.toggle('open', $('spreadOn').checked);
     if(!$('spreadOn').checked){ fit(); return; }
-    if(!$('spreadStart').value) $('spreadStart').value = ($('date').value || today()).slice(0, 7);
+    // pocetak raspodele prati datum (i datum prepoznat iz opisa) dok ga korisnik sam ne promeni
+    if(!spreadStartTouched || !$('spreadStart').value){
+      const pd = !dateTouched && $('desc').value.trim() ? parsedDesc().date : null;
+      $('spreadStart').value = (pd || $('date').value || today()).slice(0, 7);
+    }
     const n = Math.max(2, Math.min(60, parseInt($('spreadMonths').value, 10) || 2));
     const start = $('spreadStart').value, end = addMonths(start, n - 1), a = amountRsd();
     $('spreadHint').textContent = `${monthLabel(start)} – ${monthLabel(end)}` + (a > 0 ? t(' — po {0} mesečno', fmt(a / n)) : '');
@@ -343,9 +360,9 @@
     $('addBtn').disabled = false;
     $('err').textContent = '';
     $('parseHint').textContent = ''; $('catHint').textContent = '';
-    catTouched = false; dateTouched = false; clearTimeout(aiTimer); aiSeq++;
+    catTouched = false; dateTouched = false; spreadStartTouched = false; clearTimeout(aiTimer); aiSeq++; aiJob = null; autoCat = null; submitting = false;
   }
-  window.__resetQuickForm = () => resetForm();
+  if(IS_TEST) window.__resetQuickForm = () => resetForm();
   function fillData(){
     const cur = ['RSD', ...(data.currencies || ['EUR','USD','CHF','GBP']).filter(c => data.rates[c])];
     $('currency').innerHTML = cur.map(c => `<option>${c}</option>`).join('');
@@ -366,6 +383,7 @@
   $('desc').addEventListener('input', suggestCategory);
   $('category').addEventListener('change', () => { catTouched = true; $('catHint').textContent = ''; clearTimeout(aiTimer); aiSeq++; });
   $('date').addEventListener('change', () => { dateTouched = true; });
+  ['input', 'change'].forEach(ev => $('spreadStart').addEventListener(ev, () => { spreadStartTouched = true; }));
   $('closeBtn').addEventListener('click', () => window.desktop.quick.close());
   $('moreToggle').addEventListener('click', () => {
     const open = !$('more').classList.contains('open');
@@ -398,9 +416,18 @@
 
   $('form').addEventListener('submit', async (e) => {
     e.preventDefault();
+    if(submitting) return;
     const stay = keepOpen; keepOpen = false;
+    // Enter pre AI pauze: predlog se trazi odmah i ceka (najvise 3 s), da sacuvana stavka dobije AI kategoriju kao i kad se saceka
+    if(aiJob && aiJob.seq === aiSeq && !catTouched && type === 'expense'){
+      submitting = true; clearTimeout(aiTimer);
+      $('addBtn').disabled = true; $('catHint').textContent = t('AI bira kategoriju…');
+      await Promise.race([aiJob.start(), new Promise(r => setTimeout(r, 3000))]);
+      if($('catHint').textContent === t('AI bira kategoriju…')) $('catHint').textContent = '';
+      $('addBtn').disabled = false; submitting = false;
+    }
     // prepoznati delovi recenice idu u polja; rucno upisan iznos/datum ima prednost
-    clearTimeout(aiTimer); aiSeq++;
+    clearTimeout(aiTimer); aiSeq++; aiJob = null;
     const manualAmount = parseFloat($('amount').value) > 0;
     const p = manualAmount ? C.parseQuickSentence($('desc').value, { today: today(), accounts: data.accounts || [], noAmount: true }) : parsedDesc();
     if(!manualAmount && p.amount > 0){
@@ -412,6 +439,12 @@
     if(p.date && !dateTouched) $('date').value = p.date;
     if(p.accountId && (data.accounts || []).length >= 2) $('account').value = p.accountId;
     if(p.desc && (p.amount || p.date || p.accountId || p.currency)) $('desc').value = p.desc;
+    // sve iz recenice je prepoznato (npr. "520 juče") — sirovi tekst nije opis; prepoznato je u poljima, trazi se opis
+    else if(!p.desc && $('desc').value.trim() && (p.amount || p.date || p.accountId || p.currency)){
+      $('desc').value = ''; $('parseHint').textContent = '';
+      $('err').textContent = t('Unesi opis.'); $('desc').focus(); fit(); return;
+    }
+    if($('spreadOn').checked) updateSpreadHint();
     const entry = {
       type, desc: $('desc').value, amount: parseFloat($('amount').value), currency: $('currency').value,
       category: $('category').value, date: $('date').value || today(), paid: $('paid').checked,
@@ -423,7 +456,7 @@
       entry.split = [...document.querySelectorAll('.split-row')].map(r => ({ category: r.querySelector('.split-cat').value, amount: parseFloat(r.querySelector('.split-amt').value) }));
     }
     $('addBtn').disabled = true;
-    window.__lastQuickEntry = entry;
+    if(IS_TEST) window.__lastQuickEntry = entry;
     try{
       const r = await window.desktop.quick.add(entry);
       if(!r || !r.ok){ $('err').textContent = (r && r.error) || 'Stavka nije dodata.'; $('addBtn').disabled = false; fit(); return; }

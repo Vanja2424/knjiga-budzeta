@@ -1363,6 +1363,57 @@
       document.querySelector('.shop-show-btn[data-show="need"]').click();
     }
 
+    // Uvoz AI posle pregleda: delimican neuspeh se vidi, poruka bez "racuna", nema pravila za Ostalo,
+    // izmena kategorije ne vraca iskljucenu stiklicu, sukob kljucnih reci se prijavljuje, pregled prati izmenu
+    if ('__fakeImportCategorizing' in window && typeof window.__catRules === 'function') {
+      const m = monthKey(new Date());
+      const rules0 = window.__catRules().slice();
+      const catsI = window.__desktopBridge.getQuickAddData().expenseCats;
+      const fb = catsI.includes('Ostalo') ? 'Ostalo' : catsI[0];
+      const pickAi = d => /SMOKEDUPLA A/.test(d) ? { category: 'Hrana', keyword: 'SMOKEDUPLA' } : /SMOKEDUPLA B/.test(d) ? { category: 'Zabava', keyword: 'SMOKEDUPLA' }
+        : /SMOKEOSTALO/.test(d) ? { category: fb, keyword: 'SMOKEOSTALO' } : /SMOKEPREGLED/.test(d) ? { category: 'Prevoz', keyword: 'SMOKEPREGLED' }
+        : /SMOKESTIK/.test(d) ? { category: 'Zabava', keyword: 'SMOKESTIK' } : { category: '', keyword: '' };
+      let aiCalls = 0;
+      window.__fakeImportCategorizing = req => {
+        aiCalls++;
+        if (!/SMOKEPREGLED/.test(req.prompt)) return { ok: false, kind: 'toolarge' };
+        const items = req.prompt.split('\n').map(l => /^(\d+): (.*)$/.exec(l)).filter(Boolean).map(x => Object.assign({ i: +x[1] }, pickAi(x[2])));
+        return { ok: true, content: JSON.stringify({ items }) };
+      };
+      const letters = k => String.fromCharCode(65 + Math.floor(k / 26)) + String.fromCharCode(65 + k % 26);
+      let csvB = 'Datum;Opis;Iznos\n';
+      ['SMOKEDUPLA A', 'SMOKEDUPLA B', 'SMOKEOSTALO X', 'SMOKEPREGLED Y', 'SMOKESTIK Z'].forEach((d, k) => { csvB += m + '-01;' + d + ';-' + (4100 + k) + ',37\n'; });
+      for (let k = 0; k < 60; k++) csvB += m + '-' + String(2 + k % 20).padStart(2, '0') + ';SMOKEPUN ' + letters(k) + ';-' + (5100 + k) + ',37\n';
+      const pB = window.__runImportText([{ name: 'ai2.csv', text: csvB }]); await sleep(900);
+      const body = $('dialogBody');
+      const rowB = re => [...body.querySelectorAll('.import-ai-row')].find(r => re.test(r.textContent));
+      const errEl = body.querySelector('.import-ai-error');
+      check('uvoz AI: delimičan neuspeh se prikazuje', aiCalls === 2 && !!rowB(/SMOKEPREGLED/) && !!errEl && errEl.textContent.length > 0, aiCalls + ' ' + (errEl ? errEl.textContent : 'nema poruke'));
+      check('uvoz AI: poruka o grešci ne pominje račun', !!errEl && !/račun/i.test(errEl.textContent), errEl && errEl.textContent);
+      const osR = rowB(/SMOKEOSTALO/), osCb = osR && osR.querySelector('input[type=checkbox]');
+      check('uvoz AI: predlog za Ostalo nije štikliran', !!osCb && !osCb.checked);
+      if (osCb) { osCb.checked = true; osCb.dispatchEvent(new Event('change', { bubbles: true })); }
+      const stR = rowB(/SMOKESTIK/);
+      if (stR) {
+        const cb = stR.querySelector('input[type=checkbox]'); cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true }));
+        const sl = stR.querySelector('select'); sl.value = 'Hrana'; sl.dispatchEvent(new Event('change', { bubbles: true }));
+        check('uvoz AI: promena kategorije ne vraća isključenu štiklicu', !cb.checked);
+      } else check('uvoz AI: red SMOKESTIK', false);
+      const prR = rowB(/SMOKEPREGLED/);
+      if (prR) { const sl = prR.querySelector('select'); sl.value = 'Zdravlje'; sl.dispatchEvent(new Event('change', { bubbles: true })); }
+      const prevRow = [...body.querySelectorAll('table tr')].find(tr => /SMOKEPREGLED/.test(tr.textContent));
+      check('uvoz AI: pregled prikazuje izmenjenu kategoriju', !!prevRow && prevRow.children[2].textContent === 'Zdravlje', prevRow && prevRow.textContent);
+      $('dialogOk').click(); await pB; await sleep(150);
+      const rulesB = window.__catRules();
+      check('uvoz AI: nema pravila za Ostalo', !rulesB.some(r => /SMOKEOSTALO/i.test(r.keyword)), JSON.stringify(rulesB.slice(-6)));
+      check('uvoz AI: isključeno pravilo nije napravljeno', !rulesB.some(r => /SMOKESTIK/i.test(r.keyword)) && (entries().find(e => /SMOKESTIK/.test(e.desc)) || {}).category === 'Hrana');
+      check('uvoz AI: sukob ključnih reči se prijavljuje', rulesB.filter(r => /SMOKEDUPLA/i.test(r.keyword)).length === 1 && /SMOKEDUPLA/.test($('csvImportStatus').textContent), $('csvImportStatus').textContent);
+      check('uvoz AI: izmenjena kategorija ide u stavku', (entries().find(e => /SMOKEPREGLED/.test(e.desc)) || {}).category === 'Zdravlje');
+      window.__undoTop(); await sleep(150);
+      window.__setCatRules(rules0);
+      window.__fakeImportCategorizing = null;
+    } else check('uvoz AI posle pregleda: hook', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

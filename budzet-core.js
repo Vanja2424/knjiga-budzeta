@@ -1472,18 +1472,23 @@
     });
     return out;
   }
-  // izabrani predlozi -> nova pravila (bez praznih, bez vec postojecih kljucnih reci)
-  function rulesFromSuggestions(choices, existingRules){
-    const have = new Set((existingRules || []).map(r => foldText(r.keyword)));
-    const out = [];
+  // izabrani predlozi -> nova pravila (bez praznih, bez pravila za podrazumevanu kategoriju "Ostalo" — ona je ionako rezerva).
+  // Kljucna rec koja vec vodi u DRUGU kategoriju (postojece pravilo ili ranije u istom uvozu) se ne dodaje, ali se prijavljuje u conflicts.
+  function importRulePlan(choices, existingRules, fallback){
+    const fb = foldText(fallback || 'Ostalo');
+    const have = new Map((existingRules || []).map(r => [foldText(r.keyword), r.category]));
+    const rules = [], conflicts = [];
     (choices || []).forEach(ch => {
       const kw = String(ch.keyword || '').trim();
-      if(!ch.make || kw.length < 3 || !ch.category || have.has(foldText(kw))) return;
-      have.add(foldText(kw));
-      out.push({ keyword: kw, category: ch.category });
+      if(!ch.make || kw.length < 3 || !ch.category || foldText(ch.category) === fb) return;
+      const k = foldText(kw);
+      if(have.has(k)){ if(have.get(k) !== ch.category) conflicts.push({ keyword: kw, category: ch.category, existing: have.get(k) }); return; }
+      have.set(k, ch.category);
+      rules.push({ keyword: kw, category: ch.category });
     });
-    return out;
+    return { rules, conflicts };
   }
+  function rulesFromSuggestions(choices, existingRules, fallback){ return importRulePlan(choices, existingRules, fallback).rules; }
 
   // ---------- Brzi unos obicnim recima: "kafa i kroasan 520 juce gotovinom" (lokalno, bez AI) ----------
   const QS_WEEKDAYS = { nedelja: 0, nedelju: 0, nedelje: 0, ponedeljak: 1, ponedeljka: 1, utorak: 2, utorka: 2, sreda: 3, sredu: 3, srede: 3,
@@ -1512,13 +1517,14 @@
       const x = mkDate(today.getFullYear(), m, d);
       return x && x > today ? mkDate(today.getFullYear() - 1, m, d) : x;   // buduci datum bez godine -> prosla godina
     };
+    const accCands = [];       // reci koje se poklapaju sa imenom racuna: { i, id }
     const nums = [];           // kandidati za iznos: { i, dm } (dm = "15.9" bez tacke na kraju, moze biti i datum)
     tokens.forEach((tok, i) => {
       if(used[i]) return;
       const dm = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4})\.?)?$/.exec(tok);
       if(dm){ const d = dayMonth(+dm[1], +dm[2], dm[3]); if(d){ out.date = qsIso(d); used[i] = true; } return; }
       if(f[i] in QS_RELATIVE){ const d = new Date(today); d.setDate(d.getDate() - QS_RELATIVE[f[i]]); out.date = qsIso(d); used[i] = true; return; }
-      if(f[i] in QS_WEEKDAYS){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
+      if(f[i] in QS_WEEKDAYS && !(f[i].startsWith('nedelj') && f[i + 1] === 'dana')){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
       if(!c.noAmount){
         const a1 = /^(\d[\d.,]*)(€|\$|£|eur|din|rsd|bam)$/i.exec(tok), a2 = /^(€|\$|£)(\d[\d.,]*)$/.exec(tok);
         if((a1 || a2) && out.amount == null){ const n = parseAmount(a1 ? a1[1] : a2[2]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[(a1 ? a1[2] : a2[1]).toLowerCase()]); used[i] = true; return; } }
@@ -1536,8 +1542,15 @@
         if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
         return;
       }
+      // ime racuna ("Visa", "Intesa") je racun samo uz predlog ("sa visa") ili na kraju recenice — inace je obicna rec u opisu
       const acc = (c.accounts || []).find(a => foldText(a.name).split(/\s+/).some(w => w.length >= 4 && w === f[i]));
-      if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
+      if(acc) accCands.push({ i, id: acc.id });
+    });
+    accCands.forEach(a => {
+      if(out.accountId) return;
+      const afterPrep = a.i > 0 && !used[a.i - 1] && QS_PREP.has(f[a.i - 1]);
+      const tail = tokens.every((_, j) => j <= a.i || used[j] || /^\d[\d.,]*$/.test(tokens[j]));
+      if(afterPrep || tail){ out.accountId = a.id; used[a.i] = true; usePrep(a.i); }
     });
     if(!c.noAmount && out.amount == null && nums.length){
       // "15.9" pored drugog broja je datum ("gorivo 3000 15.9"); sam je decimalni broj ("knjiga 12.5")
@@ -1865,7 +1878,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, importRulePlan, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

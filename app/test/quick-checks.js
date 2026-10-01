@@ -61,6 +61,50 @@
     set('desc', 'kaf');
     await sleep(1000);
     check('opis kraći od 4 slova ne ide AI-ju', !askedShort);
+    // test kuke postoje jer je KNJIGA_TEST postavljen (u produkciji ih nema)
+    check('test okruženje je prepoznato', !!(window.desktop.info && window.desktop.info.test));
+    // Enter pre AI pauze (700 ms): AI odgovor se saceka i ide u sacuvanu stavku
+    await sleep(1000);
+    window.__resetQuickForm();
+    const defCat = $('category').value;
+    const otherCat = [...$('category').options].map(o => o.value).find(v => v !== defCat);
+    window.__fakeQuickCategory = async () => { await sleep(200); return { ok: true, content: JSON.stringify({ category: otherCat }) }; };
+    set('desc', 'smokebrzi enter 150');
+    $('addBtn').click(); await sleep(1000);
+    const e4 = window.__lastQuickEntry;
+    check('Enter pre AI pauze: AI kategorija ide u stavku', !!e4 && e4.desc === 'smokebrzi enter' && e4.amount === 150 && e4.category === otherCat, JSON.stringify(e4) + ' očekivano ' + otherCat);
+    // prazan opis posle prepoznavanja: ne cuva sirovi tekst kao opis, trazi opis
+    await sleep(300);
+    window.__resetQuickForm();
+    window.__fakeQuickCategory = null;
+    const beforeEmpty = window.__lastQuickEntry;
+    set('desc', '520 juče');
+    $('addBtn').click(); await sleep(300);
+    check('prazan opis: stavka se ne dodaje, traži se opis', window.__lastQuickEntry === beforeEmpty && $('desc').value === '' && $('amount').value === '520' && $('err').textContent.length > 0 && !$('addBtn').disabled,
+      JSON.stringify({ desc: $('desc').value, amount: $('amount').value, err: $('err').textContent, same: window.__lastQuickEntry === beforeEmpty }));
+    // pocetak raspodele prati prepoznat datum
+    window.__resetQuickForm();
+    const past = new Date(); past.setDate(1); past.setMonth(past.getMonth() - 2);
+    const pastMonth = past.getFullYear() + '-' + String(past.getMonth() + 1).padStart(2, '0');
+    $('spreadOn').click();
+    set('desc', 'smokeosiguranje 12000 1.' + (past.getMonth() + 1) + '.' + past.getFullYear() + '.');
+    check('raspodela: početak prati datum iz opisa', $('spreadStart').value === pastMonth, $('spreadStart').value + ' / ' + pastMonth);
+    $('addBtn').click(); await sleep(300);
+    const e5 = window.__lastQuickEntry;
+    check('raspodela: sačuvan početak = mesec prepoznatog datuma', !!e5 && e5.spreadStart === pastMonth && e5.date === pastMonth + '-01' && e5.spreadMonths >= 2, JSON.stringify(e5));
+    // AI kategorija ne ostaje kad kasniji AI odgovor nema kategoriju
+    await sleep(1000);
+    window.__resetQuickForm();
+    const defCat2 = $('category').value;
+    let aiAnswer = otherCat;
+    window.__fakeQuickCategory = () => ({ ok: true, content: JSON.stringify({ category: aiAnswer }) });
+    set('desc', 'smokeprvi nepoznat');
+    await sleep(1000);
+    const firstOk = $('category').value === otherCat;
+    aiAnswer = '';
+    set('desc', 'smokedrugi nepoznat');
+    await sleep(1000);
+    check('stara AI kategorija se vraća na podrazumevanu', firstOk && $('category').value === defCat2 && $('catHint').textContent === '', [firstOk, $('category').value, defCat2, $('catHint').textContent].join(' | '));
     window.__fakeQuickCategory = null;
   } catch (err) { failures.push('brzi unos: izuzetak: ' + (err && err.stack || err)); }
   return { passed, failures };
