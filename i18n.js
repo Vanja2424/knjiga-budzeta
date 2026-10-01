@@ -592,7 +592,9 @@
     'kom': 'pcs', 'pak': 'pack',
     'najjeftinije: {0} {1} (danas)': 'cheapest: {0} {1} (today)',
     'Stavke su veće od ukupnog za {0} — proveri cene ili popust koji nedostaje.': 'Items exceed the total by {0} — check the prices or a missing discount.',
-    'Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.': 'The expenses were saved, but {0} of {1} receipt images could not be saved to the Prilozi folder.',
+    'Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.': 'The expenses were saved, but {0} of {1} receipt images could not be saved to the Prilozi folder.',    'Već postoji ponavljajuća „{0}“ za istog primaoca, sa drugim pozivom na broj. Napraviti još jednu?': 'A recurring item “{0}” already exists for this payee, with a different reference number. Create another one?',
+    'Napravi novu': 'Create new',
+    'Samo rashod': 'Expense only',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

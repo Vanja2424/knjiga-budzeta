@@ -1120,9 +1120,10 @@
     if(!ref) return recPayee;
     const acc = normalizeAccount(billPayee.account);
     if(acc && acc !== normalizeAccount(recPayee.account)) return recPayee;
-    return Object.assign({}, recPayee, { model: String(billPayee.model || '').trim(), reference: ref });
+    return Object.assign({}, recPayee, { model: String(billPayee.model || '').trim() || String(recPayee.model || '').trim(), reference: ref });
   }
-  // Postojeca ponavljajuca (rashod) za istog primaoca: isti racun primaoca i isti naziv ili isti poziv na broj
+  // Postojeca ponavljajuca (rashod) za istog primaoca: isti racun primaoca i isti poziv na broj, ili isti naziv kad
+  // jedna strana nema poziv na broj (isti primalac sa drugim pozivom na broj, npr. drugi stan, je druga stavka)
   function findRecurringByPayee(recurring, payee){
     const acc = payee && normalizeAccount(payee.account);
     if(!acc) return null;
@@ -1130,7 +1131,8 @@
     return (recurring || []).find(r => {
       if(!r || r.type !== 'expense' || !r.payee || normalizeAccount(r.payee.account) !== acc) return false;
       const rName = foldText(r.payee.name || '').trim(), rRef = String(r.payee.reference || '').replace(/\s/g, '');
-      return (!!name && name === rName) || (!!ref && ref === rRef);
+      if(ref && rRef) return ref === rRef;
+      return !!name && name === rName;
     }) || null;
   }
 

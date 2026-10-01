@@ -1756,6 +1756,33 @@
       entries().slice(nE).forEach(e => made.push(e.id));
       check('fix: ne pravi duplu ponavljajuću za istog primaoca', recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length === 1 && entries().length === nE + 1, recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length + ' / ' + (entries().length - nE));
       if ($('ipsOverlay').classList.contains('show')) $('ipsClose').click();
+      // isti primalac i naziv, drugi poziv na broj: pita pre nove ponavljajuce; "Samo rashod" ne pravi novu
+      if ($('ipsOverlay').classList.contains('show')) $('ipsClose').click();
+      if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      await sleep(60);
+      const prevFake = window.__fakeSlipReading;
+      const twinSlip = ref => () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { name: 'JKP Smoke Dva Stana', model: '', reference: ref })) });
+      const paySlip = async (ref, amt, name) => {
+        window.__fakeSlipReading = twinSlip(ref);
+        setFile('expSlipInput', new File([blank], name, { type: 'image/png' })); await slipReady();
+        $('ipsPrimary').click(); await sleep(120);
+        setVal('ipsAmount', amt); $('ipsMakeRec').checked = true;
+        $('ipsPrimary').click();
+      };
+      nE = entries().length;
+      await paySlip('111', '700', 'f3.png');
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      const twins = () => recs().filter(r => r.payee && r.payee.name === 'JKP Smoke Dva Stana');
+      nE = entries().length;
+      await paySlip('987654', '800', 'f4.png');
+      await waitFor(() => $('dialogOverlay').classList.contains('show'), 3000);
+      check('fix: drugi poziv na broj pita pre nove ponavljajuće', twins().length === 1 && $('dialogOverlay').classList.contains('show') && /drugim pozivom na broj/.test($('dialogBody').textContent), twins().length + ' ' + $('dialogBody').textContent.slice(0, 120));
+      if ($('dialogOverlay').classList.contains('show')) $('dialogCancel').click();
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      check('fix: „Samo rashod“ pravi rashod bez nove ponavljajuće', twins().length === 1 && entries().length === nE + 1, twins().length + ' / ' + (entries().length - nE));
+      window.__fakeSlipReading = prevFake;
       // 10) valuta sa uplatnice
       window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { amount: 10, currency: 'EUR' })) });
       setFile('expSlipInput', new File([blank], 'f3.png', { type: 'image/png' })); await slipReady();
@@ -1771,6 +1798,7 @@
       window.__fakeSlipReading = null;
       window.__deleteEntriesById(made);
       for (const r of recs().filter(r => r.desc === 'JKP Smoke Jednokratno')) await delRec(r.id);
+      for (const r of recs().filter(r => r.payee && r.payee.name === 'JKP Smoke Dva Stana')) await delRec(r.id);
       // 12) 📎 za uplatnicu
       window.__addEntriesRaw([{ id: 'smoke-slip-att', type: 'expense', desc: 'Smoke uplatnica', amount: 5, category: 'Stanovanje', date: monthKey(new Date()) + '-01', paid: true, tags: [], attachments: ['2026-10-01-uplatnica-smoke.png'] }]);
       go('rashodi'); await sleep(80);

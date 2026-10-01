@@ -1763,6 +1763,8 @@ test('payeeWithBillReference: poziv na broj sa racuna ovog meseca ide u IPS plac
   // bez poziva na broj na racunu ostaje kako jeste
   assert.deepEqual(C.payeeWithBillReference(rec, { account: rec.account, reference: '' }), rec);
   assert.deepEqual(C.payeeWithBillReference(rec, null), rec);
+  // AI ne cita model: model ponavljajuce stavke ostaje kad ga racun nema
+  assert.equal(C.payeeWithBillReference(Object.assign({}, rec, { model: '97' }), { account: rec.account, reference: '12345' }).model, '97');
   assert.equal(C.payeeWithBillReference(null, { reference: '1' }), null);
 });
 
@@ -1772,7 +1774,11 @@ test('findRecurringByPayee: postojeca ponavljajuca za istog primaoca (racun + na
     { id: 'R2', type: 'expense', desc: 'Struja', payee: { account: '160000000000000111', name: 'JP EPS', reference: '' } },
     { id: 'R3', type: 'income', desc: 'X', payee: { account: '170000000000000222', name: 'Y' } }
   ];
-  assert.equal(C.findRecurringByPayee(recurring, { account: '845-0000000404849-87', name: 'jkp infostan, beograd', reference: '222' }).id, 'R1');
+  // isti naziv, ali oba imaju poziv na broj i on se razlikuje (npr. drugi stan) -> nije ista stavka
+  assert.equal(C.findRecurringByPayee(recurring, { account: '845-0000000404849-87', name: 'jkp infostan, beograd', reference: '222' }), null);
+  // isti naziv, a jedna strana nema poziv na broj -> ista stavka
+  assert.equal(C.findRecurringByPayee(recurring, { account: '845-0000000404849-87', name: 'jkp infostan, beograd' }).id, 'R1');
+  assert.equal(C.findRecurringByPayee(recurring, { account: '160000000000000111', name: 'JP EPS', reference: '555' }).id, 'R2');
   assert.equal(C.findRecurringByPayee(recurring, { account: '845000000040484987', name: 'Drugi naziv', reference: '111' }).id, 'R1');
   // isti racun primaoca (npr. zajednicki racun), drugi naziv i drugi poziv na broj -> nije ista stavka
   assert.equal(C.findRecurringByPayee(recurring, { account: '845000000040484987', name: 'Neko drugi', reference: '333' }), null);

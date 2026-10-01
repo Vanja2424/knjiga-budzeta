@@ -4501,8 +4501,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     // sve iz forme se cita pre cekanja na cuvanje priloga
     const category = ipsEl('ipsOneOffCat').value || expenseCats[0];
     const date = /^\d{4}-\d{2}-\d{2}$/.test(ipsEl('ipsOneOffDate').value) ? ipsEl('ipsOneOffDate').value : toISODateLocal(new Date());
-    const makeRec = ipsEl('ipsMakeRec').checked;
+    let makeRec = ipsEl('ipsMakeRec').checked;
     const dupRec = makeRec ? C.findRecurringByPayee(recurring, r.payee) : null;
+    // isti primalac i naziv, drugi poziv na broj: pitaj pre nove ponavljajuce (drugi stan ili poziv koji se menja svakog meseca)
+    const nameTwin = makeRec && !dupRec && r.payee ? C.findRecurringByPayee(recurring, { account: r.payee.account, name: r.payee.name }) : null;
+    if(nameTwin && !(await appConfirm(t('Već postoji ponavljajuća „{0}“ za istog primaoca, sa drugim pozivom na broj. Napraviti još jednu?', nameTwin.desc), { okText: t('Napravi novu'), cancelText: t('Samo rashod') }))){
+      makeRec = false;
+    }
     primary.disabled = true;
     let attachment = null;
     try{
