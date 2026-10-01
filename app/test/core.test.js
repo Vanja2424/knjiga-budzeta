@@ -1447,3 +1447,47 @@ test('dokumenti: ciscenje zapisa i AI odgovora', () => {
   assert.equal(C.cleanDocumentReading({ kind: 'nesto', title: 'X', group: 'Nepoznata' }, ['Tehnika']).group, '');
   assert.equal(C.cleanDocumentReading('nista', []), null);
 });
+
+test('pitaj: alati nad stavkama (raspodela, neplaceno), plan, uputstva', () => {
+  const entries = [
+    { id: '1', type: 'income', amount: 100000, date: '2026-08-05', category: 'Plata', desc: 'Plata' },
+    { id: '2', type: 'expense', amount: 30000, date: '2026-08-10', category: 'Hrana', desc: 'Maxi' },
+    { id: '3', type: 'expense', amount: 9000, date: '2026-08-01', category: 'Osiguranje', desc: 'Kasko', spreadMonths: 3 },
+    { id: '4', type: 'expense', amount: 5000, date: '2026-09-02', category: 'Hrana', desc: 'Lidl', paid: false },
+    { id: '5', type: 'expense', amount: 42000, date: '2026-09-03', category: 'Hrana', desc: 'Nabavka velika' },
+    { id: '6', type: 'expense', amount: 1200, date: '2026-09-04', category: 'Zabava', desc: 'Bioskop' }
+  ];
+  const recurring = [{ id: 'r1', type: 'expense', desc: 'Netflix', amount: 1200, category: 'Zabava', frequency: 'monthly' }, { id: 'r2', type: 'income', desc: 'Plata', amount: 100000, frequency: 'monthly' }];
+  const run = calls => C.runAskTools(calls, { entries, recurring });
+  const ms = run([{ tool: 'monthSummary', months: ['2026-08', '2026-09', '2026-10'] }])[0].result;
+  assert.deepEqual(ms.map(m => [m.month, m.income, m.expense]), [['2026-08', 100000, 33000], ['2026-09', 0, 46200], ['2026-10', 0, 3000]]);
+  const bc = run([{ tool: 'byCategory', months: ['2026-09'] }])[0].result;
+  assert.deepEqual(bc.map(r => [r.category, r.total]), [['Hrana', 42000], ['Osiguranje', 3000], ['Zabava', 1200]]);
+  const cmp = run([{ tool: 'compare', months: ['2026-08'], monthsB: ['2026-09'] }])[0].result;
+  assert.deepEqual(cmp[0], { category: 'Hrana', a: 30000, b: 42000, diff: 12000, pct: 40 });
+  const top = run([{ tool: 'top', months: ['2026-08', '2026-09'], n: 2 }])[0].result;
+  assert.deepEqual(top, [{ desc: 'Nabavka velika', amount: 42000, category: 'Hrana', month: '2026-09' }, { desc: 'Maxi', amount: 30000, category: 'Hrana', month: '2026-08' }]);
+  assert.deepEqual(run([{ tool: 'average', months: ['2026-08', '2026-09'], category: 'Hrana' }])[0].result, [{ category: 'Hrana', avgPerMonth: 36000 }]);
+  const rec = run([{ tool: 'recurring' }])[0].result;
+  assert.deepEqual([rec.monthly, rec.yearly, rec.items.length], [1200, 14400, 1]);
+  assert.deepEqual(run([{ tool: 'monthSummary', months: ['2026-07'] }])[0].result, [{ month: '2026-07', income: 0, expense: 0, net: 0 }]);
+
+  const ctx = { first: '2026-08', last: '2026-10', categories: ['Hrana', 'Zabava', 'Osiguranje', 'Plata'] };
+  const plan = C.cleanAskPlan('```json\n{"calls":[{"tool":"byCategory","months":["2026-09","2025-01","x"]},{"tool":"hack"},{"tool":"top","months":["2026-09"],"n":50,"category":"hrana"},{"tool":"compare","months":["2026-08"],"monthsB":["2026-09"]},{"tool":"average","months":["2026-08"]},{"tool":"recurring"}],"offTopic":false}\n```', ctx);
+  assert.equal(plan.calls.length, 4);
+  assert.deepEqual(plan.calls[0], { tool: 'byCategory', months: ['2026-09'], type: 'expense' });
+  assert.deepEqual(plan.calls[1], { tool: 'top', months: ['2026-09'], n: 10, category: 'Hrana' });
+  assert.ok(plan.notes.length >= 2);
+  assert.equal(C.cleanAskPlan('{"calls":[],"offTopic":true}', ctx).offTopic, true);
+  assert.equal(C.cleanAskPlan('nista', ctx), null);
+  const long = C.cleanAskPlan(JSON.stringify({ calls: [{ tool: 'monthSummary', months: Array.from({ length: 40 }, (_, i) => C.addMonths('2024-01', i)) }] }), { first: '2024-01', last: '2027-12', categories: [] });
+  assert.equal(long.calls[0].months.length, 24);
+
+  const pp = C.askPlanPrompt({ question: 'zasto je septembar skuplji?', today: '2026-10-01', first: '2026-08', last: '2026-10', expenseCats: ['Hrana'], incomeCats: ['Plata'] });
+  assert.match(pp, /zasto je septembar skuplji/);
+  assert.match(pp, /monthSummary/);
+  assert.ok(!/42000|30000|Maxi/.test(pp));
+  const ap = C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [{ tool: 'byCategory', args: {}, result: bc }] });
+  assert.match(ap, /42000/);
+  assert.match(ap, /ne izmišljaj/i);
+});

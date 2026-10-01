@@ -1635,6 +1635,91 @@
     return out;
   }
 
+  // ---------- Pitaj svoj budzet: AI bira proracune, aplikacija racuna lokalno, AI pise odgovor ----------
+  const ASK_TOOLS = ['monthSummary', 'byCategory', 'compare', 'top', 'average', 'recurring'];
+  const ASK_MAX_CALLS = 4, ASK_MAX_MONTHS = 24, ASK_MAX_TOP = 10;
+  function askPlanPrompt(o){
+    return ['Ti si pomoćnik za lični budžet (Srbija, RSD). Ne vidiš podatke — biraš proračune koje će aplikacija uraditi.',
+      'Danas je ' + o.today + '. Podaci postoje od ' + o.first + ' do ' + o.last + '.',
+      'Kategorije rashoda: ' + (o.expenseCats || []).map(c => '"' + c + '"').join(', ') + '. Kategorije prihoda: ' + (o.incomeCats || []).map(c => '"' + c + '"').join(', ') + '.',
+      'Proračuni (najviše ' + ASK_MAX_CALLS + ', meseci kao "YYYY-MM", najviše ' + ASK_MAX_MONTHS + ' po proračunu):',
+      '- monthSummary {months}: prihodi, rashodi, saldo po mesecu',
+      '- byCategory {months, type:"expense"|"income"}: zbir po kategoriji',
+      '- compare {months, monthsB}: poređenje dva perioda po kategoriji',
+      '- top {months, category?, n≤10}: najveći pojedinačni rashodi (opis, iznos)',
+      '- average {months, category?}: prosek po mesecu',
+      '- recurring {}: ponavljajući rashodi i pretplate',
+      'Vrati SAMO JSON: {"calls":[{"tool":"","months":[],"monthsB":[],"category":"","type":"expense","n":5}],"offTopic":false}',
+      'Ako pitanje nije o budžetu korisnika, vrati {"calls":[],"offTopic":true}.',
+      'Pitanje: ' + String(o.question || '').slice(0, 500)].join('\n');
+  }
+  function cleanAskPlan(raw, ctx){
+    const o = extractJson(raw);
+    if(!o) return null;
+    const notes = [];
+    const okMonth = m => /^\d{4}-(0[1-9]|1[0-2])$/.test(m) && m >= ctx.first && m <= ctx.last;
+    const months = (arr, label) => {
+      const list = (Array.isArray(arr) ? arr : []).map(String);
+      const good = [...new Set(list.filter(okMonth))].sort();
+      if(good.length < list.length) notes.push(label + ': preskočeni meseci van podataka');
+      if(good.length > ASK_MAX_MONTHS){ notes.push(label + ': skraćeno na ' + ASK_MAX_MONTHS + ' meseca'); return good.slice(-ASK_MAX_MONTHS); }
+      return good;
+    };
+    const cat = c => (ctx.categories || []).find(x => foldText(x) === foldText(c)) || '';
+    const calls = [];
+    (Array.isArray(o.calls) ? o.calls : []).forEach(c => {
+      if(!c || !ASK_TOOLS.includes(c.tool)){ notes.push('nepoznat proračun preskočen'); return; }
+      if(calls.length >= ASK_MAX_CALLS){ notes.push('više od ' + ASK_MAX_CALLS + ' proračuna — ostali preskočeni'); return; }
+      if(c.tool === 'recurring'){ calls.push({ tool: 'recurring' }); return; }
+      const m = months(c.months, c.tool);
+      if(!m.length){ notes.push(c.tool + ': nema meseci sa podacima'); return; }
+      const out = { tool: c.tool, months: m };
+      if(c.tool === 'byCategory') out.type = c.type === 'income' ? 'income' : 'expense';
+      if(c.tool === 'compare'){ const b = months(c.monthsB, 'compare'); if(!b.length){ notes.push('compare: nema drugog perioda'); return; } out.monthsB = b; }
+      if(c.tool === 'top'){ const n = parseInt(c.n, 10); out.n = n > 0 ? Math.min(n, ASK_MAX_TOP) : 5; }
+      if((c.tool === 'top' || c.tool === 'average') && cat(c.category)) out.category = cat(c.category);
+      calls.push(out);
+    });
+    return { calls, offTopic: !!o.offTopic, notes };
+  }
+  function runAskTools(calls, data){
+    const entries = (data && data.entries) || [], recurring = (data && data.recurring) || [];
+    const sumBy = (months, type) => {
+      const map = new Map();
+      entries.forEach(e => {
+        if(e.type !== type || (type === 'expense' && !isPaidExp(e))) return;
+        months.forEach(m => { const s = shareInMonth(e, m); if(s){ const r = map.get(e.category) || { category: e.category, total: 0, perMonth: {} }; r.total += s; r.perMonth[m] = round2((r.perMonth[m] || 0) + s); map.set(e.category, r); } });
+      });
+      return [...map.values()].map(r => Object.assign(r, { total: round2(r.total) })).sort((a, b) => b.total - a.total);
+    };
+    return (calls || []).map(c => {
+      let result;
+      if(c.tool === 'monthSummary') result = c.months.map(m => { const t = monthTotals(entries, m); return { month: m, income: t.income, expense: t.expense, net: t.net }; });
+      else if(c.tool === 'byCategory') result = sumBy(c.months, c.type || 'expense');
+      else if(c.tool === 'compare'){
+        const a = new Map(sumBy(c.months, 'expense').map(r => [r.category, r.total])), b = new Map(sumBy(c.monthsB, 'expense').map(r => [r.category, r.total]));
+        result = [...new Set([...a.keys(), ...b.keys()])].map(k => { const x = a.get(k) || 0, y = b.get(k) || 0; return { category: k, a: x, b: y, diff: round2(y - x), pct: x > 0 ? Math.round((y - x) / x * 100) : null }; })
+          .sort((p, q) => Math.abs(q.diff) - Math.abs(p.diff)).slice(0, 15);
+      }
+      else if(c.tool === 'top') result = entries.filter(e => isPaidExp(e) && c.months.includes(String(e.date).slice(0, 7)) && (!c.category || e.category === c.category))
+        .sort((p, q) => q.amount - p.amount).slice(0, c.n || 5).map(e => ({ desc: String(e.desc || '').slice(0, 60), amount: e.amount, category: e.category, month: String(e.date).slice(0, 7) }));
+      else if(c.tool === 'average') result = sumBy(c.months, 'expense').filter(r => !c.category || r.category === c.category).map(r => ({ category: r.category, avgPerMonth: round2(r.total / c.months.length) }));
+      else if(c.tool === 'recurring'){
+        const items = recurring.filter(r => r.type !== 'income').map(r => ({ desc: String(r.desc || '').slice(0, 60), amount: Number(r.amount) || 0, frequency: r.frequency || 'monthly', category: r.category }));
+        const monthly = round2(recurring.filter(r => r.type !== 'income').reduce((s, r) => s + monthlyEquivalent(r), 0));
+        result = { monthly, yearly: round2(monthly * 12), items };
+      }
+      return { tool: c.tool, args: Object.assign({}, c), result };
+    });
+  }
+  function askAnswerPrompt(o){
+    return ['Ti si pomoćnik za lični budžet. Odgovori na srpskom (latinica), kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
+      'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
+      'Danas je ' + o.today + '.',
+      'Pitanje: ' + String(o.question || '').slice(0, 500),
+      'Rezultati (JSON): ' + JSON.stringify(o.results || [])].join('\n');
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1682,7 +1767,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });
