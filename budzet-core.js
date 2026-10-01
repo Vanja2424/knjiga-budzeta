@@ -1697,9 +1697,13 @@
       if(c.tool === 'monthSummary') result = c.months.map(m => { const t = monthTotals(entries, m); return { month: m, income: t.income, expense: t.expense, net: t.net }; });
       else if(c.tool === 'byCategory') result = sumBy(c.months, c.type || 'expense');
       else if(c.tool === 'compare'){
-        const a = new Map(sumBy(c.months, 'expense').map(r => [r.category, r.total])), b = new Map(sumBy(c.monthsB, 'expense').map(r => [r.category, r.total]));
-        result = [...new Set([...a.keys(), ...b.keys()])].map(k => { const x = a.get(k) || 0, y = b.get(k) || 0; return { category: k, a: x, b: y, diff: round2(y - x), pct: x > 0 ? Math.round((y - x) / x * 100) : null }; })
-          .sort((p, q) => Math.abs(q.diff) - Math.abs(p.diff)).slice(0, 15);
+        // uvek "ranije -> kasnije" sa imenovanim poljima, da model ne pomesa smer (razlika = kasnije - ranije)
+        const swap = (c.monthsB[c.monthsB.length - 1] || '') < (c.months[c.months.length - 1] || '');
+        const early = swap ? c.monthsB : c.months, late = swap ? c.months : c.monthsB;
+        const a = new Map(sumBy(early, 'expense').map(r => [r.category, r.total])), b = new Map(sumBy(late, 'expense').map(r => [r.category, r.total]));
+        const rows = [...new Set([...a.keys(), ...b.keys()])].map(k => { const x = a.get(k) || 0, y = b.get(k) || 0; return { category: k, ranije: x, kasnije: y, razlika: round2(y - x), procenat: x > 0 ? Math.round((y - x) / x * 100) : null }; })
+          .sort((p, q) => Math.abs(q.razlika) - Math.abs(p.razlika)).slice(0, 15);
+        result = { ranije: early, kasnije: late, rows };
       }
       else if(c.tool === 'top') result = entries.filter(e => isPaidExp(e) && c.months.includes(String(e.date).slice(0, 7)) && (!c.category || e.category === c.category))
         .sort((p, q) => q.amount - p.amount).slice(0, c.n || 5).map(e => ({ desc: String(e.desc || '').slice(0, 60), amount: e.amount, category: e.category, month: String(e.date).slice(0, 7) }));
@@ -1712,9 +1716,18 @@
       return { tool: c.tool, args: Object.assign({}, c), result };
     });
   }
+  // Odgovor modela: {"odgovor":"..."} (AI poziv uvek trazi JSON) ili obican tekst
+  function cleanAskAnswer(raw){
+    const s = String(raw == null ? '' : raw).trim();
+    const o = extractJson(s);
+    const v = o && (o.odgovor || o.answer || o.text);
+    return typeof v === 'string' && v.trim() ? v.trim() : s;
+  }
   function askAnswerPrompt(o){
     return ['Ti si pomoćnik za lični budžet. Odgovori na srpskom (latinica), kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
+      'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',
+      'Vrati SAMO JSON: {"odgovor":"tekst odgovora"}',
       'Danas je ' + o.today + '.',
       'Pitanje: ' + String(o.question || '').slice(0, 500),
       'Rezultati (JSON): ' + JSON.stringify(o.results || [])].join('\n');
@@ -1767,7 +1780,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

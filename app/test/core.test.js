@@ -1464,7 +1464,10 @@ test('pitaj: alati nad stavkama (raspodela, neplaceno), plan, uputstva', () => {
   const bc = run([{ tool: 'byCategory', months: ['2026-09'] }])[0].result;
   assert.deepEqual(bc.map(r => [r.category, r.total]), [['Hrana', 42000], ['Osiguranje', 3000], ['Zabava', 1200]]);
   const cmp = run([{ tool: 'compare', months: ['2026-08'], monthsB: ['2026-09'] }])[0].result;
-  assert.deepEqual(cmp[0], { category: 'Hrana', a: 30000, b: 42000, diff: 12000, pct: 40 });
+  assert.deepEqual([cmp.ranije, cmp.kasnije], [['2026-08'], ['2026-09']]);
+  assert.deepEqual(cmp.rows[0], { category: 'Hrana', ranije: 30000, kasnije: 42000, razlika: 12000, procenat: 40 });
+  const cmpRev = run([{ tool: 'compare', months: ['2026-09'], monthsB: ['2026-08'] }])[0].result;   // obrnut redosled -> isto: ranije je avgust
+  assert.deepEqual(cmpRev.rows[0], cmp.rows[0]);
   const top = run([{ tool: 'top', months: ['2026-08', '2026-09'], n: 2 }])[0].result;
   assert.deepEqual(top, [{ desc: 'Nabavka velika', amount: 42000, category: 'Hrana', month: '2026-09' }, { desc: 'Maxi', amount: 30000, category: 'Hrana', month: '2026-08' }]);
   assert.deepEqual(run([{ tool: 'average', months: ['2026-08', '2026-09'], category: 'Hrana' }])[0].result, [{ category: 'Hrana', avgPerMonth: 36000 }]);
@@ -1490,4 +1493,12 @@ test('pitaj: alati nad stavkama (raspodela, neplaceno), plan, uputstva', () => {
   const ap = C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [{ tool: 'byCategory', args: {}, result: bc }] });
   assert.match(ap, /42000/);
   assert.match(ap, /ne izmišljaj/i);
+});
+
+test('pitaj: odgovor iz JSON-a (bills.read trazi JSON) i obican tekst', () => {
+  assert.equal(C.cleanAskAnswer('{\n "odgovor": "Septembar je skuplji zbog Prevoza."\n}'), 'Septembar je skuplji zbog Prevoza.');
+  assert.equal(C.cleanAskAnswer('```json\n{"answer":"Ok."}\n```'), 'Ok.');
+  assert.equal(C.cleanAskAnswer('Samo tekst.'), 'Samo tekst.');
+  assert.equal(C.cleanAskAnswer('{"nesto":1}'), '{"nesto":1}');
+  assert.match(C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [] }), /"odgovor"/);
 });

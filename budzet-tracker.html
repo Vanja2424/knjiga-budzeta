@@ -1826,6 +1826,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .doc-filter-btn.active{ background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
 .warranty-btn{ font-size: 0.8em; padding: 0.2em 0.35em; white-space: nowrap; }
 .doc-reminders h3{ font-size: 1.05em; }
+.ask-row{ display: flex; gap: 8px; }
+.ask-row input{ flex: 1; }
+.ask-row .save-btn{ background: var(--ledger-solid); color: #fff; border: none; padding: 0 18px; border-radius: 9px; font-weight: 600; cursor: pointer; }
+.ask-row .save-btn:hover{ background: var(--ledger-solid-hover); }
+.ask-row .save-btn:disabled{ opacity: 0.5; cursor: default; }
+.ask-suggest-row{ display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 6px; }
+.ask-suggest{ font-size: 0.85em; }
+.ask-list{ margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+.ask-card{ border: 1px solid var(--separator); border-radius: 10px; padding: 10px 12px; }
+.ask-card.ask-error .ask-answer{ color: var(--neg-text, var(--neg)); }
+.ask-q{ font-weight: 600; margin-bottom: 6px; }
+.ask-answer{ white-space: pre-wrap; line-height: 1.45; }
+.ask-sent{ margin-top: 8px; font-size: 0.82em; color: var(--ink-soft); }
+.ask-sent pre{ white-space: pre-wrap; word-break: break-word; background: var(--fill); padding: 6px 8px; border-radius: 6px; max-height: 220px; overflow: auto; }
 </style>
 </head>
 <body>
@@ -2463,6 +2477,21 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 
   <!-- IZVESTAJ -->
+  <div class="screen" id="screen-pitaj">
+    <div class="panel">
+      <h3 style="margin-top:0;">Pitaj svoj budžet</h3>
+      <div class="ask-row"><input type="text" id="askInput" maxlength="300" placeholder="npr. Zašto je septembar skuplji od avgusta?" aria-label="Pitanje"><button class="save-btn" id="askBtn">Pitaj</button></div>
+      <div class="ask-suggest-row">
+        <button type="button" class="btn-secondary ask-suggest">Zašto je ovaj mesec skuplji od prošlog?</button>
+        <button type="button" class="btn-secondary ask-suggest">Koliko trošim na hranu mesečno?</button>
+        <button type="button" class="btn-secondary ask-suggest">Šta me je najviše koštalo prošlog meseca?</button>
+        <button type="button" class="btn-secondary ask-suggest">Koliko godišnje plaćam pretplate?</button>
+      </div>
+      <div class="hint" id="askHint">Aplikacija sama računa brojeve; AI dobija samo pitanje i rezultate potrebnih proračuna (vidi „Šta je poslato AI-ju“ uz svaki odgovor).</div>
+      <div id="askList" class="ask-list"></div>
+    </div>
+  </div>
+
   <div class="screen" id="screen-rezije">
     <div class="panel">
       <div class="rezije-toolbar">
@@ -2668,7 +2697,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="file-row"><input type="text" id="aiModel" translate="no" style="max-width:320px;"><button class="btn-secondary" id="aiTest">Proveri ključ</button></div>
         <label class="paid-checkbox-label"><input type="checkbox" id="aiSendText"> Šalji tekst iz PDF-a uz slike (pouzdanije čitanje brojeva)</label>
         <div class="import-status" id="aiStatus" aria-live="polite"></div>
-        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.</div>
+        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi. Ostali podaci ostaju samo na ovom računaru.</div>
       </div>
 
       <div id="desktopSettings" style="display:none;">
@@ -3818,7 +3847,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     transakcije: [['rashodi', 'Rashodi'], ['prihodi', 'Prihodi'], ['ponavljajuce', 'Ponavljajuće'], ['racuni', 'Računi i prenosi'], ['pretraga', 'Pretraga']],
     budzet: [['kategorije', 'Budžet i kategorije']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
-    izvestaji: [['analiza', 'Analiza'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    izvestaji: [['analiza', 'Analiza'], ['pitaj', 'Pitaj'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     nabavka: [['nabavka', 'Nabavka']],
     dokumenti: [['dokumenti', 'Dokumenti']],
@@ -3840,6 +3869,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     dugovi: ()=> renderDebts(),
     analiza: ()=> renderAnaliza(),
     rezije: ()=> renderRezije(),
+    pitaj: ()=> renderAsk(),
     izvestaj: ()=> renderReport(),
     uporedi: ()=> setCompareMode(compareMode),
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
@@ -5563,6 +5593,65 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const first = Array.isArray(e.items) && e.items[0] ? C.purchasedItemName(e.items[0]) : '';
     openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id } });
   }
+
+  // ---------- Pitaj svoj budzet: AI bira proracune, aplikacija racuna lokalno, AI pise odgovor ----------
+  let fakeAsk = null; // test: (req, step) -> { ok, content }
+  Object.defineProperty(window, '__fakeAsk', { get: ()=> fakeAsk, set: v=>{ fakeAsk = v; }, configurable: true });
+  let askBusy = false;
+  const askAiAvailable = ()=> !!(fakeAsk || (window.desktop && window.desktop.bills));
+  function renderAsk(){
+    const ok = askAiAvailable();
+    document.getElementById('askBtn').disabled = askBusy || !ok;
+    if(!ok) document.getElementById('askHint').textContent = window.desktop ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).') : t('Ova funkcija radi samo u desktop aplikaciji.');
+  }
+  async function askCall(req, step){
+    try{ return fakeAsk ? await fakeAsk(req, step) : await window.desktop.bills.read(req); }
+    catch(e){ return { ok: false, kind: 'http', message: String(e && e.message || e) }; }
+  }
+  function addAskCard(question, answer, sent, notes, isError){
+    const card = document.createElement('div');
+    card.className = 'ask-card' + (isError ? ' ask-error' : '');
+    const q = document.createElement('div'); q.className = 'ask-q'; q.textContent = question;
+    const a = document.createElement('div'); a.className = 'ask-answer'; a.textContent = answer;
+    card.append(q, a);
+    if(notes && notes.length){ const n = document.createElement('div'); n.className = 'hint'; n.textContent = t('Napomena: {0}', notes.join('; ')); card.append(n); }
+    if(sent.length){
+      const d = document.createElement('details'); d.className = 'ask-sent';
+      const sm = document.createElement('summary'); sm.textContent = t('Šta je poslato AI-ju');
+      d.append(sm);
+      sent.forEach(txt=>{ const pre = document.createElement('pre'); pre.textContent = txt; d.append(pre); });
+      card.append(d);
+    }
+    document.getElementById('askList').prepend(card);
+  }
+  async function askBudget(question){
+    question = String(question || '').trim();
+    if(!question || askBusy) return;
+    if(!askAiAvailable()){ renderAsk(); return; }
+    askBusy = true; renderAsk();
+    const btn = document.getElementById('askBtn'); const prevLabel = btn.textContent; btn.textContent = t('Razmišljam…');
+    try{
+      const months = entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=> String(e.date).slice(0, 7)).sort();
+      const first = months[0] || currentMonthKey(), last = months.length ? (months[months.length - 1] > currentMonthKey() ? months[months.length - 1] : currentMonthKey()) : currentMonthKey();
+      const req1 = { images: [], text: '', prompt: C.askPlanPrompt({ question, today: toISODateLocal(new Date()), first, last, expenseCats, incomeCats }) };
+      const r1 = await askCall(req1, 1);
+      if(!r1 || !r1.ok){ addAskCard(question, (BILL_ERR[r1 && r1.kind] || BILL_ERR.http)(r1 || {}), [req1.prompt], null, true); return; }
+      const plan = C.cleanAskPlan(r1.content, { first, last, categories: expenseCats.concat(incomeCats) });
+      if(!plan){ addAskCard(question, t('AI odgovor nije mogao da se pročita.'), [req1.prompt], null, true); return; }
+      if(plan.offTopic){ addAskCard(question, t('Mogu da odgovorim samo na pitanja o tvom budžetu.'), [req1.prompt], plan.notes); return; }
+      if(!plan.calls.length){ addAskCard(question, t('Za ovo pitanje nema podataka u knjizi.'), [req1.prompt], plan.notes); return; }
+      const results = C.runAskTools(plan.calls, { entries, recurring });
+      const req2 = { images: [], text: '', prompt: C.askAnswerPrompt({ question, today: toISODateLocal(new Date()), results }) };
+      const r2 = await askCall(req2, 2);
+      if(!r2 || !r2.ok){ addAskCard(question, (BILL_ERR[r2 && r2.kind] || BILL_ERR.http)(r2 || {}), [req1.prompt, req2.prompt], plan.notes, true); return; }
+      addAskCard(question, C.cleanAskAnswer(r2.content).slice(0, 3000), [req1.prompt, req2.prompt], plan.notes);
+    } finally {
+      askBusy = false; btn.textContent = prevLabel; renderAsk();
+    }
+  }
+  document.getElementById('askBtn').addEventListener('click', ()=> askBudget(document.getElementById('askInput').value));
+  document.getElementById('askInput').addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); askBudget(e.target.value); } });
+  document.querySelectorAll('.ask-suggest').forEach(b=> b.addEventListener('click', ()=>{ document.getElementById('askInput').value = b.textContent; askBudget(b.textContent); }));
 
   // ---- Plati sve zakasnele ----
   let payOverdueLastFocus = null;

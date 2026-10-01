@@ -30,7 +30,7 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'rezije', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'dokumenti', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'pitaj', 'rezije', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'dokumenti', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
@@ -1286,6 +1286,36 @@
       }
       window.__deleteEntriesById(['smoke-war-1']);
     } else check('dokumenti: hook __docNotifyKeys', false);
+
+    // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
+    if ('__fakeAsk' in window) {
+      const cm = monthKey(new Date());
+      window.__addEntriesRaw([{ id: 'smoke-ask-1', type: 'expense', desc: 'Smoke tajna kupovina', amount: 77123, category: 'Smoke pitaj', date: cm + '-01', paid: true, tags: [] }]);
+      const reqs = [];
+      window.__fakeAsk = async (req, step) => { reqs.push({ step, prompt: req.prompt }); await sleep(200);
+        return step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'byCategory', months: [cm] }] }) } : { ok: true, content: '<b>Odgovor</b> 123' }; };
+      go('pitaj'); await sleep(80);
+      $('askInput').value = 'Koliko sam potrošila na hranu?';
+      $('askBtn').click(); $('askBtn').click();
+      await sleep(900);
+      const p1 = reqs.filter(r => r.step === 1);
+      check('pitaj: dupli klik šalje jedan upit', p1.length === 1, String(p1.length));
+      check('pitaj: prvi zahtev bez iznosa i opisa stavki', !!p1[0] && !/77123|77\.123|tajna kupovina/.test(p1[0].prompt), p1[0] && p1[0].prompt.slice(-200));
+      const p2 = reqs.find(r => r.step === 2);
+      check('pitaj: drugi zahtev nosi lokalni rezultat', !!p2 && /77123/.test(p2.prompt));
+      const card = document.querySelector('#askList .ask-card');
+      check('pitaj: odgovor kao tekst (bez HTML-a iz AI-ja)', !!card && /<b>Odgovor<\/b> 123/.test(card.querySelector('.ask-answer').textContent) && !card.querySelector('.ask-answer b'));
+      check('pitaj: „Šta je poslato AI-ju“ sadrži oba zahteva', !!card && card.querySelectorAll('.ask-sent pre').length === 2);
+      window.__fakeAsk = async (req, step) => { reqs.push({ step }); return step === 1 ? { ok: true, content: '{"calls":[],"offTopic":true}' } : { ok: true, content: 'NE SME' }; };
+      const before2 = reqs.length;
+      $('askInput').value = 'Kakvo je vreme?'; $('askBtn').click(); await sleep(500);
+      check('pitaj: pitanje van budžeta bez drugog poziva', reqs.length === before2 + 1 && /samo na pitanja o tvom budžetu/.test(document.querySelector('#askList .ask-card').textContent));
+      window.__fakeAsk = async () => ({ ok: false, kind: 'network' });
+      $('askInput').value = 'Koliko imam?'; $('askBtn').click(); await sleep(500);
+      check('pitaj: greška u prvom koraku daje poruku', /Nema mreže/.test(document.querySelector('#askList .ask-card').textContent));
+      window.__deleteEntriesById(['smoke-ask-1']);
+      window.__fakeAsk = null;
+    } else check('pitaj: hook __fakeAsk', false);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();

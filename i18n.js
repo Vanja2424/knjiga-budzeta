@@ -560,6 +560,15 @@
     'Pročitaj AI-jem': 'Read with AI', 'Klikni „Pročitaj AI-jem“ da se podaci popune sami, ili ih upiši ručno.': 'Click “Read with AI” to fill in the details automatically, or type them in.',
     'Prekidač „Ne šalji ovaj fajl AI-ju“ je uključen — fajl nije poslat.': 'The “Don’t send this file to AI” switch is on — the file wasn’t sent.',
     'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), and in quick add the description of a new expense to suggest a category. All other data stays on this computer only.',
+    // ---- Pitaj (v1.26) ----
+    'Pitaj': 'Ask', 'Pitaj svoj budžet': 'Ask your budget', 'npr. Zašto je septembar skuplji od avgusta?': 'e.g. Why was September more expensive than August?', 'Pitanje': 'Question',
+    'Zašto je ovaj mesec skuplji od prošlog?': 'Why is this month more expensive than last month?', 'Koliko trošim na hranu mesečno?': 'How much do I spend on food per month?',
+    'Šta me je najviše koštalo prošlog meseca?': 'What cost me the most last month?', 'Koliko godišnje plaćam pretplate?': 'How much do I pay for subscriptions per year?',
+    'Aplikacija sama računa brojeve; AI dobija samo pitanje i rezultate potrebnih proračuna (vidi „Šta je poslato AI-ju“ uz svaki odgovor).': 'The app does the math itself; AI only gets the question and the results of the needed calculations (see “What was sent to AI” under each answer).',
+    'Ova funkcija radi samo u desktop aplikaciji.': 'This feature only works in the desktop app.', 'Napomena: {0}': 'Note: {0}', 'Šta je poslato AI-ju': 'What was sent to AI',
+    'Razmišljam…': 'Thinking…', 'Mogu da odgovorim samo na pitanja o tvom budžetu.': 'I can only answer questions about your budget.',
+    'Za ovo pitanje nema podataka u knjizi.': 'There’s no data in the book for this question.',
+    'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), in quick add the description of a new expense to suggest a category, and in “Ask” the question plus the results of the calculations the app runs. All other data stays on this computer only.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
