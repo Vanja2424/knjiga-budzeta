@@ -534,6 +534,11 @@
     'Ključna reč za pravilo': 'Keyword for the rule', 'pravilo': 'rule', 'AI predlozi nisu dostupni ({0}).': 'AI suggestions aren’t available ({0}).',
     'AI odgovor nije mogao da se pročita.': 'The AI answer couldn’t be read.', 'Nova pravila: {0}.': 'New rules: {0}.',
     'AI predlaže kategorije za {0} opisa… (deo {1}/{2})': 'AI is suggesting categories for {0} descriptions… (part {1}/{2})', 'Uvoz je već u toku — sačekaj da se završi.': 'An import is already running — wait for it to finish.',
+    'AI bira kategoriju…': 'AI is picking a category…',
+    'Previše opisa za besplatni Groq limit — pokušaj ponovo za minut.': 'Too many descriptions for the free Groq limit — try again in a minute.',
+    'Deo AI predloga nije stigao ({0}) — ti opisi ostaju u kategoriji {1}.': 'Some AI suggestions didn’t arrive ({0}) — those descriptions stay in {1}.',
+    'Pravilo nije napravljeno jer ključna reč već vodi u drugu kategoriju: {0}.': 'Rule not created because the keyword already leads to another category: {0}.',
+    'već: {0}': 'already: {0}',
     'AI predlog': 'AI suggestion', 'Kurs za {0} nije dostupan — izaberi valutu ručno.': 'The {0} rate isn’t available — choose the currency manually.',
     'npr. kafa i kroasan 520 juče gotovinom': 'e.g. coffee and croissant 520 yesterday cash',
     // ---- Dokumenti (v1.25) ----

@@ -9709,6 +9709,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // AI predlog kategorije i kljucne reci za nepoznate opise; salju se SAMO opisi (bez iznosa i datuma), do 60 po zahtevu
   let fakeImportCategorizing = null; // test: req -> { ok, content }
   Object.defineProperty(window, '__fakeImportCategorizing', { get: ()=> fakeImportCategorizing, set: v=>{ fakeImportCategorizing = v; }, configurable: true });
+  // greske iz BILL_ERR su pisane za racun ("Racun je prevelik…", "Popuni podatke rucno") — za uvoz izvoda sopstvene reci
+  const importAiErr = r => r && r.kind === 'toolarge' ? t('Previše opisa za besplatni Groq limit — pokušaj ponovo za minut.')
+    : r && r.kind === 'nokey' ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).')
+    : (BILL_ERR[r && r.kind] || BILL_ERR.http)(r || {});
   async function suggestImportCategories(cands, onProgress){
     const map = new Map();
     if(!(fakeImportCategorizing || (window.desktop && window.desktop.bills))) return { map, error: '' };
@@ -9719,7 +9723,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       let res;
       try{ res = fakeImportCategorizing ? await fakeImportCategorizing(req) : await window.desktop.bills.read(req); }
       catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
-      if(!res || !res.ok) return { map, error: (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}) };
+      if(!res || !res.ok) return { map, error: importAiErr(res) };
       const got = C.cleanImportSuggestions(res.content, expenseCats, batch);
       if(!got) return { map, error: t('AI odgovor nije mogao da se pročita.') };
       got.forEach((v, k)=> map.set(k, v));
@@ -9762,7 +9766,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const fallbackCat = expenseCats.includes('Ostalo') ? 'Ostalo' : (expenseCats[0] || 'Ostalo');
     const aiChoices = aiRes.map.size ? aiCands.map(c=>{ const sg = aiRes.map.get(c.key) || { category: '', keyword: C.suggestKeyword(c.desc) };
-      return { key: c.key, desc: c.desc, count: c.count, category: sg.category || fallbackCat, keyword: sg.keyword, make: !!sg.category && sg.strong !== false }; }) : [];
+      const category = sg.category || fallbackCat;
+      // pravilo za podrazumevanu kategoriju nema smisla (opis bi ionako dobio nju) — nije stiklirano, a ni ne pravi se
+      return { key: c.key, desc: c.desc, count: c.count, category, keyword: sg.keyword, make: !!sg.category && category !== fallbackCat && sg.strong !== false, makeTouched: false }; }) : [];
     const applyAiChoice = r => { if(r.type !== 'expense' || r.catSource !== 'default') return; const ch = aiChoices.find(x=> x.key === C.importDescKey(r.desc)); if(ch) r.category = ch.category; };
     clean.forEach(applyAiChoice); near.forEach(n=> applyAiChoice(n.row));
     const catOptsHtml = sel => expenseCats.map(c=> `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''} translate="no">${escapeHtml(c)}</option>`).join('');
@@ -9771,7 +9777,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           <select aria-label="${escapeHtml(t('Kategorija'))}">${catOptsHtml(c.category)}</select>
           <input type="text" value="${escapeHtml(c.keyword)}" maxlength="30" translate="no" aria-label="${escapeHtml(t('Ključna reč za pravilo'))}">
           <label class="import-ai-make"><input type="checkbox"${c.make ? ' checked' : ''}> ${escapeHtml(t('pravilo'))}</label></div>`).join('')}</div>`
-      : (aiRes.error ? `<p class="hint">${escapeHtml(t('AI predlozi nisu dostupni ({0}).', aiRes.error))}</p>` : '');
+      : '';
+    // greska AI-ja se uvek prikazuje — i kad je samo deo zahteva (po 60 opisa) pao, pa deo predloga fali
+    const aiErrHtml = !aiRes.error ? '' : aiChoices.length
+      ? `<p class="hint import-ai-error">${escapeHtml(t('Deo AI predloga nije stigao ({0}) — ti opisi ostaju u kategoriji {1}.', aiRes.error, fallbackCat))}</p>`
+      : `<p class="hint import-ai-error">${escapeHtml(t('AI predlozi nisu dostupni ({0}).', aiRes.error))}</p>`;
     const sum = list => list.reduce((a,r)=>a+r.amount,0);
     const inc = clean.filter(r=>r.type==='income'), exp = clean.filter(r=>r.type==='expense');
     const all = clean.concat(near.map(n=> n.row));
@@ -9782,7 +9792,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const covTxt = cov.map(c=> `<span class="import-month${haveByMonth.get(c.month) ? ' has' : ''}" title="${escapeHtml(t('prihodi {0} · rashodi {1}', fmt(c.income), fmt(c.expense)))}">${monthYearLabelSr(c.month)} <b>${c.count}</b></span>`).join('');
     const dShort = iso => parseLocalDate(iso).toLocaleDateString(LOCALE,{day:'2-digit',month:'2-digit',year:'2-digit'});
     const preview = clean.slice().sort((a,b)=> a.date.localeCompare(b.date)).slice(0, 8).map(r=>
-      `<tr><td>${dShort(r.date)}</td><td>${escapeHtml(r.desc.slice(0,38))}</td><td>${escapeHtml(r.category)}</td><td class="amount ${r.type}">${r.type==='income'?'+':'−'} ${fmt(r.amount)}</td></tr>`).join('');
+      `<tr><td>${dShort(r.date)}</td><td>${escapeHtml(r.desc.slice(0,38))}</td><td${r.type === 'expense' && r.catSource === 'default' ? ` data-ai-key="${escapeHtml(C.importDescKey(r.desc))}"` : ''}>${escapeHtml(r.category)}</td><td class="amount ${r.type}">${r.type==='income'?'+':'−'} ${fmt(r.amount)}</td></tr>`).join('');
     const nearHtml = near.length ? `<div class="import-near"><p>${t('<b>{0}</b> stavki liči na nešto što je već upisano (isti iznos, datum do 3 dana razlike). Podrazumevano se <b>ne</b> uvoze — čekiraj one koje ipak želiš:', near.length)}</p>
         ${near.map((n, i)=> `<label class="import-near-row"><input type="checkbox" data-near="${i}"><span>${dShort(n.row.date)} · ${escapeHtml(n.row.desc.slice(0,32))} · ${fmt(n.row.amount)}</span><span class="muted">${t('već: {0} · {1}', escapeHtml((n.match.desc || '').slice(0,24)), dShort(n.match.date))}</span></label>`).join('')}</div>` : '';
     const msg = !all.length
@@ -9797,6 +9807,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
          ${clean.length > 8 ? `<p class="hint">${t('…i još {0}.', clean.length - 8)}</p>` : ''}
          ${nearHtml}
          ${aiHtml}
+         ${aiErrHtml}
          <p class="hint">Kategorije su dodeljene po pravilima i ranijim stavkama sa istim opisom — posle uvoza ih možeš promeniti.</p>`;
     if(!all.length){ await appAlert(msg, { title: 'Uvoz izvoda' }); statusEl.textContent = 'Ništa novo za uvoz.'; return; }
     const pickedNear = new Set();
@@ -9810,16 +9821,23 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     document.querySelectorAll('#dialogBody .import-ai-row').forEach(row=>{
       const ch = aiChoices[Number(row.dataset.ai)];
       const sel = row.querySelector('select'), kw = row.querySelector('input[type="text"]'), mk = row.querySelector('input[type="checkbox"]');
-      sel.addEventListener('change', ()=>{ ch.category = sel.value; ch.make = true; mk.checked = true; });
+      sel.addEventListener('change', ()=>{
+        ch.category = sel.value;
+        // stiklica prati izbor samo dok je korisnik nije sam dirao; za podrazumevanu kategoriju pravilo nema smisla
+        if(!ch.makeTouched){ ch.make = ch.category !== fallbackCat; mk.checked = ch.make; }
+        // pregled iznad prikazuje izabranu kategoriju, ne AI predlog
+        document.querySelectorAll('#dialogBody td[data-ai-key]').forEach(td=>{ if(td.dataset.aiKey === ch.key) td.textContent = ch.category; });
+      });
       kw.addEventListener('input', ()=>{ ch.keyword = kw.value; });
-      mk.addEventListener('change', ()=>{ ch.make = mk.checked; });
+      mk.addEventListener('change', ()=>{ ch.make = mk.checked; ch.makeTouched = true; });
     });
     const confirmed = await pending;
     const toImport = clean.concat(near.filter((n, i)=> pickedNear.has(i)).map(n=> n.row));
     if(!confirmed || !toImport.length){ statusEl.textContent = 'Uvoz je otkazan.'; return; }
     const importId = newId();
     toImport.forEach(applyAiChoice);
-    const newRules = C.rulesFromSuggestions(aiChoices, catRules);
+    const rulePlan = C.importRulePlan(aiChoices, catRules, fallbackCat);
+    const newRules = rulePlan.rules;
     if(newRules.length){ catRules.push(...newRules); saveCatRules(); }
     toImport.forEach(r=>{
       if(r.type === 'expense' && !expenseCats.includes(r.category)) expenseCats.push(r.category);
@@ -9838,6 +9856,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       + (problemTxt ? ' ' + problemTxt : '');
     renderAll();
     if(newRules.length) statusEl.textContent += ' ' + t('Nova pravila: {0}.', newRules.length);
+    if(rulePlan.conflicts.length) statusEl.textContent += ' ' + t('Pravilo nije napravljeno jer ključna reč već vodi u drugu kategoriju: {0}.',
+      rulePlan.conflicts.map(c=> `${c.keyword} → ${c.category} (${t('već: {0}', c.existing)})`).join(', '));
     showUndoToast(t('Uvezeno {0} stavki', toImport.length), ()=>{
       entries = entries.filter(e=> e.importId !== importId); saveEntries();
       if(newRules.length){ catRules = catRules.filter(r=> !newRules.includes(r)); saveCatRules(); renderCatRules(); }
