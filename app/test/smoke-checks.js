@@ -1624,6 +1624,161 @@
       window.__fakeReceiptReading = null;
     } else check('račun fix: hook __addReceiptFiles', false);
 
+    // ---- Popravke: kucni racuni i uplatnica ----
+    if (typeof window.__setBillState === 'function') {
+      const B = () => window.__bills();
+      const waitFor = async (cond, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (cond()) return true; await sleep(50); } return false; };
+      const billReady = () => waitFor(() => $('billOverlay').classList.contains('show') && !$('billSavePaid').disabled, 6000);
+      const slipReady = () => waitFor(() => /Pročitano/.test($('ipsImageStatus').textContent), 6000);
+      const recs = () => JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]');
+      const delRec = async id => {
+        go('ponavljajuce'); await sleep(80);
+        const del = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(id)}"] .del-btn`);
+        if (del) { del.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
+      };
+      // 1) Podesavanja ne prave lokaciju "Stan" korisniku koji ne koristi racune
+      const snap = JSON.parse(JSON.stringify(B()));
+      window.__setBillState({ locations: [], billTypes: [], bills: [] });
+      go('podesavanja'); await sleep(80);
+      check('fix: Podešavanja ne prave podrazumevanu lokaciju', B().locations.length === 0 && B().billTypes.length === 0, JSON.stringify(B().locations));
+      $('billAddLoc').click(); await sleep(50);
+      check('fix: Dodaj lokaciju bez lokacija pravi jednu sa vrstama', B().locations.length === 1 && B().billTypes.length === 4, B().locations.length + '/' + B().billTypes.length);
+      window.__setBillState(snap);
+      window.__ensureBillDefaults();
+      const stan = B().locations[0];
+      const struja = B().billTypes.find(x => x.locationId === stan.id && x.name === 'Struja');
+      const voda = B().billTypes.find(x => x.locationId === stan.id && x.name === 'Voda');
+      const pdfFile = new File([tinyPdf(['Smoke popravke', 'Ukupno za uplatu 40'])], 'fix.pdf', { type: 'application/pdf' });
+      const read = obj => () => ({ ok: true, content: JSON.stringify(Object.assign({ locationId: stan.id, billTypeId: struja.id }, obj)) });
+      // 3) valuta sa racuna razlicita od valute lokacije -> upozorenje; 6) pdf.js dokument se zatvara
+      window.__fakeBillReading = read({ month: '2023-03', amount: 40, currency: 'EUR' });
+      const c1 = window.__addBillFiles([pdfFile]); await billReady();
+      check('fix: upozorenje kad je valuta sa računa druga od valute lokacije', !!$('billCurWarn') && /EUR/.test($('billCurWarn').textContent) && /RSD/.test($('billCurWarn').textContent), $('billCurWarn') && $('billCurWarn').textContent);
+      check('fix: pdf.js dokument zatvoren posle čitanja', typeof window.__pdfDocsOpen === 'function' && window.__pdfDocsOpen() === 0, typeof window.__pdfDocsOpen === 'function' && window.__pdfDocsOpen());
+      $('billCancel').click(); await c1;
+      window.__fakeBillReading = read({ month: '2023-03', amount: 40 });
+      const c2 = window.__addBillFiles([pdfFile]); await billReady();
+      check('fix: bez pročitane valute nema upozorenja', !$('billCurWarn') || !$('billCurWarn').textContent, $('billCurWarn') && $('billCurWarn').textContent);
+      $('billCancel').click(); await c2;
+      // 5) zatvoren prozor "Citam racun..." odbacuje kasni rezultat
+      window.__fakeBillReading = async () => { await sleep(900); return read({ month: '2023-04', amount: 77 })(); };
+      const c3 = window.__addBillFiles([pdfFile]); await sleep(300);
+      $('billCancel').click(); await sleep(1300);
+      check('fix: zatvaranje prozora tokom čitanja odbacuje kasni rezultat', !$('billOverlay').classList.contains('show'));
+      if ($('billOverlay').classList.contains('show')) $('billCancel').click();
+      await Promise.race([c3, sleep(300)]);
+      // 4) zamena i izmena racuna azuriraju povezani rashod (placen, kategorija, datum)
+      const oldCat = struja.category;
+      const newCat = [...$('recCategory').options].map(o => o.value).find(v => v && v !== oldCat);
+      window.__fakeBillReading = read({ month: '2023-05', amount: 100 });
+      const r1 = window.__addBillFiles([pdfFile]); await billReady();
+      $('billExpMonth').value = '2023-06'; $('billExpMonth').dispatchEvent(new Event('change'));
+      $('billSavePending').click(); await r1; await sleep(150);
+      const b1 = B().bills.find(b => b.billTypeId === struja.id && b.month === '2023-05');
+      const e1 = b1 && entries().find(e => e.id === b1.entryId);
+      check('fix: račun za plaćanje -> neplaćen rashod', !!e1 && e1.paid === false && e1.date === '2023-06-30', JSON.stringify(e1));
+      struja.category = newCat;
+      window.__fakeBillReading = read({ month: '2023-05', amount: 120, dueDate: '2023-07-15' });
+      const r2 = window.__addBillFiles([pdfFile]); await billReady();
+      $('billExpMonth').value = '2023-07'; $('billExpMonth').dispatchEvent(new Event('change'));
+      $('billSavePaid').click(); await r2; await sleep(150);
+      const e2 = b1 && entries().find(e => e.id === b1.entryId);
+      check('fix: zamena ažurira povezani rashod (plaćen, kategorija, datum, iznos)', !!e2 && e2.paid !== false && e2.category === newCat && e2.date === '2023-07-15' && e2.amount === 120
+        && B().bills.filter(b => b.billTypeId === struja.id && b.month === '2023-05').length === 1, JSON.stringify(e2));
+      const b2 = b1 && B().bills.find(b => b.id === b1.id);
+      if (b2 && voda) {
+        const ed = window.__openBillReview({ bill: b2 }); await sleep(100);
+        $('billType').value = voda.id; $('billType').dispatchEvent(new Event('change'));
+        $('billDue').value = '2023-07-20';
+        $('billSavePaid').click(); await ed; await sleep(150);
+        const e3 = entries().find(e => e.id === b1.entryId);
+        check('fix: izmena računa (vrsta, rok) ažurira kategoriju i datum rashoda', !!e3 && e3.category === voda.category && e3.date === '2023-07-20', JSON.stringify(e3));
+      }
+      struja.category = oldCat;
+      if (b1) { window.__deleteBill(b1.id, { confirm: false }); window.__deleteEntriesById([b1.entryId]); }
+      // 7) "Otvori prilog" bez fajla javlja poruku
+      const ghost = { id: 'smoke-ghost-bill', billTypeId: struja.id, month: '2023-08', amount: 5, currency: 'RSD', values: {}, source: 'manual', file: 'smoke-nema-ovog-fajla.pdf' };
+      window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.concat(ghost) });
+      if (typeof window.__openBillDetail === 'function') {
+        window.__openBillDetail([ghost.id]); await sleep(100);
+        const ob = document.querySelector('#dialogBody .bill-detail [data-act="open"]');
+        if (ob) { ob.click(); await sleep(400); }
+        check('fix: „Otvori prilog“ javlja kad fajl ne postoji', /nije pronađen/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 200));
+        if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      } else check('fix: hook __openBillDetail', false);
+      window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.filter(b => b.id !== ghost.id) });
+      // 8) IPS placanje uzima poziv na broj sa racuna ovog meseca
+      go('ponavljajuce'); await sleep(60);
+      setVal('recDesc', '');
+      window.__fillRecFromSlipText('K:PR|V:01|C:1|R:845000000040484987|N:Smoke Ref Primalac|I:RSD100,00|SF:189');
+      setVal('recDay', '28'); $('recAutoPay').checked = false;
+      $('recurringForm').requestSubmit(); await sleep(150);
+      const refRec = recs().find(r => r.desc === 'Smoke Ref Primalac');
+      if (refRec) {
+        const rb = { id: 'smoke-ref-bill', billTypeId: struja.id, month: monthKey(new Date()), expenseMonth: monthKey(new Date()), amount: 100, currency: 'RSD', values: {}, source: 'qr', recurringId: refRec.id,
+          payee: { account: '845000000040484987', name: 'Smoke Ref Primalac', code: '189', purpose: '', model: '', reference: '2023555' } };
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.concat(rb) });
+        window.__openIps(refRec.id, 'pay'); await sleep(100);
+        check('fix: IPS plaćanje koristi poziv na broj sa računa', /RO:002023555/.test($('ipsQr').dataset.text || '') && /2023555/.test($('ipsInfo').textContent), $('ipsQr').dataset.text);
+        $('ipsClose').click();
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.filter(b => b.id !== rb.id) });
+        await delRec(refRec.id);
+      } else check('fix: ponavljajuća sa uplatnice napravljena', false);
+      window.__fakeBillReading = null;
+      // 9, 11, 13) jednokratna uplatnica
+      const slip = { name: 'JKP Smoke Jednokratno', account: '845-0000000404849-87', code: '189', amount: 300, purpose: 'Komunalije', model: '', reference: '' };
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(slip) });
+      const blank = await new Promise(r => { const c = document.createElement('canvas'); c.width = 400; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 400, 200); c.toBlob(r, 'image/png'); });
+      const setFile = (id, f) => { const dt = new DataTransfer(); dt.items.add(f); $(id).files = dt.files; $(id).dispatchEvent(new Event('change')); };
+      const otherCat = [...$('recCategory').options].map(o => o.value).find(v => v && v !== 'Stanovanje');
+      const made = [];
+      go('rashodi'); await sleep(60);
+      setFile('expSlipInput', new File([blank], 'f1.png', { type: 'image/png' })); await slipReady();
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: posle „Dalje“ fokus je na iznosu (ne na dugmetu „Plaćeno“)', document.activeElement === $('ipsAmount'), document.activeElement && document.activeElement.id);
+      setVal('ipsAmount', '1234.567'); $('ipsOneOffCat').value = otherCat;
+      $('ipsMakeRec').checked = true;
+      let nE = entries().length;
+      $('ipsPrimary').click(); $('ipsMakeRec').checked = false;
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      const sr = recs().filter(r => r.desc === 'JKP Smoke Jednokratno');
+      const se = entries().slice(nE);
+      se.forEach(e => made.push(e.id));
+      check('fix: „Sačuvaj i kao ponavljajuću“ se čita u trenutku klika', sr.length === 1, String(sr.length));
+      check('fix: iznos ponavljajuće i rashoda zaokružen na pare', sr.length === 1 && sr[0].amount === 1234.57 && se.length === 1 && se[0].amount === 1234.57, JSON.stringify({ r: sr[0] && sr[0].amount, e: se.map(e => e.amount) }));
+      check('fix: dugme „Plaćeno“ ponovo aktivno', !$('ipsPrimary').disabled);
+      setFile('expSlipInput', new File([blank], 'f2.png', { type: 'image/png' })); await slipReady();
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: nova uplatnica ne nasleđuje kategoriju prethodne', $('ipsOneOffCat').value !== otherCat, $('ipsOneOffCat').value);
+      setVal('ipsAmount', '500'); $('ipsMakeRec').checked = true;
+      nE = entries().length;
+      $('ipsPrimary').click(); await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      check('fix: ne pravi duplu ponavljajuću za istog primaoca', recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length === 1 && entries().length === nE + 1, recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length + ' / ' + (entries().length - nE));
+      if ($('ipsOverlay').classList.contains('show')) $('ipsClose').click();
+      // 10) valuta sa uplatnice
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { amount: 10, currency: 'EUR' })) });
+      setFile('expSlipInput', new File([blank], 'f3.png', { type: 'image/png' })); await slipReady();
+      check('fix: uplatnica u stranoj valuti -> upozorenje', /EUR/.test($('ipsProblems').textContent), $('ipsProblems').textContent);
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: iznos u EUR se ne nudi kao dinari', $('ipsAmount').value !== '10', $('ipsAmount').value);
+      $('ipsClose').click();
+      go('ponavljajuce'); await sleep(60);
+      setVal('recDesc', '');
+      window.__fillRecFromSlipText('K:PR|V:01|C:1|R:845000000040484987|N:Smoke Evro|I:EUR10,00|SF:189');
+      check('fix: nova ponavljajuća sa uplatnice dobija valutu uplatnice', $('recCurrency').value === 'EUR', $('recCurrency').value);
+      $('recCurrency').value = 'RSD'; $('recCurrency').dispatchEvent(new Event('change')); setVal('recDesc', ''); setVal('recAmount', '');
+      window.__fakeSlipReading = null;
+      window.__deleteEntriesById(made);
+      for (const r of recs().filter(r => r.desc === 'JKP Smoke Jednokratno')) await delRec(r.id);
+      // 12) 📎 za uplatnicu
+      window.__addEntriesRaw([{ id: 'smoke-slip-att', type: 'expense', desc: 'Smoke uplatnica', amount: 5, category: 'Stanovanje', date: monthKey(new Date()) + '-01', paid: true, tags: [], attachments: ['2026-10-01-uplatnica-smoke.png'] }]);
+      go('rashodi'); await sleep(80);
+      const ab = document.querySelector('.att-btn[data-id="smoke-slip-att"]');
+      check('fix: 📎 uplatnice kaže „Otvori uplatnicu“, bez „+ garancija“', !!ab && ab.title === 'Otvori uplatnicu' && !ab.closest('tr').querySelector('.warranty-btn'), ab && ab.title);
+      window.__deleteEntriesById(['smoke-slip-att']);
+    } else check('fix: hook __setBillState', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

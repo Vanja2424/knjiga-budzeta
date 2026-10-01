@@ -1085,6 +1085,7 @@
       amount: Number.isFinite(amt) && amt > 0 ? round2(amt) : null,
       currency: (ctx.currencies || []).includes(cur) ? cur : (loc ? loc.currency : 'RSD'),
       dueDate: readDate(o.dueDate), values, payee };
+    if((ctx.currencies || []).includes(cur)) out.currencyRead = true;
     if(!out.billTypeId) low.add('billTypeId');
     if(!out.month) low.add('month');
     if(out.amount == null) low.add('amount');
@@ -1101,10 +1102,36 @@
       if(r.amount != null && Math.abs(r.amount - qr.amount) > 0.01){ if(!r.low.includes('amount')) r.low.push('amount'); }
       else r.low = r.low.filter(k => k !== 'amount');
       r.amount = round2(qr.amount);
-      if(qr.currency) r.currency = qr.currency;
+      if(qr.currency){ r.currency = qr.currency; r.currencyRead = true; }
     }
     r.payee = cleanPayee(Object.assign({}, r.payee || {}, { account: qr.account, name: qr.name || (r.payee && r.payee.name), code: qr.code, purpose: qr.purpose, model: qr.model, reference: qr.reference })) || r.payee;
     return r;
+  }
+
+  // Valuta procitana sa racuna (AI ili QR) koja se razlikuje od valute lokacije -> kod valute za upozorenje, inace ''
+  function billCurrencyMismatch(reading, locCurrency){
+    if(!reading || !reading.currencyRead || !reading.currency) return '';
+    return reading.currency !== (locCurrency || 'RSD') ? reading.currency : '';
+  }
+  // IPS placanje ponavljajuce stavke: poziv na broj (i model) sa racuna ovog meseca, ako je racun istog primaoca
+  function payeeWithBillReference(recPayee, billPayee){
+    if(!recPayee) return recPayee || null;
+    const ref = billPayee ? String(billPayee.reference || '').replace(/\s/g, '') : '';
+    if(!ref) return recPayee;
+    const acc = normalizeAccount(billPayee.account);
+    if(acc && acc !== normalizeAccount(recPayee.account)) return recPayee;
+    return Object.assign({}, recPayee, { model: String(billPayee.model || '').trim(), reference: ref });
+  }
+  // Postojeca ponavljajuca (rashod) za istog primaoca: isti racun primaoca i isti naziv ili isti poziv na broj
+  function findRecurringByPayee(recurring, payee){
+    const acc = payee && normalizeAccount(payee.account);
+    if(!acc) return null;
+    const name = foldText(payee.name || '').trim(), ref = String(payee.reference || '').replace(/\s/g, '');
+    return (recurring || []).find(r => {
+      if(!r || r.type !== 'expense' || !r.payee || normalizeAccount(r.payee.account) !== acc) return false;
+      const rName = foldText(r.payee.name || '').trim(), rRef = String(r.payee.reference || '').replace(/\s/g, '');
+      return (!!name && name === rName) || (!!ref && ref === rRef);
+    }) || null;
   }
 
   // Kljuc novog merenja: posle svih kljuceva vrste I onih koji jos stoje u racunima (obrisano merenje ne sme da ozivi pod drugim imenom)
@@ -1932,7 +1959,7 @@
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
-    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
+    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
     isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed,
     checkWorkbookShape, checkDataFileShape

@@ -1695,3 +1695,46 @@ test('i18n: jedinice i "danas" na engleskom', () => {
   assert.equal(t('pak'), 'pack');
   assert.equal(t('najjeftinije: {0} {1} (danas)', 'Lidl', '10 RSD/pcs'), 'cheapest: Lidl 10 RSD/pcs (today)');
 });
+test('billCurrencyMismatch: valuta procitana sa racuna (AI ili QR) razlicita od valute lokacije', () => {
+  const eur = C.cleanBillReading({ locationId: 'L1', billTypeId: 'T1', month: '2025-01', amount: 40, currency: 'eur' }, BILL_CTX);
+  assert.equal(C.billCurrencyMismatch(eur, 'RSD'), 'EUR');
+  assert.equal(C.billCurrencyMismatch(eur, 'EUR'), '');
+  // AI nije procitao valutu -> uzeta je valuta lokacije, nema upozorenja
+  const none = C.cleanBillReading({ locationId: 'L2', billTypeId: 'T2', month: '2025-01', amount: 40 }, BILL_CTX);
+  assert.equal(none.currency, 'BAM');
+  assert.equal(C.billCurrencyMismatch(none, 'RSD'), '');
+  // QR sa iznosom u RSD za lokaciju u BAM
+  const qr = { account: '160000000000000111', name: 'JP EPS', amount: 100, currency: 'RSD', code: '189' };
+  assert.equal(C.billCurrencyMismatch(C.mergeBillQr(none, qr), 'BAM'), 'RSD');
+  assert.equal(C.billCurrencyMismatch(C.mergeBillQr(null, null), 'BAM'), '');
+  assert.equal(C.billCurrencyMismatch(null, 'RSD'), '');
+});
+
+test('payeeWithBillReference: poziv na broj sa racuna ovog meseca ide u IPS placanje', () => {
+  const rec = { account: '160000000000000111', name: 'JP EPS', code: '189', purpose: 'Struja', model: '', reference: '' };
+  const withRef = C.payeeWithBillReference(rec, { account: '160-0000000000001-11', name: 'EPS', model: '97', reference: '1234567890' });
+  assert.deepEqual(withRef, Object.assign({}, rec, { model: '97', reference: '1234567890' }));
+  // racun bez racuna primaoca (AI) — poziv na broj se i dalje koristi
+  assert.equal(C.payeeWithBillReference(rec, { name: 'EPS', reference: '55' }).reference, '55');
+  // drugi primalac -> ne mesa se
+  assert.deepEqual(C.payeeWithBillReference(rec, { account: '845000000040484987', reference: '99' }), rec);
+  // bez poziva na broj na racunu ostaje kako jeste
+  assert.deepEqual(C.payeeWithBillReference(rec, { account: rec.account, reference: '' }), rec);
+  assert.deepEqual(C.payeeWithBillReference(rec, null), rec);
+  assert.equal(C.payeeWithBillReference(null, { reference: '1' }), null);
+});
+
+test('findRecurringByPayee: postojeca ponavljajuca za istog primaoca (racun + naziv ili poziv na broj)', () => {
+  const recurring = [
+    { id: 'R1', type: 'expense', desc: 'Infostan', payee: { account: '845000000040484987', name: 'JKP Infostan, Beograd', reference: '111' } },
+    { id: 'R2', type: 'expense', desc: 'Struja', payee: { account: '160000000000000111', name: 'JP EPS', reference: '' } },
+    { id: 'R3', type: 'income', desc: 'X', payee: { account: '170000000000000222', name: 'Y' } }
+  ];
+  assert.equal(C.findRecurringByPayee(recurring, { account: '845-0000000404849-87', name: 'jkp infostan, beograd', reference: '222' }).id, 'R1');
+  assert.equal(C.findRecurringByPayee(recurring, { account: '845000000040484987', name: 'Drugi naziv', reference: '111' }).id, 'R1');
+  // isti racun primaoca (npr. zajednicki racun), drugi naziv i drugi poziv na broj -> nije ista stavka
+  assert.equal(C.findRecurringByPayee(recurring, { account: '845000000040484987', name: 'Neko drugi', reference: '333' }), null);
+  assert.equal(C.findRecurringByPayee(recurring, { account: '170000000000000222', name: 'Y' }), null); // samo rashodi
+  assert.equal(C.findRecurringByPayee(recurring, null), null);
+  assert.equal(C.findRecurringByPayee(recurring, { account: '', name: 'JP EPS' }), null);
+});
