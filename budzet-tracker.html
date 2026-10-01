@@ -5329,7 +5329,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const made = rows.map(row=>{
       const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: row.amount, category: row.category, date, paid: true, tags: ['nabavka'],
         items: row.items.map(i=> C.purchaseItemLabel({ name: (i.name || '').trim() || i.raw || t('Stavka'), qty: qtyLabel(i) })),
-        itemPrices: row.itemPrices, itemQty: row.items.map(i=> ({ qty: i.qty > 0 ? i.qty : 1, unit: C.QTY_UNITS.includes(i.unit) ? i.unit : 'kom' })), receiptId };
+        itemPrices: row.itemPrices, itemQty: row.items.map(i=> ({ qty: i.qty > 0 ? i.qty : 1, unit: C.normUnit(i.unit) || 'kom' })), receiptId };
       if(attachments.length) e.attachments = attachments.slice();
       if(accountId) e.accountId = accountId;
       entries.push(e); applyRoundUpSaving(row.amount);

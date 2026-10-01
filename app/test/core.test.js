@@ -1531,6 +1531,22 @@ test('pitaj posle pregleda: top i raspodela, zavrsene ponavljajuce, perMonth za 
   assert.match(C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [] }), /uPeriodu/);
 });
 
+test('cene: decimalni zarez u kolicini i jedinice sa racuna (KG, KOM.)', () => {
+  assert.deepEqual(C.parseItemQty('Banane (1,234 kg)'), { qty: 1.234, unit: 'kg' });
+  assert.deepEqual(C.parseItemQty('Sir (0,250 kg)'), { qty: 0.25, unit: 'kg' });
+  const hist = C.priceHistory([{ id: 'a', type: 'expense', receiptId: 'r1', date: '2026-09-01', desc: 'Maxi', items: ['Banane'], itemPrices: [160], itemQty: [{ qty: 1, unit: 'kg' }] }]);
+  assert.equal(C.estimateShoppingItem({ name: 'Banane', qty: '1,250 kg' }, hist, '').amount, 200);
+  assert.equal(C.estimateShoppingItem({ name: 'Banane', qty: '0,250 kg' }, hist, '').amount, 40);
+  assert.equal(C.normUnit('KG'), 'kg');
+  assert.equal(C.normUnit('KOM.'), 'kom');
+  assert.equal(C.normUnit(' Lit '), 'l');
+  assert.equal(C.normUnit('kutija'), '');
+  const obs = C.priceObservations([{ id: 'b', type: 'expense', receiptId: 'r2', date: '2026-09-02', desc: 'Lidl', items: ['Banane', 'Jaja'], itemPrices: [200, 100], itemQty: [{ qty: 1.25, unit: 'KG' }, { qty: 2, unit: '<b>' }] }]);
+  assert.deepEqual(obs.map(o => o.unit + ':' + o.unitPrice), ['kg:160', 'kom:100']);
+  const rd = C.cleanReceiptReading(JSON.stringify({ store: 'X', date: '2026-09-02', total: 200, items: [{ name: 'Banane', qty: '1,234', unit: 'KG', price: 200 }] }), { categories: ['Hrana'] });
+  assert.equal(rd.items[0].unit, 'kg'); assert.equal(rd.items[0].qty, 1.234);
+});
+
 test('cene: kolicina, opazanja, promena, najjeftinije, procena', () => {
   assert.deepEqual(C.parseItemQty('Mleko (2 kom)'), { qty: 2, unit: 'kom' });
   assert.deepEqual(C.parseItemQty('Banane (1,5 kg)'), { qty: 1.5, unit: 'kg' });

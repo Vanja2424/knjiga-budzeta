@@ -1245,9 +1245,9 @@
       const rawText = String(i.raw || '').trim().slice(0, 120);
       const name = (String(i.name || '').trim() || shortItemName(rawText)).slice(0, 60);
       const price = parseAmount(i.price);
-      const qty = parseAmount(i.qty);
+      const qty = parseQtyNum(i.qty);
       const discount = !!i.discount || (Number.isFinite(price) && price < 0);
-      return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: String(i.unit || '').trim().slice(0, 8),
+      return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: normUnit(i.unit) || String(i.unit || '').trim().slice(0, 8),
         price: Number.isFinite(price) ? round2(price) : null, category: catFor(i.category), discount };
     }).filter(i => i.name || i.price != null);
     const total = parseAmount(o.total);
@@ -1746,8 +1746,17 @@
 
   // ---------- Pracenje cena iz racuna iz prodavnice ----------
   const QTY_LABEL_RE = /\((\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)\)\s*$/i;
+  // Kolicina: zarez je uvek decimalni ("1,234 kg" = 1.234), za razliku od iznosa
+  const parseQtyNum = v => typeof v === 'number' ? v : parseFloat(String(v == null ? '' : v).trim().replace(',', '.'));
+  // Jedinica sa racuna ("KG", "KOM.", "Lit") -> jedna iz QTY_UNITS, inace ''
+  const UNIT_ALIASES = { lit: 'l', lt: 'l', gr: 'g', kgr: 'kg', pcs: 'kom', kos: 'kom', pak: 'pak', pakovanje: 'pak' };
+  function normUnit(unit){
+    const u = String(unit || '').trim().toLowerCase().replace(/\.+$/, '');
+    if(QTY_UNITS.includes(u)) return u;
+    return UNIT_ALIASES[u] || '';
+  }
   function normQty(qty, unit){
-    const u = String(unit || 'kom').toLowerCase();
+    const u = normUnit(unit) || 'kom';
     if(u === 'g') return { qty: qty / 1000, unit: 'kg' };
     if(u === 'ml') return { qty: qty / 1000, unit: 'l' };
     return { qty, unit: u };
@@ -1755,7 +1764,7 @@
   function parseItemQty(label){
     const m = QTY_LABEL_RE.exec(String(label || ''));
     if(!m) return { qty: 1, unit: 'kom' };
-    const q = parseAmount(m[1]);
+    const q = parseQtyNum(m[1]);
     return q > 0 ? normQty(q, m[2]) : { qty: 1, unit: 'kom' };
   }
   function priceObservations(entries){
@@ -1766,7 +1775,7 @@
         const total = e.itemPrices[i];
         const name = purchasedItemName(label);
         if(!(total > 0) || !name || /^razlika do ukupnog$/i.test(name) || /^difference to total$/i.test(name)) return;
-        const q = Array.isArray(e.itemQty) && e.itemQty[i] && e.itemQty[i].qty > 0 ? normQty(e.itemQty[i].qty, e.itemQty[i].unit) : parseItemQty(label);
+        const q = Array.isArray(e.itemQty) && e.itemQty[i] && e.itemQty[i].qty > 0 && normUnit(e.itemQty[i].unit) ? normQty(e.itemQty[i].qty, e.itemQty[i].unit) : parseItemQty(label);
         out.push({ date: e.date, store: String(e.desc || '').trim(), name, key: itemKey(label), qty: q.qty, unit: q.unit, total, unitPrice: round2(total / q.qty) });
       });
     });
@@ -1801,7 +1810,7 @@
       const store = (item.store || preferredStore || '').trim();
       const atStore = store ? h.obs.filter(o => foldText(o.store) === foldText(store)).pop() : null;
       const o = atStore || h.obs[h.obs.length - 1];
-      const listQ = item.qty ? (() => { const m = /(\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)/i.exec(item.qty); return m ? normQty(parseAmount(m[1]), m[2]) : null; })() : null;
+      const listQ = item.qty ? (() => { const m = /(\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)/i.exec(item.qty); return m && parseQtyNum(m[1]) > 0 ? normQty(parseQtyNum(m[1]), m[2]) : null; })() : null;
       const amount = listQ ? (listQ.unit === o.unit ? round2(o.unitPrice * listQ.qty) : o.total) : (o.unit === 'kom' ? o.unitPrice : o.total);
       return { amount, source: atStore ? 'store' : 'last', unitPrice: o.unitPrice };
     }
@@ -1856,7 +1865,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });
