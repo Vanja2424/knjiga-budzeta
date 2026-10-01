@@ -726,13 +726,16 @@
     const emptyLabel = by === 'store' ? NO_STORE : NO_CATEGORY;
     return keys.map(k => ({ key: k, label: k === '' ? emptyLabel : k, items: map.get(k).slice().sort(byName) }));
   }
-  function shoppingEstimate(items){
+  function shoppingEstimate(items, opts){
     const res = { count: 0, total: 0, unpriced: 0, byCategory: {} };
+    if(opts && opts.history) res.fromReceipts = 0;
     (items || []).forEach(i => {
       if(!i.needed) return;
       res.count++;
       if(!(res.byCategory[i.category] >= 0)) res.byCategory[i.category] = 0;
-      if(i.price > 0){ res.total += i.price; res.byCategory[i.category] += i.price; } else res.unpriced++;
+      const est = opts && opts.history ? estimateShoppingItem(i, opts.history, opts.preferredStore) : { amount: i.price > 0 ? i.price : 0, source: i.price > 0 ? 'manual' : null };
+      if(est.amount > 0){ res.total = round2(res.total + est.amount); res.byCategory[i.category] = round2(res.byCategory[i.category] + est.amount); if(est.source === 'store' || est.source === 'last') res.fromReceipts++; }
+      else res.unpriced++;
     });
     return res;
   }
@@ -1242,9 +1245,9 @@
       const rawText = String(i.raw || '').trim().slice(0, 120);
       const name = (String(i.name || '').trim() || shortItemName(rawText)).slice(0, 60);
       const price = parseAmount(i.price);
-      const qty = parseAmount(i.qty);
+      const qty = parseQtyNum(i.qty);
       const discount = !!i.discount || (Number.isFinite(price) && price < 0);
-      return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: String(i.unit || '').trim().slice(0, 8),
+      return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: normUnit(i.unit) || String(i.unit || '').trim().slice(0, 8),
         price: Number.isFinite(price) ? round2(price) : null, category: catFor(i.category), discount };
     }).filter(i => i.name || i.price != null);
     const total = parseAmount(o.total);
@@ -1741,6 +1744,80 @@
       'Rezultati (JSON): ' + JSON.stringify(o.results || [])].join('\n');
   }
 
+  // ---------- Pracenje cena iz racuna iz prodavnice ----------
+  const QTY_LABEL_RE = /\((\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)\)\s*$/i;
+  // Kolicina: zarez je uvek decimalni ("1,234 kg" = 1.234), za razliku od iznosa
+  const parseQtyNum = v => typeof v === 'number' ? v : parseFloat(String(v == null ? '' : v).trim().replace(',', '.'));
+  // Jedinica sa racuna ("KG", "KOM.", "Lit") -> jedna iz QTY_UNITS, inace ''
+  const UNIT_ALIASES = { lit: 'l', lt: 'l', gr: 'g', kgr: 'kg', pcs: 'kom', kos: 'kom', pak: 'pak', pakovanje: 'pak' };
+  function normUnit(unit){
+    const u = String(unit || '').trim().toLowerCase().replace(/\.+$/, '');
+    if(QTY_UNITS.includes(u)) return u;
+    return UNIT_ALIASES[u] || '';
+  }
+  function normQty(qty, unit){
+    const u = normUnit(unit) || 'kom';
+    if(u === 'g') return { qty: qty / 1000, unit: 'kg' };
+    if(u === 'ml') return { qty: qty / 1000, unit: 'l' };
+    return { qty, unit: u };
+  }
+  function parseItemQty(label){
+    const m = QTY_LABEL_RE.exec(String(label || ''));
+    if(!m) return { qty: 1, unit: 'kom' };
+    const q = parseQtyNum(m[1]);
+    return q > 0 ? normQty(q, m[2]) : { qty: 1, unit: 'kom' };
+  }
+  function priceObservations(entries){
+    const out = [];
+    (entries || []).forEach(e => {
+      if(!e || e.type !== 'expense' || !e.receiptId || !Array.isArray(e.items) || !Array.isArray(e.itemPrices)) return;
+      e.items.forEach((label, i) => {
+        const total = e.itemPrices[i];
+        const name = purchasedItemName(label);
+        if(!(total > 0) || !name || /^razlika do ukupnog$/i.test(name) || /^difference to total$/i.test(name)) return;
+        const q = Array.isArray(e.itemQty) && e.itemQty[i] && e.itemQty[i].qty > 0 && normUnit(e.itemQty[i].unit) ? normQty(e.itemQty[i].qty, e.itemQty[i].unit) : parseItemQty(label);
+        out.push({ date: e.date, store: String(e.desc || '').trim(), name, key: itemKey(label), qty: q.qty, unit: q.unit, total, unitPrice: round2(total / q.qty) });
+      });
+    });
+    return out.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  }
+  function priceHistory(entries){
+    const map = new Map();
+    priceObservations(entries).forEach(o => { if(!map.has(o.key)) map.set(o.key, { key: o.key, name: o.name, obs: [] }); const h = map.get(o.key); h.obs.push(o); h.name = o.name; });
+    return map;
+  }
+  function priceInsight(hist, today){
+    if(!hist || !hist.obs.length) return null;
+    const obs = hist.obs, last = obs[obs.length - 1];
+    const sameUnit = obs.filter(o => o.unit === last.unit);
+    const before = sameUnit.slice(0, -1);
+    let change = null;
+    const prevStore = before.filter(o => foldText(o.store) === foldText(last.store)).pop();
+    let base = null, vs = null;
+    if(prevStore){ base = prevStore.unitPrice; vs = 'store'; }
+    else if(before.length){ const lastN = before.slice(-3); base = lastN.reduce((s, o) => s + o.unitPrice, 0) / lastN.length; vs = 'avg'; }
+    if(base > 0){ const pct = Math.round((last.unitPrice - base) / base * 100); if(Math.abs(pct) >= 3) change = { pct, vs, prev: round2(base) }; }
+    const cutoff = dayNumber(today) - 90;
+    const recent = sameUnit.filter(o => dayNumber(o.date) >= cutoff && o !== last);
+    const cheapestObs = recent.reduce((m, o) => (!m || o.unitPrice < m.unitPrice) ? o : m, null);
+    const cheapest = cheapestObs && cheapestObs.unitPrice <= last.unitPrice * 0.99 ? { store: cheapestObs.store, unitPrice: cheapestObs.unitPrice, date: cheapestObs.date } : null;
+    return { key: hist.key, name: hist.name, last, change, cheapest, unit: last.unit };
+  }
+  // procena za stavku sa liste: cena po jedinici iz racuna x kolicina sa liste (jedinice moraju da se slazu)
+  function estimateShoppingItem(item, history, preferredStore){
+    const h = history && history.get(itemKey(item && item.name));
+    if(h && h.obs.length){
+      const store = (item.store || preferredStore || '').trim();
+      const atStore = store ? h.obs.filter(o => foldText(o.store) === foldText(store)).pop() : null;
+      const o = atStore || h.obs[h.obs.length - 1];
+      const listQ = item.qty ? (() => { const m = /(\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)/i.exec(item.qty); return m && parseQtyNum(m[1]) > 0 ? normQty(parseQtyNum(m[1]), m[2]) : null; })() : null;
+      const amount = listQ ? (listQ.unit === o.unit ? round2(o.unitPrice * listQ.qty) : o.total) : (o.unit === 'kom' ? o.unitPrice : o.total);
+      return { amount, source: atStore ? 'store' : 'last', unitPrice: o.unitPrice };
+    }
+    if(item && item.price > 0) return { amount: item.price, source: 'manual' };
+    return { amount: 0, source: null };
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1788,7 +1865,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

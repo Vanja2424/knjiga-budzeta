@@ -1320,6 +1320,49 @@
       window.__fakeAsk = null;
     } else check('pitaj: hook __fakeAsk', false);
 
+    // Pracenje cena: oznaka promene, najjeftinije, procena, prikaz Cene, istorija, kopija i Excel
+    {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+      go('nabavka'); document.querySelector('.shop-show-btn[data-show="prices"]') && document.querySelector('.shop-show-btn[data-show="prices"]').click(); await sleep(80);
+      const hasRc = JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]').some(e => e.receiptId && Array.isArray(e.itemPrices) && e.itemPrices.some(p => p > 0));
+      check('cene: prazan prikaz ima poruku ili redove', !!$('shopPrices') && (hasRc ? !!$('shopPrices').querySelector('.price-row') : /Još nema cena/.test($('shopPrices').textContent)), $('shopPrices') && $('shopPrices').textContent.slice(0, 80));
+      const R = (id, date, store, items, prices, qty) => ({ id: 'smoke-pr-' + id, type: 'expense', receiptId: 'smokePR' + id, date, desc: store, amount: prices.reduce((a, b) => a + b, 0), category: 'Hrana', paid: true, tags: ['nabavka'], items, itemPrices: prices, itemQty: qty });
+      window.__addEntriesRaw([
+        R('1', ago(60), 'Smoke Maxi', ['Smokemleko (2 kom)'], [238], [{ qty: 2, unit: 'kom' }]),
+        R('2', ago(20), 'Smoke Lidl', ['Smokemleko'], [115], [{ qty: 1, unit: 'kom' }]),
+        R('3', ago(2), 'Smoke Maxi', ['Smokemleko (2 kom)'], [258], [{ qty: 2, unit: 'kom' }])
+      ]);
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-pr-item', name: 'Smokemleko', section: 'Ostalo', store: 'Smoke Maxi', category: 'Hrana', price: null, qty: '2 kom', needed: true, checked: false });
+      window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(100);
+      const row = document.querySelector('.shop-row[data-row-id="smoke-pr-item"]');
+      check('cene: oznaka poskupljenja u redu', !!row && !!row.querySelector('.shop-price-change.up') && /8%/.test(row.querySelector('.shop-price-change.up').textContent), row && row.textContent);
+      check('cene: najjeftinije u drugoj prodavnici', !!row && /Smoke Lidl/.test((row.querySelector('.shop-cheapest') || {}).textContent || ''));
+      check('cene: procena po ceni sa računa', /258/.test($('shopFooter').textContent) && /po ceni sa računa/.test($('shopFooter').textContent), $('shopFooter').textContent.slice(0, 160));
+      document.querySelector('.shop-show-btn[data-show="prices"]').click(); await sleep(100);
+      const prow = [...document.querySelectorAll('#shopPrices .price-row')].find(r => /Smokemleko/.test(r.textContent));
+      check('cene: prikaz Cene sa artiklom', !!prow);
+      const down = document.querySelector('#shopPrices .price-filter[data-f="down"]');
+      if (down) { down.click(); await sleep(60); }
+      check('cene: filter Pojeftinilo ga skriva', ![...document.querySelectorAll('#shopPrices .price-row')].some(r => /Smokemleko/.test(r.textContent)));
+      const all = document.querySelector('#shopPrices .price-filter[data-f="all"]'); if (all) { all.click(); await sleep(60); }
+      const prow2 = [...document.querySelectorAll('#shopPrices .price-row')].find(r => /Smokemleko/.test(r.textContent));
+      if (prow2) { prow2.click(); await sleep(120); }
+      check('cene: istorija sa 3 kupovine i grafikonom', $('dialogOverlay').classList.contains('show') && $('dialogBody').querySelectorAll('tbody tr').length === 3 && !!$('dialogBody').querySelector('svg polyline'));
+      if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      const san = window.__sanitizeImportedBackup({ entries: [R('9', ago(1), 'X', ['A', 'B'], [1, 2], [{ qty: 2, unit: 'kg' }, { qty: -1, unit: 'zz' }])] });
+      check('cene: kopija čuva količine', JSON.stringify(san.entries[0].itemQty) === JSON.stringify([{ qty: 2, unit: 'kg' }, { qty: 1, unit: 'kom' }]), JSON.stringify(san.entries[0].itemQty));
+      const xr = XLSX.utils.sheet_to_json(window.__buildWorkbook().Sheets['Stavke'], { defval: '' }).find(r => r.ID === 'smoke-pr-1');
+      check('cene: Excel kolone CeneStavki i Kolicine', !!xr && /"qty":2/.test(xr.Kolicine) && xr.CeneStavki === '[238]', xr && (xr.CeneStavki + ' ' + xr.Kolicine));
+      const back = window.__itemArraysFromCells(2, '[10,null]', '[{"qty":0.5,"unit":"kg"},{"qty":3,"unit":"xx"}]');
+      check('cene: Excel se čita nazad', JSON.stringify(back) === JSON.stringify({ itemPrices: [10, null], itemQty: [{ qty: 0.5, unit: 'kg' }, { qty: 1, unit: 'kom' }] }), JSON.stringify(back));
+      window.__deleteEntriesById(['smoke-pr-1', 'smoke-pr-2', 'smoke-pr-3']);
+      window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-pr-item'); window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click();
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
