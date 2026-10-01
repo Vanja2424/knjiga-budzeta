@@ -1929,6 +1929,64 @@
     return { amount: 0, source: null };
   }
 
+  // ---------- Telegram bot: poruka -> namera / nacrt unosa / vrsta slike ----------
+  const TELEGRAM_PENDING_DAYS = 7;
+  const TG_INCOME_WORDS = ['plata', 'prihod', 'honorar', 'penzija', 'zarada', 'bonus', 'dnevnica'];
+  const TG_KIND_WORDS = [
+    ['slip', ['uplatnica', 'uplatnicu', 'nalog za uplatu']],
+    ['bill', ['struja', 'struju', 'eps', 'infostan', 'voda', 'vodu', 'vodovod', 'grejanje', 'toplana', 'gas', 'internet', 'telefon', 'kablovska', 'sbb', 'telekom', 'mts', 'yettel', 'komunalije', 'racun za']],
+    ['receipt', ['maxi', 'lidl', 'idea', 'aman', 'dis', 'univerexport', 'tempo', 'roda', 'mercator', 'prodavnica', 'market', 'fiskalni', 'pijaca', 'apoteka']]
+  ];
+  function telegramIntent(text){
+    const s = String(text || '').trim();
+    if(!s) return { kind: 'empty' };
+    if(s[0] === '/'){
+      const cmd = foldText(s.slice(1).split(/[\s@]/)[0]);
+      return { kind: 'command', command: ['start', 'help', 'pomoc'].includes(cmd) ? 'pomoc' : (cmd === 'ponisti' ? 'ponisti' : 'nepoznata') };
+    }
+    return { kind: 'entry' };
+  }
+  // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...) = prihod; kategorija iz pravila, pa iz istorije
+  function telegramEntryDraft(text, ctx){
+    const c = ctx || {};
+    let raw = String(text || '').trim(), type = 'expense';
+    if(raw[0] === '+'){ type = 'income'; raw = raw.slice(1).trim(); }
+    const p = parseQuickSentence(raw, { today: c.today, accounts: c.accounts || [], currencies: c.currencies || [] });
+    const desc = String(p.desc || '').trim();
+    if(!(p.amount > 0)) return { error: desc || !raw ? 'noamount' : 'nodesc' };
+    if(!desc) return { error: 'nodesc' };
+    const first = foldText(desc.split(/\s+/)[0]);
+    if(type === 'expense' && (TG_INCOME_WORDS.includes(first) || (c.incomeCats || []).some(x => foldText(x) === first))) type = 'income';
+    const cats = (type === 'expense' ? c.expenseCats : c.incomeCats) || [];
+    const low = desc.toLowerCase();
+    let category = null;
+    if(type === 'expense'){
+      const rule = (c.rules || []).filter(r => r && r.keyword).slice().sort((a, b) => b.keyword.length - a.keyword.length).find(r => low.includes(String(r.keyword).toLowerCase()));
+      if(rule && cats.includes(rule.category)) category = rule.category;
+    }
+    if(!category){
+      const h = (c.history || []).find(x => x && x.type === type && String(x.desc || '').toLowerCase() === low);
+      if(h && cats.includes(h.category)) category = h.category;
+    }
+    return { type, desc, amount: p.amount, currency: p.currency || null, date: p.date || c.today, accountId: p.accountId || null, category };
+  }
+  function photoKindFromCaption(caption){
+    const f = ' ' + foldText(String(caption || '')).replace(/[^a-z0-9]+/g, ' ').trim() + ' ';
+    if(!f.trim()) return null;
+    for(const [kind, words] of TG_KIND_WORDS) if(words.some(w => f.includes(' ' + w + ' '))) return kind;
+    return null;
+  }
+  // callback_data: "<akcija>:<id>[:<arg>]"; akcije k (vrsta), s (sacuvaj), x (odbaci), o (otvori), u (ponisti)
+  function parseTelegramCallback(data){
+    const m = /^([ksxou]):([A-Za-z0-9]{1,40})(?::([a-z]{1,10}))?$/.exec(String(data || ''));
+    return m ? { action: m[1], id: m[2], arg: m[3] || '' } : null;
+  }
+  function cleanTelegramPending(list, nowMs){
+    const limit = nowMs - TELEGRAM_PENDING_DAYS * 864e5;
+    const valid = (Array.isArray(list) ? list : []).filter(p => p && typeof p === 'object' && typeof p.id === 'string' && typeof p.created === 'number');
+    return { keep: valid.filter(p => p.created >= limit), expired: valid.filter(p => p.created < limit) };
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1942,7 +2000,7 @@
   }
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
   const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
-    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-dokumenti-v1'];
+    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-telegram-cekanje-v1', 'budzet-dokumenti-v1'];
   const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -1976,7 +2034,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
