@@ -689,11 +689,16 @@
       const gg = window.__goals().find(x => x.id === 'p4-goal');
       gg.monthly = { amount: 1000, day: 1, since: window.BudzetCore.addMonths(cur, -2) };
       window.__saveGoals(); await sleep(40);
-      const did = window.__processGoalPlans(); await sleep(60);
+      // zaklonjen prozor (Windows: visibilityState 'hidden') ne sme da odlozi poruku u testu — ranije povremeni pad opoziva
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      let did;
+      try { did = window.__processGoalPlans(); } finally { delete document.visibilityState; }
+      await sleep(60);
       const after = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: propušteni meseci se uplaćuju', did && after.current === 3000 && after.monthly.last === cur, after.current + ' ' + after.monthly.last);
       check('mesečna uplata: ponovna obrada ne uplaćuje dvaput', !window.__processGoalPlans());
-      $('undoBtn').click(); await sleep(80);
+      check('mesečna uplata: poruka sa opozivom je odmah na vrhu', /Automatski uplaćeno u ciljeve/.test($('undoMessage').textContent), $('undoMessage').textContent + ' / ' + document.visibilityState);
+      window.__undoTop(); await sleep(80);
       const undone = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: Poništi vraća iznos i poslednji mesec', undone.current === 0 && !undone.monthly.last, undone.current + ' ' + undone.monthly.last);
       go('ciljevi'); await sleep(60);

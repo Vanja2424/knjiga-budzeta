@@ -6285,7 +6285,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return plan;
   }
   // Kao automatski upis: dospele uplate (i propustene dok je aplikacija bila zatvorena) se same uplate.
-  function processGoalPlans(){
+  // opts.showNow: poruka sa opozivom odmah (test) — inace tek kad je prozor vidljiv
+  function processGoalPlans(opts){
     const cur = currentMonthKey();
     const today = new Date().getDate();
     const done = [];
@@ -6314,7 +6315,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       });
       saveEntries(); saveGoals(); renderAll();
     });
-    if(document.visibilityState !== 'visible'){
+    if(document.visibilityState !== 'visible' && !(opts && opts.showNow)){
       document.addEventListener('visibilitychange', function onVis(){
         if(document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', onVis);
@@ -6323,7 +6324,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     } else show();
     return true;
   }
-  window.__processGoalPlans = () => { const c = processGoalPlans(); if(c) renderAll(); return c; };
+  window.__processGoalPlans = () => { const c = processGoalPlans({ showNow: true }); if(c) renderAll(); return c; };
   // Nov plan: od tekuceg meseca ako dan jos nije prosao, inace od sledeceg (ili uvek od sledeceg).
   function setGoalPlan(g, amount, day, fromNextMonth){
     const cur = currentMonthKey();
