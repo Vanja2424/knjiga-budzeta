@@ -11,7 +11,8 @@
     window.__fakeQuickCategory = req => { asked = req.prompt; return { ok: true, content: '{"category":"Hrana"}' }; };
     set('desc', 'smokekafa i kroasan 520 juče');
     await sleep(1600);
-    check('prepoznato ispod opisa', /520/.test($('parseHint').textContent) && /29/.test($('parseHint').textContent), $('parseHint').textContent);
+    const yd = new Date(); yd.setDate(yd.getDate() - 1);
+    check('prepoznato ispod opisa', /520/.test($('parseHint').textContent) && new RegExp('\\b' + yd.getDate() + '\\.').test($('parseHint').textContent), $('parseHint').textContent);
     check('AI kategorija za nepoznat opis', $('category').value === 'Hrana' && /AI/.test($('catHint').textContent), $('category').value + ' | ' + $('catHint').textContent);
     check('AI dobija samo opis', !!asked && /smokekafa i kroasan/.test(asked) && !/520|juče/.test(asked), asked);
     $('addBtn').click(); await sleep(300);

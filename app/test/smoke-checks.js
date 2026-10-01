@@ -30,11 +30,11 @@
 
     // Svi ekrani se otvaraju
     const go = s => window.__showScreen(s);
-    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'rezije', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'podesavanja']) {
+    for (const s of ['pregled', 'rashodi', 'prihodi', 'racuni', 'pretraga', 'kategorije', 'ponavljajuce', 'ciljevi', 'dugovi', 'analiza', 'rezije', 'izvestaj', 'uporedi', 'scenario', 'kursevi', 'nabavka', 'dokumenti', 'podesavanja']) {
       go(s); await sleep(60);
       check('ekran ' + s, $('screen-' + s).classList.contains('active') && document.querySelectorAll('.screen.active').length === 1);
     }
-    check('glavni meni ima 8 stavki (Ponavljajuće je u Transakcijama)', document.querySelectorAll('nav.tabs button[data-group]').length === 8);
+    check('glavni meni ima 9 stavki (Ponavljajuće je u Transakcijama, Dokumenti posle Nabavke)', document.querySelectorAll('nav.tabs button[data-group]').length === 9);
     // Kursevi: omiljena valuta se pojavljuje u izboru valute pri unosu
     go('kursevi'); await sleep(60);
     const favBtn = document.querySelector('.fx-star[data-cur="BAM"]');
@@ -1190,6 +1190,56 @@
       go('podesavanja'); await sleep(80);
       check('uvoz AI: podešavanja kažu da se šalju i opisi sa izvoda', /opisi/.test($('aiSettings').textContent) && /brzom unosu/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-200));
     } else check('uvoz AI: hook', false);
+
+    // Dokumenti: AI unos, stanje, licna dokumenta, obnova, brisanje sa opozivom, kopija i Excel
+    if (typeof window.__addDocFiles === 'function') {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const now = new Date();
+      const bought = iso(new Date(now.getFullYear() - 2, now.getMonth(), now.getDate() + 10));   // garancija 24 m -> istice za ~10 dana
+      let docCalls = 0;
+      window.__fakeDocReading = () => { docCalls++; return { ok: true, content: JSON.stringify({ kind: 'garancija', title: 'Smoke frižider', group: 'Tehnika', issued: bought, warrantyMonths: 24, vendor: 'Smoke Tehno' }) }; };
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 200); c.toBlob(r, 'image/png'); });
+      go('dokumenti'); await sleep(80);
+      const pd = window.__addDocFiles([new File([png], 'g.png', { type: 'image/png' })]); await sleep(1500);
+      check('dokumenti: prozor sa AI podacima', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke frižider' && $('docIssued').value === bought && $('docMonths').value === '24', $('docTitle').value + ' ' + $('docIssued').value);
+      $('docSave').click(); await pd; await sleep(200);
+      const dz = window.__documents().find(d => d.title === 'Smoke frižider');
+      check('dokumenti: sačuvan sa prilogom, uskoro ističe', !!dz && dz.files.length === 1 && window.BudzetCore.documentStatus(dz, iso(now)).state === 'soon', JSON.stringify(dz));
+      check('dokumenti: red na spisku sa stanjem', !!document.querySelector(`#docList .doc-row.doc-soon[data-id="${dz && dz.id}"]`));
+      // licna dokumenta: prekidac ne salje sledece fajlove
+      window.__fakeDocReading = () => { docCalls++; return { ok: true, content: JSON.stringify({ kind: 'dokument', title: 'Smoke pasoš', group: 'Lična dokumenta', expires: iso(new Date(now.getFullYear() + 5, 0, 1)) }) }; };
+      const pp = window.__addDocFiles([new File([png], 'p.png', { type: 'image/png' })]); await sleep(1500);
+      check('dokumenti: lična dokumenta uključuju „ne šalji AI-ju“', $('docNoAi').checked === true);
+      const callsBefore = docCalls;
+      const dt = new DataTransfer(); dt.items.add(new File([png], 'p2.png', { type: 'image/png' })); $('docFileInput').files = dt.files; $('docFileInput').dispatchEvent(new Event('change')); await sleep(1200);
+      check('dokumenti: uz prekidač fajl ne ide AI-ju, ali se dodaje', docCalls === callsBefore && document.querySelectorAll('#docFiles .doc-file').length === 2, docCalls + ' ' + callsBefore);
+      $('docCancel').click(); await pp;
+      // obnova sa rashodom i opozivom
+      const regExp = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10));
+      const regId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke registracija', group: 'Auto', expires: regExp, remindDays: 30, files: [], renewal: { amount: 25000, category: 'Prevoz', months: 12 } });
+      const nE = entries().length;
+      window.__renewDocument(regId); await sleep(150);
+      const reg = window.__documents().find(d => d.id === regId);
+      const renE = entries().slice(nE)[0];
+      check('dokumenti: obnova pomera rok i upisuje rashod', !!reg && reg.expires === window.BudzetCore.addMonthsToDate(regExp, 12) && !!renE && renE.amount === 25000 && renE.category === 'Prevoz' && /Obnova/.test(renE.desc), JSON.stringify({ reg, renE }));
+      window.__undoTop(); await sleep(150);
+      check('dokumenti: opoziv obnove vraća rok i briše rashod', window.__documents().find(d => d.id === regId).expires === regExp && entries().length === nE);
+      // brisanje zapisa sa 2 priloga i opoziv
+      const a1 = await window.desktop.bills.saveFile(new Uint8Array([1, 2]), 'smoke-dok-a.pdf'), a2 = await window.desktop.bills.saveFile(new Uint8Array([3]), 'smoke-dok-b.pdf');
+      const delId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke ugovor', group: 'Ugovori', files: [a1.name, a2.name] });
+      window.__deleteDocument(delId, { confirm: false }); await sleep(150);
+      const gone = !window.__documents().some(d => d.id === delId) && !(await window.desktop.bills.openFile(a1.name)).ok;
+      window.__undoTop(); await sleep(200);
+      const back = window.__documents().some(d => d.id === delId) && (await window.desktop.bills.openFile(a1.name)).ok && (await window.desktop.bills.openFile(a2.name)).ok;
+      check('dokumenti: brisanje i opoziv vraćaju zapis i oba priloga', gone && back);
+      // kopija i Excel
+      const sd = window.__sanitizeImportedBackup({ entries: [], documents: window.__documents() });
+      check('dokumenti: JSON kopija čuva zapise', Array.isArray(sd.documents) && sd.documents.some(d => d.id === regId));
+      const ws = window.__buildWorkbook().Sheets['Dokumenti'];
+      check('dokumenti: Excel list Dokumenti', !!ws && XLSX.utils.sheet_to_json(ws, { defval: '' }).some(r => r.ID === regId && r.Naziv === 'Smoke registracija'));
+      window.__documents().filter(d => /^Smoke /.test(d.title)).forEach(d => window.__deleteDocument(d.id, { confirm: false }));
+      window.__fakeDocReading = null;
+    } else check('dokumenti: hook __addDocFiles', false);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();

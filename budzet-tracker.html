@@ -1811,6 +1811,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .import-ai-row select, .import-ai-row input[type="text"]{ width: 100%; }
 .import-ai-desc{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .import-ai-make{ display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.doc-list{ margin-top: 8px; }
+.doc-row{ display: grid; grid-template-columns: minmax(0, 1fr) auto 2.2em auto; gap: 10px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--separator); cursor: pointer; border-radius: 8px; }
+.doc-row:hover{ background: var(--fill); }
+.doc-main{ display: flex; flex-direction: column; min-width: 0; }
+.doc-main b{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-badge{ font-size: 0.82em; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--fill); white-space: nowrap; }
+.doc-ok .doc-badge{ color: var(--pos); background: color-mix(in srgb, var(--pos) 12%, var(--card)); }
+.doc-soon .doc-badge{ color: var(--warn-text, var(--warn)); background: color-mix(in srgb, var(--warn) 16%, var(--card)); }
+.doc-expired .doc-badge{ color: var(--neg-text, var(--neg)); background: color-mix(in srgb, var(--neg) 14%, var(--card)); }
+.doc-files{ margin-top: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 0.88em; }
+.doc-file{ display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 6px; background: var(--fill); border-radius: 6px; }
+.doc-file span{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.doc-filter-btn.active{ background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
 </style>
 </head>
 <body>
@@ -1846,6 +1859,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     <button data-group="izvestaji" title="Izveštaji"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6.5M10 20V5M15 20v-9.5M20 20v-4"/></svg><span class="tab-label">Izveštaji</span></button>
     <button data-group="kursevi" title="Kursevi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13.5M14 4.5 17.5 8 14 11.5"/><path d="M20 16H6.5M10 12.5 6.5 16l3.5 3.5"/></svg><span class="tab-label">Kursevi</span></button>
     <button data-group="nabavka" title="Nabavka"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2.2l2.1 10.2h10.4l1.9-7.2H7"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/></svg><span class="tab-label">Nabavka</span></button>
+    <button data-group="dokumenti" title="Dokumenti"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M9 12.5h6M9 16h6"/></svg><span class="tab-label">Dokumenti</span></button>
     <span class="sb-spacer"></span>
     <button data-group="podesavanja" title="Podešavanja"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></svg><span class="tab-label">Podešavanja</span></button>
   </nav>
@@ -2602,6 +2616,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     </div>
   </div>
 
+  <div class="screen" id="screen-dokumenti">
+    <div class="panel">
+      <div class="rezije-toolbar">
+        <div class="trend-range-toggle" role="group" aria-label="Prikaži">
+          <button class="doc-filter-btn" data-f="all">Sve</button><button class="doc-filter-btn" data-f="garancija">Garancije</button><button class="doc-filter-btn" data-f="dokument">Dokumenti</button>
+        </div>
+        <span class="rezije-spacer"></span>
+        <button class="save-btn" id="docAddBtn">Dodaj dokument…</button><input type="file" id="docAddInput" accept="application/pdf,image/*,.heic" multiple hidden>
+      </div>
+      <div class="hint">Garancije i dokumenti sa rokom (registracija, osiguranje, pasoš…). Podsetnik stiže pre isteka. Sliku ili PDF možeš i da prevučeš ovde.</div>
+      <div id="docList" class="doc-list"></div>
+    </div>
+  </div>
+
   <div class="screen" id="screen-podesavanja">
     <div class="panel" style="max-width: 560px;">
       <div class="settings-group">
@@ -2998,6 +3026,51 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 </div>
 
+<div class="modal-overlay" id="docOverlay">
+  <div class="modal-card bill-card" role="dialog" aria-modal="true" aria-labelledby="docDlgTitle" tabindex="-1">
+    <h3 id="docDlgTitle">Dokument</h3>
+    <div class="bill-layout">
+      <div class="bill-preview">
+        <div class="bill-preview-img" id="docPreview"></div>
+        <div class="doc-files" id="docFiles"></div>
+        <div class="file-row"><button type="button" class="btn-secondary" id="docAddFile">Dodaj prilog</button><input type="file" id="docFileInput" accept="application/pdf,image/*,.heic" hidden></div>
+        <div><label class="paid-checkbox-label"><input type="checkbox" id="docNoAi"> Ne šalji ovaj fajl AI-ju</label></div>
+        <div class="hint" id="docNoAiHint" style="display:none;">Za lična dokumenta (pasoš, lična karta) podatke je bolje uneti ručno.</div>
+      </div>
+      <div class="bill-fields">
+        <div class="import-status" id="docStatus" aria-live="polite"></div>
+        <div class="bill-row2">
+          <div><label for="docKind">Vrsta</label><select id="docKind"><option value="garancija">Garancija</option><option value="dokument">Dokument sa rokom</option></select></div>
+          <div><label for="docGroup">Grupa</label><input type="text" id="docGroup" list="docGroupList" maxlength="40" translate="no"><datalist id="docGroupList"></datalist></div>
+        </div>
+        <label for="docTitle">Naziv</label><input type="text" id="docTitle" maxlength="80" translate="no">
+        <div class="bill-row2">
+          <div><label for="docIssued">Kupljeno / izdato</label><input type="date" id="docIssued"></div>
+          <div><label for="docMonths">Garancija (meseci)</label><input type="number" id="docMonths" min="0" max="240" step="1"></div>
+        </div>
+        <div class="bill-row2">
+          <div><label for="docExpires">Ističe</label><input type="date" id="docExpires"></div>
+          <div><label for="docRemind">Podsetnik (dana pre)</label><input type="number" id="docRemind" min="0" max="365" step="1"></div>
+        </div>
+        <label for="docVendor">Prodavac / izdavalac</label><input type="text" id="docVendor" maxlength="60" translate="no">
+        <div id="docRenewBox">
+          <div class="bill-row2">
+            <div><label for="docRenewAmount">Cena obnove (RSD)</label><input type="number" id="docRenewAmount" min="0" step="1"></div>
+            <div><label for="docRenewCat">Kategorija obnove</label><select id="docRenewCat"></select></div>
+          </div>
+          <label for="docRenewMonths">Obnova važi (meseci)</label><input type="number" id="docRenewMonths" min="1" max="120" step="1">
+        </div>
+        <label for="docNotes">Napomena</label><input type="text" id="docNotes" maxlength="300">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-link bill-del-btn" id="docDelete" style="display:none;">Obriši zapis</button>
+      <button class="cancel-btn" id="docCancel">Otkaži</button>
+      <button class="save-btn" id="docSave">Sačuvaj</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="dialogOverlay" style="z-index:1150;">
   <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody" tabindex="-1">
     <h3 id="dialogTitle">Potvrda</h3>
@@ -3214,6 +3287,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     billTypes = C.defaultBillTypes(loc.id, defaultBillCategory(), newId);
     saveBillsState();
   }
+  // Dokumenti (garancije i dokumenti sa rokom)
+  const DOCS_KEY = 'budzet-dokumenti-v1';
+  let documents = C.cleanDocuments(readJsonKey(DOCS_KEY, []));
+  const saveDocuments = () => localStorage.setItem(DOCS_KEY, JSON.stringify(documents));
   let shopping = C.normalizeShopping((()=>{ try{ return JSON.parse(localStorage.getItem(SHOPPING_KEY) || 'null'); } catch(e){ return null; } })(), newId);
   const monthKey = dateStr => dateStr.slice(0,7);
 
@@ -3475,6 +3552,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(document.getElementById('payOverdueOverlay').classList.contains('show')){ closePayOverdue(); return; }
     if(document.getElementById('billOverlay').classList.contains('show')){ closeBillReview(false); return; }
     if(document.getElementById('receiptOverlay').classList.contains('show')){ closeReceipt(false); return; }
+    if(document.getElementById('docOverlay').classList.contains('show')){ closeDocReview(false); return; }
     if(document.getElementById('ipsOverlay').classList.contains('show')){ closeIps(); return; }
     if(document.getElementById('dayDetailOverlay').classList.contains('show')){ closeDayDetail(); return; }
     if(document.getElementById('undoToast').classList.contains('show')){ dismissTopUndo(); }
@@ -3740,6 +3818,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     izvestaji: [['analiza', 'Analiza'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     nabavka: [['nabavka', 'Nabavka']],
+    dokumenti: [['dokumenti', 'Dokumenti']],
     podesavanja: [['podesavanja', 'Podešavanja']]
   };
   const groupOf = screen => Object.keys(SCREEN_GROUPS).find(g => SCREEN_GROUPS[g].some(([s]) => s === screen));
@@ -3763,6 +3842,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     scenario: ()=>{ if(scenarioActive) renderScenario(); },
     kursevi: ()=> renderRatesScreen(),
     nabavka: ()=> renderShopping(),
+    dokumenti: ()=> renderDocuments(),
     podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); }
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
@@ -4798,6 +4878,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!files.length || document.querySelector('.modal-overlay.show')) return;
     e.preventDefault();
     if(activeScreen === 'nabavka'){ addReceiptFiles(files); return; }
+    if(activeScreen === 'dokumenti'){ addDocFiles(files); return; }
     addBillFiles(files);
   });
 
@@ -5217,6 +5298,203 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   window.__saveReceipt = saveReceipt;
   rEl('shopReceiptBtn').addEventListener('click', ()=> rEl('shopReceiptInput').click());
   rEl('shopReceiptInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addReceiptFiles(f); });
+
+  // ---------- Dokumenti: garancije i dokumenti sa rokom (prilozi, AI citanje, podsetnici, obnova) ----------
+  const dEl = id => document.getElementById(id);
+  let docFilter = 'all';
+  let docReview = null; // { doc (izmena) | null, files: [{ name?, prep?, label }], removed: [imena], entryId?, resolve }
+  let fakeDocReading = null; // test: req -> { ok, content }
+  Object.defineProperty(window, '__fakeDocReading', { get: ()=> fakeDocReading, set: v=>{ fakeDocReading = v; }, configurable: true });
+  const docToday = ()=> toISODateLocal(new Date());
+  const docGroupsAll = ()=> [...new Set(C.DOC_GROUPS.concat(documents.map(d=> d.group)).filter(Boolean))];
+  const fmtDocDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'numeric', year: 'numeric' }); };
+  function docStatusLabel(doc){
+    const st = C.documentStatus(doc, docToday()), exp = C.documentExpiry(doc);
+    if(st.state === 'none') return { st, text: t('bez roka') };
+    if(st.state === 'expired') return { st, text: t('isteklo pre {0} dana', -st.days) };
+    if(st.state === 'soon') return { st, text: st.days === 0 ? t('ističe danas') : t('ističe za {0} dana', st.days) };
+    return { st, text: t('važi do {0}', fmtDocDate(exp)) };
+  }
+  function renderDocuments(){
+    document.querySelectorAll('.doc-filter-btn').forEach(b=> b.classList.toggle('active', b.dataset.f === docFilter));
+    const rank = { expired: 0, soon: 1, ok: 2, none: 3 };
+    const list = documents.filter(d=> docFilter === 'all' || d.kind === docFilter).map(d=> Object.assign({ d }, docStatusLabel(d)))
+      .sort((a, b)=> rank[a.st.state] - rank[b.st.state] || (a.st.days || 0) - (b.st.days || 0) || a.d.title.localeCompare(b.d.title));
+    dEl('docList').innerHTML = list.length ? list.map(x=> `<div class="doc-row doc-${x.st.state}" data-id="${x.d.id}" tabindex="0">
+        <div class="doc-main"><b translate="no">${escapeHtml(x.d.title)}</b><span class="hint" translate="no">${escapeHtml([x.d.group, x.d.vendor].filter(Boolean).join(' · '))}</span></div>
+        <span class="doc-badge">${escapeHtml(x.text)}</span>
+        ${x.d.files.length && window.desktop ? `<button type="button" class="att-btn doc-att" title="${escapeHtml(t('Otvori prilog'))}">📎</button>` : '<span></span>'}
+        ${x.d.kind === 'dokument' && C.documentExpiry(x.d) ? `<button type="button" class="btn-secondary doc-renew">${escapeHtml(t('Obnovi'))}</button>` : '<span></span>'}
+      </div>`).join('') : `<div class="hint" style="padding:1em 0;">${escapeHtml(t('Još nema dokumenata. Dodaj garanciju, registraciju, polisu…'))}</div>`;
+  }
+  dEl('docList').addEventListener('click', e=>{
+    const row = e.target.closest('.doc-row'); if(!row) return;
+    const doc = documents.find(d=> d.id === row.dataset.id); if(!doc) return;
+    if(e.target.closest('.doc-att')){ window.desktop.bills.openFile(doc.files[0]).then(r=>{ if(!r || !r.ok) appAlert(t('Prilog nije pronađen u folderu Prilozi.')); }); return; }
+    if(e.target.closest('.doc-renew')){ renewDocumentNow(doc.id); return; }
+    openDocReview({ doc });
+  });
+  document.querySelectorAll('.doc-filter-btn').forEach(b=> b.addEventListener('click', ()=>{ docFilter = b.dataset.f; renderDocuments(); }));
+  dEl('docAddBtn').addEventListener('click', ()=> dEl('docAddInput').click());
+  dEl('docAddInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addDocFiles(f); });
+
+  function docKindChanged(){ dEl('docRenewBox').style.display = dEl('docKind').value === 'dokument' ? '' : 'none'; }
+  function docGroupChanged(){
+    const personal = C.foldText(dEl('docGroup').value) === C.foldText('Lična dokumenta');
+    dEl('docNoAiHint').style.display = personal ? '' : 'none';
+    if(personal) dEl('docNoAi').checked = true;
+  }
+  function renderDocFiles(){
+    const files = docReview ? docReview.files : [];
+    dEl('docFiles').innerHTML = files.map((f, i)=> `<div class="doc-file" data-i="${i}"><span translate="no">${escapeHtml(f.label || f.name || '')}</span><button type="button" class="del-btn doc-file-del" aria-label="${escapeHtml(t('Ukloni prilog'))}">×</button></div>`).join('');
+    const first = files.find(f=> f.prep && f.prep.images && f.prep.images[0]);
+    dEl('docPreview').innerHTML = first ? `<img src="${first.prep.images[0]}" alt="${escapeHtml(t('Pregled dokumenta'))}">` : `<div class="hint" style="padding:2em;">${escapeHtml(files.length ? t('Prilog je sačuvan; pregled nije dostupan.') : t('Nema priloga.'))}</div>`;
+  }
+  dEl('docFiles').addEventListener('click', e=>{
+    const b = e.target.closest('.doc-file-del'); if(!b || !docReview) return;
+    const i = +b.closest('.doc-file').dataset.i, f = docReview.files[i];
+    if(f && f.name) docReview.removed.push(f.name);
+    docReview.files.splice(i, 1); renderDocFiles();
+  });
+  function fillDocForm(d){
+    dEl('docKind').value = d.kind || 'garancija';
+    dEl('docGroup').value = d.group || ''; dEl('docTitle').value = d.title || '';
+    dEl('docIssued').value = d.issued || ''; dEl('docMonths').value = d.warrantyMonths || '';
+    dEl('docExpires').value = d.expires || ''; dEl('docRemind').value = d.remindDays != null ? d.remindDays : 30;
+    dEl('docVendor').value = d.vendor || ''; dEl('docNotes').value = d.notes || '';
+    const r = d.renewal || {};
+    dEl('docRenewAmount').value = r.amount || ''; dEl('docRenewMonths').value = r.months || 12;
+    dEl('docRenewCat').innerHTML = expenseCats.map(c=> `<option value="${escapeHtml(c)}"${c === (r.category || (expenseCats.includes('Prevoz') ? 'Prevoz' : expenseCats[0])) ? ' selected' : ''} translate="no">${escapeHtml(c)}</option>`).join('');
+    dEl('docGroupList').innerHTML = docGroupsAll().map(g=> `<option value="${escapeHtml(g)}">`).join('');
+    ['docTitle', 'docIssued', 'docExpires'].forEach(id=> dEl(id).classList.remove('bill-low'));
+    docKindChanged(); docGroupChanged();
+  }
+  function openDocReview(opts){
+    const doc = opts.doc || null, pre = opts.prefill || {};
+    docReview = { doc, files: (doc ? doc.files : (pre.files || [])).map(n=> ({ name: n, label: n })), removed: [], entryId: doc ? doc.entryId : pre.entryId, resolve: null };
+    dEl('docDlgTitle').textContent = doc ? t('Izmeni zapis') : t('Novi zapis');
+    dEl('docNoAi').checked = false;
+    fillDocForm(doc || Object.assign({ kind: 'garancija', remindDays: 30 }, pre));
+    dEl('docStatus').textContent = '';
+    dEl('docDelete').style.display = doc ? '' : 'none';
+    renderDocFiles();
+    dEl('docOverlay').classList.add('show');
+    return new Promise(res=>{ docReview.resolve = res; });
+  }
+  function closeDocReview(saved){ dEl('docOverlay').classList.remove('show'); const r = docReview && docReview.resolve; docReview = null; if(r) r(!!saved); }
+  // AI: procitaj fajl (ako prekidac dozvoljava) i popuni prazna polja
+  async function readDocFile(prep, st){
+    if(dEl('docNoAi').checked || prep.error || !(fakeDocReading || (window.desktop && window.desktop.bills))) return;
+    dEl('docStatus').textContent = t('Čitam dokument…');
+    const req = { images: prep.images, text: prep.text, prompt: C.documentPrompt(docGroupsAll()) };
+    let res;
+    try{ res = fakeDocReading ? await fakeDocReading(req) : await window.desktop.bills.read(req); }
+    catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
+    if(docReview !== st) return;
+    if(!res || !res.ok){ dEl('docStatus').textContent = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); return; }
+    const r = C.cleanDocumentReading(res.content, docGroupsAll());
+    if(!r){ dEl('docStatus').textContent = t('Dokument nije pročitan — popuni podatke ručno.'); return; }
+    const fill = (id, v)=>{ if(v && !dEl(id).value) dEl(id).value = v; };
+    if(!st.doc) dEl('docKind').value = r.kind;
+    fill('docTitle', r.title); fill('docGroup', r.group); fill('docIssued', r.issued); fill('docExpires', r.expires); fill('docVendor', r.vendor);
+    if(r.warrantyMonths) fill('docMonths', String(r.warrantyMonths));
+    [['docTitle', 'title'], ['docIssued', 'issued'], ['docExpires', 'expires']].forEach(([id, k])=> dEl(id).classList.toggle('bill-low', r.low.includes(k) || !dEl(id).value && k !== 'issued'));
+    docKindChanged(); docGroupChanged();
+    dEl('docStatus').textContent = t('Pročitano sa slike (AI) — proveri podatke.');
+  }
+  async function addFilesToDocReview(files){
+    const st = docReview; if(!st) return;
+    for(const f of files){
+      const prep = await prepareBillFile(f);
+      if(docReview !== st) return;
+      st.files.push({ prep, label: f.name || t('prilog') });
+      renderDocFiles();
+      if(prep.error) dEl('docStatus').textContent = prep.error;
+      else await readDocFile(prep, st);
+    }
+  }
+  function addDocFiles(files){
+    const p = openDocReview({});
+    addFilesToDocReview(Array.from(files || []));
+    return p;
+  }
+  window.__addDocFiles = addDocFiles;
+  window.__openDocReview = opts => openDocReview(opts || {});
+  dEl('docAddFile').addEventListener('click', ()=> dEl('docFileInput').click());
+  dEl('docFileInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addFilesToDocReview(f); });
+  dEl('docKind').addEventListener('change', docKindChanged);
+  dEl('docGroup').addEventListener('input', docGroupChanged);
+  ['docTitle', 'docIssued', 'docExpires'].forEach(id=> dEl(id).addEventListener('input', ()=> dEl(id).classList.remove('bill-low')));
+  dEl('docCancel').addEventListener('click', ()=> closeDocReview(false));
+  dEl('docOverlay').addEventListener('click', e=>{ if(e.target.id === 'docOverlay') closeDocReview(false); });
+  dEl('docDelete').addEventListener('click', ()=>{ const d = docReview && docReview.doc; if(!d) return; closeDocReview(false); deleteDocument(d.id); });
+  dEl('docSave').addEventListener('click', async ()=>{
+    const st = docReview; if(!st) return;
+    const title = dEl('docTitle').value.trim();
+    if(!title){ dEl('docStatus').textContent = t('Upiši naziv.'); dEl('docTitle').classList.add('bill-low'); return; }
+    dEl('docSave').disabled = true;
+    const kind = dEl('docKind').value;
+    const base = { id: st.doc ? st.doc.id : newId(), kind, title, group: dEl('docGroup').value.trim() || 'Ostalo',
+      issued: dEl('docIssued').value || undefined, expires: dEl('docExpires').value || undefined, warrantyMonths: parseInt(dEl('docMonths').value, 10) || undefined,
+      vendor: dEl('docVendor').value.trim(), notes: dEl('docNotes').value.trim(), remindDays: dEl('docRemind').value === '' ? 30 : parseInt(dEl('docRemind').value, 10),
+      history: st.doc ? st.doc.history : undefined, entryId: st.entryId };
+    if(kind === 'dokument' && (parseFloat(dEl('docRenewAmount').value) > 0 || parseInt(dEl('docRenewMonths').value, 10) !== 12))
+      base.renewal = { amount: parseFloat(dEl('docRenewAmount').value) || 0, category: dEl('docRenewCat').value, months: parseInt(dEl('docRenewMonths').value, 10) || 12 };
+    const names = [];
+    for(let i = 0; i < st.files.length; i++){
+      const f = st.files[i];
+      if(f.name){ names.push(f.name); continue; }
+      if(f.prep && f.prep.bytes && window.desktop && window.desktop.bills){
+        const res = await window.desktop.bills.saveFile(f.prep.bytes, `${docToday()}-dokument-${billSlug(title)}-${i + 1}.${f.prep.ext}`);
+        if(res && res.ok) names.push(res.name);
+      }
+    }
+    base.files = names;
+    const clean = C.cleanDocuments([base])[0];
+    dEl('docSave').disabled = false;
+    if(!clean){ dEl('docStatus').textContent = t('Zapis nije sačuvan.'); return; }
+    if(window.desktop && window.desktop.bills) st.removed.forEach(n=> window.desktop.bills.deleteFile(n));
+    documents = documents.filter(d=> d.id !== clean.id).concat(clean);
+    saveDocuments();
+    closeDocReview(true);
+    renderAll();
+  });
+  window.__saveDocumentRaw = obj => { const d = C.cleanDocuments([Object.assign({ id: newId(), files: [] }, obj)])[0]; if(!d) return null; documents = documents.filter(x=> x.id !== d.id).concat(d); saveDocuments(); renderAll(); return d.id; };
+  window.__documents = ()=> documents;
+  function deleteDocument(id, opts){
+    const d = documents.find(x=> x.id === id); if(!d) return;
+    const run = ()=>{
+      documents = documents.filter(x=> x.id !== id); saveDocuments();
+      if(window.desktop && window.desktop.bills) d.files.forEach(n=> window.desktop.bills.deleteFile(n));
+      renderAll();
+      showUndoToast(t('Obrisan zapis: {0}', d.title), ()=>{
+        documents = documents.concat(d); saveDocuments();
+        if(window.desktop && window.desktop.bills) d.files.forEach(n=> window.desktop.bills.restoreFile(n));
+        renderAll();
+      });
+    };
+    if(opts && opts.confirm === false) return run();
+    appConfirm(t('Obrisati „{0}“? Prilozi idu u Prilozi/.obrisano i trajno se brišu posle 30 dana.', d.title), { okText: t('Obriši'), danger: true }).then(ok=>{ if(ok) run(); });
+  }
+  window.__deleteDocument = deleteDocument;
+  function renewDocumentNow(id){
+    const d = documents.find(x=> x.id === id); if(!d) return;
+    const nd = C.renewDocument(d, docToday());
+    let entry = null;
+    if(d.renewal && d.renewal.amount > 0){
+      entry = { id: newId(), type: 'expense', desc: t('Obnova: {0}', d.title), amount: d.renewal.amount, category: d.renewal.category || expenseCats[0], date: docToday(), paid: true, tags: [] };
+      if(accounts.length) entry.accountId = defaultAccountId();
+      entries.push(entry); saveEntries();
+      nd.history[nd.history.length - 1].entryId = entry.id;
+    }
+    documents = documents.map(x=> x.id === id ? nd : x); saveDocuments(); renderAll();
+    showUndoToast(t('Obnovljeno: {0} — važi do {1}', d.title, fmtDocDate(nd.expires)), ()=>{
+      documents = documents.map(x=> x.id === id ? d : x); saveDocuments();
+      if(entry){ entries = entries.filter(e=> e.id !== entry.id); saveEntries(); }
+      renderAll();
+    });
+  }
+  window.__renewDocument = renewDocumentNow;
 
   // ---- Plati sve zakasnele ----
   let payOverdueLastFocus = null;
@@ -9207,7 +9485,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, locations, billTypes, bills, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, locations, billTypes, bills, documents, exportedAt: new Date().toISOString() };
   }
   // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
   function downloadBackupJson(){
@@ -9322,6 +9600,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
       fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
       shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
+      ...(Array.isArray(data.documents) ? { documents: C.cleanDocuments(data.documents) } : {}),
       ...(()=>{ // kucni racuni: vrste zavise od lokacija, racuni od vrsta
         if(!('locations' in data)) return {};
         const locs = C.cleanLocations(data.locations, CURRENCIES), types = C.cleanBillTypes(data.billTypes, locs.map(l=> l.id));
@@ -9372,6 +9651,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         fixedCategories = data.fixedCategories;
         if(data.shopping) shopping = data.shopping;
         if(data.locations){ locations = data.locations; billTypes = data.billTypes; bills = data.bills; saveBillsState(); }
+        if(data.documents){ documents = data.documents; saveDocuments(); }
         saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';
@@ -9569,6 +9849,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(catRules.length ? catRules.map(r=>({KljucnaRec:r.keyword, Kategorija:r.category})) : [{KljucnaRec:'', Kategorija:''}]), 'Pravila');
     const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||'', PrimalacRacun:r.payee?r.payee.account:'', PrimalacNaziv:r.payee?r.payee.name:'', SifraPlacanja:r.payee?r.payee.code:'', SvrhaPlacanja:r.payee?r.payee.purpose:'', Model:r.payee?r.payee.model:'', PozivNaBroj:r.payee?r.payee.reference:''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
+    if(documents.length){
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(documents.map(d=>({ID:d.id, Vrsta:d.kind, Naziv:d.title, Grupa:d.group, Izdato:d.issued||'', Istice:d.expires||'', GarancijaMeseci:d.warrantyMonths||'', Prodavac:d.vendor||'', Napomena:d.notes||'', Podsetnik:d.remindDays, Prilozi:(d.files||[]).join('; '), Obnova:d.renewal ? JSON.stringify(d.renewal) : '', Istorija:d.history ? JSON.stringify(d.history) : '', StavkaID:d.entryId||''}))), 'Dokumenti');
+    }
     if(locations.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(locations.map(l=>({ID:l.id, Naziv:l.name, Valuta:l.currency}))), 'Lokacije');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
@@ -9727,6 +10010,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const wbBills = billsFromWorkbook(wb);
     if(wbBills){ locations = wbBills.locations; billTypes = wbBills.billTypes; bills = wbBills.bills; }
+    if(wb.Sheets['Dokumenti']){
+      const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
+      documents = C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: String(r.Izdato||''), expires: String(r.Istice||''), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik === '' ? 30 : r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||'') })));
+    }
     entries.forEach(e=>{ if(e.accountName){ const a = accounts.find(x=> x.name === e.accountName); if(a) e.accountId = a.id; delete e.accountName; } });
 
     const incRows = sheetRows('KategorijePrihoda');
@@ -9740,7 +10027,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function persistAllToLocalStorage(){
     saveEntries(); saveCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals();
-    saveDebts(); saveSkipped(); saveCatColors(); saveMonthlyBudget(); saveIncomeCats(); saveCatRules(); saveAccounts(); saveBillsState();
+    saveDebts(); saveSkipped(); saveCatColors(); saveMonthlyBudget(); saveIncomeCats(); saveCatRules(); saveAccounts(); saveBillsState(); saveDocuments();
     populateAccountSelects();
   }
 

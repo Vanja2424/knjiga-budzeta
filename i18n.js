@@ -537,6 +537,24 @@
     'AI predlog': 'AI suggestion', 'Kurs za {0} nije dostupan — izaberi valutu ručno.': 'The {0} rate isn’t available — choose the currency manually.',
     'npr. kafa i kroasan 520 juče gotovinom': 'e.g. coffee and croissant 520 yesterday cash',
     'Groq-u se šalju samo fajlovi računa i uplatnica koje ubaciš, pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill and payment-slip files you add, the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), and in quick add the description of a new expense to suggest a category. All other data stays on this computer only.',
+    // ---- Dokumenti (v1.25) ----
+    'Dokumenti': 'Documents', 'Sve': 'All', 'Garancije': 'Warranties', 'Dodaj dokument…': 'Add document…',
+    'Garancije i dokumenti sa rokom (registracija, osiguranje, pasoš…). Podsetnik stiže pre isteka. Sliku ili PDF možeš i da prevučeš ovde.': 'Warranties and documents with an expiry date (registration, insurance, passport…). A reminder comes before they expire. You can also drag a photo or PDF here.',
+    'Dokument': 'Document', 'Ne šalji ovaj fajl AI-ju': 'Don’t send this file to AI',
+    'Za lična dokumenta (pasoš, lična karta) podatke je bolje uneti ručno.': 'For personal documents (passport, ID card) it’s better to enter the details manually.',
+    'Garancija': 'Warranty', 'Dokument sa rokom': 'Document with expiry', 'Grupa': 'Group', 'Kupljeno / izdato': 'Bought / issued',
+    'Garancija (meseci)': 'Warranty (months)', 'Ističe': 'Expires', 'Podsetnik (dana pre)': 'Reminder (days before)', 'Prodavac / izdavalac': 'Seller / issuer',
+    'Cena obnove (RSD)': 'Renewal cost (RSD)', 'Kategorija obnove': 'Renewal category', 'Obnova važi (meseci)': 'Renewal lasts (months)',
+    'Obriši zapis': 'Delete record', 'Dodaj prilog': 'Add attachment', 'isteklo pre {0} dana': 'expired {0} days ago',
+    'ističe danas': 'expires today', 'ističe za {0} dana': 'expires in {0} days', 'važi do {0}': 'valid until {0}', 'Obnovi': 'Renew',
+    'Još nema dokumenata. Dodaj garanciju, registraciju, polisu…': 'No documents yet. Add a warranty, registration, policy…',
+    'Ukloni prilog': 'Remove attachment', 'Pregled dokumenta': 'Document preview', 'Prilog je sačuvan; pregled nije dostupan.': 'Attachment saved; no preview available.',
+    'Nema priloga.': 'No attachments.', 'Izmeni zapis': 'Edit record', 'Novi zapis': 'New record', 'Čitam dokument…': 'Reading the document…',
+    'Dokument nije pročitan — popuni podatke ručno.': 'The document couldn’t be read — fill in the details manually.',
+    'Pročitano sa slike (AI) — proveri podatke.': 'Read from the image (AI) — check the details.', 'prilog': 'attachment', 'Upiši naziv.': 'Enter a name.',
+    'Zapis nije sačuvan.': 'The record wasn’t saved.', 'Obrisan zapis: {0}': 'Record deleted: {0}',
+    'Obrisati „{0}“? Prilozi idu u Prilozi/.obrisano i trajno se brišu posle 30 dana.': 'Delete “{0}”? Attachments go to Prilozi/.obrisano and are permanently deleted after 30 days.',
+    'Obnova: {0}': 'Renewal: {0}', 'Obnovljeno: {0} — važi do {1}': 'Renewed: {0} — valid until {1}',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
