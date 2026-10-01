@@ -1591,3 +1591,36 @@ test('cene: kolicina, opazanja, promena, najjeftinije, procena', () => {
   const e2 = C.shoppingEstimate([{ needed: true, name: 'Mleko', qty: '2 kom', category: 'A' }, { needed: true, name: 'X', category: 'A' }], { history: hist, preferredStore: 'Maxi' });
   assert.deepEqual([e2.total, e2.unpriced, e2.fromReceipts], [258, 1, 1]);
 });
+// ---- Ispravke D: dokumenti, Pitaj ----
+test('cleanDocuments: remindDays null/prazno -> 30, 0 ostaje 0', () => {
+  const base = { id: 'd1', title: 'X', kind: 'dokument' };
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: null })])[0].remindDays, 30);
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: '' })])[0].remindDays, 30);
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: '  ' })])[0].remindDays, 30);
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: false })])[0].remindDays, 30);
+  assert.equal(C.cleanDocuments([base])[0].remindDays, 30);
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: 0 })])[0].remindDays, 0);
+  assert.equal(C.cleanDocuments([Object.assign({}, base, { remindDays: '7' })])[0].remindDays, 7);
+});
+test('checkDataFileShape: budzet-dokumenti-v1 mora biti niz', () => {
+  assert.deepEqual(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-dokumenti-v1': {} }).problems, ['budzet-dokumenti-v1']);
+  assert.equal(C.checkDataFileShape({ 'budzet-stavke-v2': [], 'budzet-dokumenti-v1': '[]' }).ok, true);
+});
+test('askMonthRange: raspodeljene stavke sire opseg meseci', () => {
+  const es = [
+    ex('a', '2026-03-10', 100, 'A', 'x'),
+    ex('b', '2026-05-01', 1200, 'A', 'osiguranje', { spreadMonths: 12 }),            // 2026-05 .. 2027-04
+    ex('c', '2026-04-01', 300, 'A', 'plata unapred', { spreadMonths: 3, spreadStart: '2026-01' }), // 2026-01 .. 2026-03
+    { id: 't', type: 'transfer', date: '2025-01-01', amount: 5 }
+  ];
+  assert.deepEqual(C.askMonthRange(es, '2026-10'), { first: '2026-01', last: '2027-04' });
+  assert.deepEqual(C.askMonthRange([ex('a', '2026-03-10', 100, 'A', 'x')], '2026-10'), { first: '2026-03', last: '2026-10' });
+  assert.deepEqual(C.askMonthRange([], '2026-10'), { first: '2026-10', last: '2026-10' });
+});
+test('askAnswerPrompt: jezik odgovora prati jezik aplikacije', () => {
+  const sr = C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [] });
+  assert.match(sr, /na srpskom/);
+  const en = C.askAnswerPrompt({ question: 'q', today: '2026-10-01', results: [], lang: 'en' });
+  assert.match(en, /in English/);
+  assert.doesNotMatch(en, /na srpskom/);
+});

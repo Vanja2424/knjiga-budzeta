@@ -2716,7 +2716,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="file-row"><input type="text" id="aiModel" translate="no" style="max-width:320px;"><button class="btn-secondary" id="aiTest">Proveri ključ</button></div>
         <label class="paid-checkbox-label"><input type="checkbox" id="aiSendText"> Šalji tekst iz PDF-a uz slike (pouzdanije čitanje brojeva)</label>
         <div class="import-status" id="aiStatus" aria-live="polite"></div>
-        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi. Ostali podaci ostaju samo na ovom računaru.</div>
+        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi (za najveće troškove i ponavljajuće stavke to su i njihovi opisi). Ostali podaci ostaju samo na ovom računaru.</div>
       </div>
 
       <div id="desktopSettings" style="display:none;">
@@ -3933,7 +3933,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     sub.innerHTML = items.length > 1 ? items.map(([s, label])=> `<button data-screen="${s}" class="${s === name ? 'active' : ''}">${label}${s === 'rashodi' ? '<span class="tab-badge" id="rashodiSubBadge" style="display:none;"></span>' : ''}${s === 'ponavljajuce' ? '<span class="tab-badge" id="ponavljajuceSubBadge" style="display:none;"></span>' : ''}</button>`).join('') : '';
     sub.querySelectorAll('button').forEach(b=> b.addEventListener('click', ()=> showScreen(b.dataset.screen)));
     positionTabIndicator(document.querySelector('nav.tabs button.active'));
-    if(dirtyScreens.has(name) || name === 'pretraga' || name === 'izvestaj' || name === 'uporedi') renderScreen(name);
+    if(dirtyScreens.has(name) || name === 'pretraga' || name === 'izvestaj' || name === 'uporedi' || name === 'pitaj') renderScreen(name); // pitaj: kljuc je mozda upisan u Podesavanjima
     updateTabBadges();
     requestAnimationFrame(updateTableScrollFades);
     updateMobileFab(name);
@@ -5372,7 +5372,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const rank = { expired: 0, soon: 1, ok: 2, none: 3 };
     const list = documents.filter(d=> docFilter === 'all' || d.kind === docFilter).map(d=> Object.assign({ d }, docStatusLabel(d)))
       .sort((a, b)=> rank[a.st.state] - rank[b.st.state] || (a.st.days || 0) - (b.st.days || 0) || a.d.title.localeCompare(b.d.title));
-    dEl('docList').innerHTML = list.length ? list.map(x=> `<div class="doc-row doc-${x.st.state}" data-id="${x.d.id}" tabindex="0">
+    dEl('docList').innerHTML = list.length ? list.map(x=> `<div class="doc-row doc-${x.st.state}" data-id="${x.d.id}" data-row-id="${x.d.id}" tabindex="0">
         <div class="doc-main"><b translate="no">${escapeHtml(x.d.title)}</b><span class="hint" translate="no">${escapeHtml([x.d.group, x.d.vendor].filter(Boolean).join(' · '))}</span></div>
         <span class="doc-badge">${escapeHtml(x.text)}</span>
         ${x.d.files.length && window.desktop ? `<button type="button" class="att-btn doc-att" title="${escapeHtml(t('Otvori prilog'))}">📎</button>` : '<span></span>'}
@@ -5386,6 +5386,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(e.target.closest('.doc-renew')){ renewDocumentNow(doc.id); return; }
     openDocReview({ doc });
   });
+  // Enter/razmak na redu (ne na dugmetu u redu) otvara zapis kao klik
+  const docRowKey = e=>{
+    if((e.key !== 'Enter' && e.key !== ' ') || !e.target.classList || !e.target.classList.contains('doc-row')) return;
+    e.preventDefault(); e.target.click();
+  };
+  dEl('docList').addEventListener('keydown', docRowKey);
   document.querySelectorAll('.doc-filter-btn').forEach(b=> b.addEventListener('click', ()=>{ docFilter = b.dataset.f; renderDocuments(); }));
   dEl('docAddBtn').addEventListener('click', ()=> dEl('docAddInput').click());
   dEl('docAddInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addDocFiles(f); });
@@ -5433,12 +5439,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     dEl('docOverlay').classList.add('show');
     return new Promise(res=>{ docReview.resolve = res; });
   }
-  function closeDocReview(saved){ dEl('docOverlay').classList.remove('show'); const r = docReview && docReview.resolve; docReview = null; if(r) r(!!saved); }
+  function closeDocReview(saved){
+    if(!saved && docReview && docReview.saving) return; // cuvanje u toku (prilozi se upisuju) — prozor se zatvara sam kad zavrsi
+    dEl('docOverlay').classList.remove('show'); const r = docReview && docReview.resolve; docReview = null; if(r) r(!!saved);
+  }
   // AI: procitaj fajl (ako prekidac dozvoljava) i popuni prazna polja
   async function readDocFile(prep, st){
     if(dEl('docNoAi').checked || prep.error || !(fakeDocReading || (window.desktop && window.desktop.bills))) return;
     dEl('docStatus').textContent = t('Čitam dokument…');
-    const req = { images: prep.images, text: prep.text, prompt: C.documentPrompt(docGroupsAll()) };
+    const req = { images: prep.images, text: prep.text, prompt: C.documentPrompt(C.DOC_GROUPS) }; // korisnikove grupe ostaju lokalno
     let res;
     try{ res = fakeDocReading ? await fakeDocReading(req) : await window.desktop.bills.read(req); }
     catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
@@ -5505,12 +5514,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   ['docTitle', 'docIssued', 'docExpires'].forEach(id=> dEl(id).addEventListener('input', ()=> dEl(id).classList.remove('bill-low')));
   dEl('docCancel').addEventListener('click', ()=> closeDocReview(false));
   dEl('docOverlay').addEventListener('click', e=>{ if(e.target.id === 'docOverlay') closeDocReview(false); });
-  dEl('docDelete').addEventListener('click', ()=>{ const d = docReview && docReview.doc; if(!d) return; closeDocReview(false); deleteDocument(d.id); });
+  dEl('docDelete').addEventListener('click', ()=>{ const d = docReview && docReview.doc; if(!d || docReview.saving) return; closeDocReview(false); deleteDocument(d.id); });
   dEl('docSave').addEventListener('click', async ()=>{
     const st = docReview; if(!st || st.busy) return;
     const title = dEl('docTitle').value.trim();
     if(!title){ dEl('docStatus').textContent = t('Upiši naziv.'); dEl('docTitle').classList.add('bill-low'); return; }
     dEl('docSave').disabled = true;
+    st.saving = true;
     const kind = dEl('docKind').value;
     const base = { id: st.doc ? st.doc.id : newId(), kind, title, group: dEl('docGroup').value.trim() || 'Ostalo',
       issued: dEl('docIssued').value || undefined, expires: dEl('docExpires').value || undefined, warrantyMonths: parseInt(dEl('docMonths').value, 10) || undefined,
@@ -5529,13 +5539,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     base.files = names;
     const clean = C.cleanDocuments([base])[0];
-    dEl('docSave').disabled = false;
-    if(!clean){ dEl('docStatus').textContent = t('Zapis nije sačuvan.'); return; }
+    st.saving = false;
+    const current = docReview === st; // za svaki slucaj: drugi prozor otvoren u medjuvremenu se ne dira
+    if(current) dEl('docSave').disabled = false;
+    if(!clean){ if(current) dEl('docStatus').textContent = t('Zapis nije sačuvan.'); return; }
     const sharedNames = new Set(entries.flatMap(e=> e.attachments || []).concat(documents.filter(d=> d.id !== clean.id).flatMap(d=> d.files)));
     if(window.desktop && window.desktop.bills) st.removed.filter(n=> !sharedNames.has(n) && !clean.files.includes(n)).forEach(n=> window.desktop.bills.deleteFile(n));
     documents = documents.filter(d=> d.id !== clean.id).concat(clean);
     saveDocuments();
-    closeDocReview(true);
+    if(current) closeDocReview(true); else if(st.resolve) st.resolve(true);
     renderAll();
   });
   window.__saveDocumentRaw = obj => { const d = C.cleanDocuments([Object.assign({ id: newId(), files: [] }, obj)])[0]; if(!d) return null; documents = documents.filter(x=> x.id !== d.id).concat(d); saveDocuments(); renderAll(); return d.id; };
@@ -5570,7 +5582,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     documents = documents.map(x=> x.id === id ? nd : x); saveDocuments(); renderAll();
     showUndoToast(t('Obnovljeno: {0} — važi do {1}', d.title, fmtDocDate(nd.expires)), ()=>{
-      documents = documents.map(x=> x.id === id ? d : x); saveDocuments();
+      documents = documents.map(x=>{
+        if(x.id !== id) return x;
+        const back = Object.assign({}, x);
+        if(d.expires) back.expires = d.expires; else delete back.expires;
+        if(d.history) back.history = d.history; else delete back.history;
+        return back;
+      });
+      saveDocuments();
       if(entry){ entries = entries.filter(e=> e.id !== entry.id); saveEntries(); }
       renderAll();
     });
@@ -5583,9 +5602,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     box.style.display = list.length ? '' : 'none';
     if(!list.length){ box.innerHTML = ''; return; }
     box.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Uskoro ističe'))}</h3>`
-      + list.slice(0, 6).map(x=> `<div class="doc-row doc-${x.status.state}" data-id="${x.doc.id}"><div class="doc-main"><b translate="no">${escapeHtml(x.doc.title)}</b><span class="hint" translate="no">${escapeHtml(x.doc.group || '')}</span></div><span class="doc-badge">${escapeHtml(docStatusLabel(x.doc).text)}</span><span></span><span></span></div>`).join('')
+      + list.slice(0, 6).map(x=> `<div class="doc-row doc-${x.status.state}" data-id="${x.doc.id}" tabindex="0"><div class="doc-main"><b translate="no">${escapeHtml(x.doc.title)}</b><span class="hint" translate="no">${escapeHtml(x.doc.group || '')}</span></div><span class="doc-badge">${escapeHtml(docStatusLabel(x.doc).text)}</span><span></span><span></span></div>`).join('')
       + `<div class="file-row"><button type="button" class="btn-secondary" id="docRemindersOpen">${escapeHtml(t('Otvori Dokumenti'))}</button></div>`;
-    box.querySelectorAll('.doc-row').forEach(r=> r.addEventListener('click', ()=>{ showScreen('dokumenti'); const d = documents.find(x=> x.id === r.dataset.id); if(d) openDocReview({ doc: d }); }));
+    box.querySelectorAll('.doc-row').forEach(r=>{ r.addEventListener('click', ()=>{ showScreen('dokumenti'); const d = documents.find(x=> x.id === r.dataset.id); if(d) openDocReview({ doc: d }); }); r.addEventListener('keydown', docRowKey); });
     dEl('docRemindersOpen').addEventListener('click', ()=> showScreen('dokumenti'));
   }
   window.__docNotifyKeys = ()=> C.documentReminders(documents, docToday()).map(x=> x.notifyKey);
@@ -5617,11 +5636,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   let fakeAsk = null; // test: (req, step) -> { ok, content }
   Object.defineProperty(window, '__fakeAsk', { get: ()=> fakeAsk, set: v=>{ fakeAsk = v; }, configurable: true });
   let askBusy = false;
-  const askAiAvailable = ()=> !!(fakeAsk || (window.desktop && window.desktop.bills));
+  let askKeySet = null; // null = jos nije provereno (kljuc zna samo glavni proces)
+  let askLangOverride = null; // test: jezik odgovora
+  Object.defineProperty(window, '__askLang', { get: ()=> askLangOverride, set: v=>{ askLangOverride = v; }, configurable: true });
+  const ASK_HINT = 'Aplikacija sama računa brojeve; AI dobija samo pitanje i rezultate potrebnih proračuna (vidi „Šta je poslato AI-ju“ uz svaki odgovor).';
+  const askAiAvailable = ()=> !!(fakeAsk || (window.desktop && window.desktop.bills && askKeySet !== false));
   function renderAsk(){
     const ok = askAiAvailable();
     document.getElementById('askBtn').disabled = askBusy || !ok;
-    if(!ok) document.getElementById('askHint').textContent = window.desktop ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).') : t('Ova funkcija radi samo u desktop aplikaciji.');
+    document.getElementById('askHint').textContent = ok ? t(ASK_HINT) : window.desktop ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).') : t('Ova funkcija radi samo u desktop aplikaciji.');
+    if(!fakeAsk && window.desktop && window.desktop.bills && window.desktop.bills.keyInfo)
+      window.desktop.bills.keyInfo().then(i=>{ const v = !!(i && i.set); if(v !== askKeySet){ askKeySet = v; renderAsk(); } }).catch(()=>{});
   }
   // greska za "Pitaj": prevelik zahtev nije "racun"
   const askErr = r => r && r.kind === 'toolarge' ? t('Pitanje traži previše podataka za besplatni Groq limit — suzi period ili pokušaj za minut.') : (BILL_ERR[r && r.kind] || BILL_ERR.http)(r || {});
@@ -5652,8 +5677,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     askBusy = true; renderAsk();
     const btn = document.getElementById('askBtn'); const prevLabel = btn.textContent; btn.textContent = t('Razmišljam…');
     try{
-      const months = entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=> String(e.date).slice(0, 7)).sort();
-      const first = months[0] || currentMonthKey(), last = months.length ? (months[months.length - 1] > currentMonthKey() ? months[months.length - 1] : currentMonthKey()) : currentMonthKey();
+      const { first, last } = C.askMonthRange(entries, currentMonthKey());
       const req1 = { images: [], text: '', prompt: C.askPlanPrompt({ question, today: toISODateLocal(new Date()), first, last, expenseCats, incomeCats }) };
       const r1 = await askCall(req1, 1);
       if(!r1 || !r1.ok){ addAskCard(question, askErr(r1), [req1.prompt], null, true); return; }
@@ -5662,7 +5686,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(plan.offTopic){ addAskCard(question, t('Mogu da odgovorim samo na pitanja o tvom budžetu.'), [req1.prompt], plan.notes); return; }
       if(!plan.calls.length){ addAskCard(question, t('Za ovo pitanje nema podataka u knjizi.'), [req1.prompt], plan.notes); return; }
       const results = C.runAskTools(plan.calls, { entries, recurring, today: toISODateLocal(new Date()) });
-      const req2 = { images: [], text: '', prompt: C.askAnswerPrompt({ question, today: toISODateLocal(new Date()), results }) };
+      const req2 = { images: [], text: '', prompt: C.askAnswerPrompt({ question, today: toISODateLocal(new Date()), results, lang: askLangOverride || I18N.lang }) };
       const r2 = await askCall(req2, 2);
       if(!r2 || !r2.ok){ addAskCard(question, askErr(r2), [req1.prompt, req2.prompt], plan.notes, true); return; }
       addAskCard(question, C.cleanAskAnswer(r2.content).slice(0, 3000), [req1.prompt, req2.prompt], plan.notes);
@@ -5672,7 +5696,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   document.getElementById('askBtn').addEventListener('click', ()=> askBudget(document.getElementById('askInput').value));
   document.getElementById('askInput').addEventListener('keydown', e=>{ if(e.key === 'Enter' && !e.isComposing){ e.preventDefault(); askBudget(e.target.value); } });
-  document.querySelectorAll('.ask-suggest').forEach(b=> b.addEventListener('click', ()=>{ document.getElementById('askInput').value = b.textContent; askBudget(b.textContent); }));
+  document.querySelectorAll('.ask-suggest').forEach(b=> b.addEventListener('click', ()=>{ if(askBusy) return; document.getElementById('askInput').value = b.textContent; askBudget(b.textContent); }));
 
   // ---- Plati sve zakasnele ----
   let payOverdueLastFocus = null;
@@ -6261,7 +6285,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return plan;
   }
   // Kao automatski upis: dospele uplate (i propustene dok je aplikacija bila zatvorena) se same uplate.
-  function processGoalPlans(){
+  // opts.showNow: poruka sa opozivom odmah (test) — inace tek kad je prozor vidljiv
+  function processGoalPlans(opts){
     const cur = currentMonthKey();
     const today = new Date().getDate();
     const done = [];
@@ -6290,7 +6315,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       });
       saveEntries(); saveGoals(); renderAll();
     });
-    if(document.visibilityState !== 'visible'){
+    if(document.visibilityState !== 'visible' && !(opts && opts.showNow)){
       document.addEventListener('visibilitychange', function onVis(){
         if(document.visibilityState !== 'visible') return;
         document.removeEventListener('visibilitychange', onVis);
@@ -6299,7 +6324,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     } else show();
     return true;
   }
-  window.__processGoalPlans = () => { const c = processGoalPlans(); if(c) renderAll(); return c; };
+  window.__processGoalPlans = () => { const c = processGoalPlans({ showNow: true }); if(c) renderAll(); return c; };
   // Nov plan: od tekuceg meseca ako dan jos nije prosao, inace od sledeceg (ili uvek od sledeceg).
   function setGoalPlan(g, amount, day, fromNextMonth){
     const cur = currentMonthKey();
@@ -6375,6 +6400,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const sweep = r.net > 0 && activeGoals().length ? Math.floor(r.net) : 0;
     if(sweep > 0) acts.push(`<button class="btn-secondary" id="monthReviewSweep">${t('Prebaci višak u cilj')}</button>`);
     if(r.unpaidEntries.length) acts.push(`<button class="btn-secondary" id="monthReviewUnpaid">${t('Pogledaj neplaćeno')}</button>`);
+    if(r.unpaidRecurring.length) acts.push(`<button class="btn-secondary" id="monthReviewPayRec">${escapeHtml(t('Plati zaostale ponavljajuće ({0})', r.unpaidRecurring.length))}</button>`);
     const box = document.getElementById('monthReviewActions');
     box.innerHTML = acts.join('');
     document.getElementById('monthReviewAnaliza').addEventListener('click', ()=> openAnaliza(null, mKey));
@@ -6401,9 +6427,29 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       expListMonth = mKey; dirtyScreens.add('rashodi');
       showScreen('rashodi');
     });
+    if(r.unpaidRecurring.length) document.getElementById('monthReviewPayRec').addEventListener('click', ()=> payMonthReviewRecurring(r.unpaidRecurring.map(x=> x.id), mKey));
+  }
+  // Placanje ponavljajucih koje su ostale neplacene u proslom mesecu (rashod sa datumom dospeca tog meseca), sa opozivom
+  function payMonthReviewRecurring(ids, mKey){
+    const paid = [];
+    ids.forEach(id=>{
+      const rr = recurring.find(x=> x.id === id); if(!rr) return;
+      const had = entries.some(e=> e.id === recurringEntryId(rr, mKey));
+      const eid = markRecurringPaid(rr, mKey);
+      if(eid) paid.push({ id, eid, had });
+    });
+    if(!paid.length) return;
+    saveApplied(); saveEntries(); playPaidSound(); renderAll();
+    showUndoToast(t('Plaćeno za {0}: {1}', monthYearLabelSr(mKey), paid.length), ()=>{
+      const drop = new Set(paid.filter(p=> !p.had).map(p=> p.eid));
+      entries = entries.filter(e=> !drop.has(e.id));
+      applied[mKey] = (applied[mKey] || []).filter(id=> !paid.some(p=> p.id === id));
+      saveApplied(); saveEntries(); renderAll();
+    });
   }
   window.__monthReview = iso => { monthReviewToday = iso || null; renderMonthReview(); };
   window.__goals = () => goals;
+  window.__recurringRaw = { list: ()=> recurring, applied: ()=> applied, save: ()=>{ saveRecurring(); saveApplied(); renderAll(); } };
   window.__saveGoals = () => { saveGoals(); renderAll(); };
   document.getElementById('monthReviewClose').addEventListener('click', ()=>{
     const mKey = document.getElementById('monthReviewPanel').dataset.month;
@@ -10075,7 +10121,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     renderBackupReminder();
   }
 
-  function normalizeDateCell(val){
+  // fallback: sta vratiti za nečitljiv datum (podrazumevano danas; za dokumente prazno)
+  function normalizeDateCell(val, fallback){
     if(val instanceof Date && !isNaN(val)) return toISODateLocal(val);
     if(typeof val === 'number' && window.XLSX && XLSX.SSF){
       const d = XLSX.SSF.parse_date_code(val);
@@ -10089,7 +10136,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const d = new Date(val);
       if(!isNaN(d)) return toISODateLocal(d);
     }
-    return toISODateLocal(new Date());
+    return fallback !== undefined ? fallback : toISODateLocal(new Date());
   }
 
   function buildWorkbook(dataTimestamp){
@@ -10115,7 +10162,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, MesecRashoda:b.expenseMonth||'', Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source, PrimalacRacun:b.payee?b.payee.account:'', PrimalacNaziv:b.payee?b.payee.name:'', Model:b.payee?b.payee.model:'', PozivNaBroj:b.payee?b.payee.reference:''})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', MesecRashoda:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:'', PrimalacRacun:'', PrimalacNaziv:'', Model:'', PozivNaBroj:''}]), 'KucniRacuni');
     }
-    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):''})));
+    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):'', RacunID:g.accountId||''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
     const paidRows = [];
     Object.keys(applied).forEach(mKey=>{ (applied[mKey]||[]).forEach(rid=> paidRows.push({Mesec:mKey, RecurringID:rid})); });
@@ -10162,6 +10209,28 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return { locations: locs, billTypes: types, bills: list };
   }
   window.__billsFromWorkbook = billsFromWorkbook;
+  // List Dokumenti (null = stari fajl bez njega); datumi mogu biti broj iz Excela ili dd.mm.gggg
+  function documentsFromWorkbook(wb){
+    if(!wb.Sheets['Dokumenti']) return null;
+    const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
+    const dateCell = v => v === '' || v == null ? '' : normalizeDateCell(v, '');
+    return C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: dateCell(r.Izdato), expires: dateCell(r.Istice), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||'') })));
+  }
+  window.__documentsFromWorkbook = documentsFromWorkbook;
+  // List Ciljevi (racun cilja se cuva po ID-ju, kao i racuni u listu Racuni)
+  function goalsFromWorkbook(wb){
+    const rows = wb.Sheets['Ciljevi'] ? XLSX.utils.sheet_to_json(wb.Sheets['Ciljevi'], {defval:''}) : [];
+    return rows.filter(r=>r.Naziv).map(r=>({
+      id: String(r.ID || newId()),
+      name: String(r.Naziv || ''),
+      target: Number(r.Cilj) || 0,
+      current: Number(r.Trenutno) || 0,
+      deadline: r.Rok ? normalizeDateCell(r.Rok) : '',
+      monthly: cleanGoalPlan(Number(r.MesecnaUplata) > 0 ? { amount: r.MesecnaUplata, day: r.DanUplate, since: String(r.UplataOd || ''), last: String(r.PoslednjaUplata || '') } : null),
+      ...(String(r.RacunID || '').trim() ? { accountId: String(r.RacunID).trim() } : {})
+    }));
+  }
+  window.__goalsFromWorkbook = goalsFromWorkbook;
   function parseWorkbook(wb){
     const sheetRows = (name) => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''}) : [];
 
@@ -10215,15 +10284,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       ...(r.PrimalacRacun ? { payee: C.cleanPayee({ account: r.PrimalacRacun, name: r.PrimalacNaziv, code: r.SifraPlacanja, purpose: r.SvrhaPlacanja, model: r.Model, reference: r.PozivNaBroj }) } : {}),
     }));
 
-    const ciljRows = sheetRows('Ciljevi');
-    goals = ciljRows.filter(r=>r.Naziv).map(r=>({
-      id: String(r.ID || newId()),
-      name: String(r.Naziv || ''),
-      target: Number(r.Cilj) || 0,
-      current: Number(r.Trenutno) || 0,
-      deadline: r.Rok ? normalizeDateCell(r.Rok) : '',
-      monthly: cleanGoalPlan(Number(r.MesecnaUplata) > 0 ? { amount: r.MesecnaUplata, day: r.DanUplate, since: String(r.UplataOd || ''), last: String(r.PoslednjaUplata || '') } : null)
-    }));
+    goals = goalsFromWorkbook(wb);
 
     const placRows = sheetRows('PlacenoLog');
     applied = {};
@@ -10269,10 +10330,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const wbBills = billsFromWorkbook(wb);
     if(wbBills){ locations = wbBills.locations; billTypes = wbBills.billTypes; bills = wbBills.bills; }
-    if(wb.Sheets['Dokumenti']){
-      const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
-      documents = C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: String(r.Izdato||''), expires: String(r.Istice||''), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik === '' ? 30 : r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||'') })));
-    }
+    const wbDocs = documentsFromWorkbook(wb);
+    if(wbDocs) documents = wbDocs;
     entries.forEach(e=>{ if(e.accountName){ const a = accounts.find(x=> x.name === e.accountName); if(a) e.accountId = a.id; delete e.accountName; } });
 
     const incRows = sheetRows('KategorijePrihoda');

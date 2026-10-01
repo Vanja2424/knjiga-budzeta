@@ -689,11 +689,16 @@
       const gg = window.__goals().find(x => x.id === 'p4-goal');
       gg.monthly = { amount: 1000, day: 1, since: window.BudzetCore.addMonths(cur, -2) };
       window.__saveGoals(); await sleep(40);
-      const did = window.__processGoalPlans(); await sleep(60);
+      // zaklonjen prozor (Windows: visibilityState 'hidden') ne sme da odlozi poruku u testu — ranije povremeni pad opoziva
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      let did;
+      try { did = window.__processGoalPlans(); } finally { delete document.visibilityState; }
+      await sleep(60);
       const after = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: propušteni meseci se uplaćuju', did && after.current === 3000 && after.monthly.last === cur, after.current + ' ' + after.monthly.last);
       check('mesečna uplata: ponovna obrada ne uplaćuje dvaput', !window.__processGoalPlans());
-      $('undoBtn').click(); await sleep(80);
+      check('mesečna uplata: poruka sa opozivom je odmah na vrhu', /Automatski uplaćeno u ciljeve/.test($('undoMessage').textContent), $('undoMessage').textContent + ' / ' + document.visibilityState);
+      window.__undoTop(); await sleep(80);
       const undone = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: Poništi vraća iznos i poslednji mesec', undone.current === 0 && !undone.monthly.last, undone.current + ' ' + undone.monthly.last);
       go('ciljevi'); await sleep(60);
@@ -1201,8 +1206,7 @@
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 200); c.toBlob(r, 'image/png'); });
       go('dokumenti'); await sleep(80);
       const pd = window.__addDocFiles([new File([png], 'g.png', { type: 'image/png' }), new File([png], 'g2.png', { type: 'image/png' }), new File([png], 'g3.png', { type: 'image/png' })]);
-      await sleep(20);
-      check('dokumenti: Sačuvaj isključeno dok se fajlovi pripremaju', $('docSave').disabled === true);
+      check('dokumenti: Sačuvaj isključeno dok se fajlovi pripremaju', $('docSave').disabled === true, JSON.stringify({ show: $('docOverlay').classList.contains('show'), n: document.querySelectorAll('#docFiles .doc-file').length, st: $('docStatus').textContent }));
       await sleep(1500);
       check('dokumenti: AI ne čita sam, čeka dugme', docCalls === 0 && $('docReadAi').style.display !== 'none' && $('docSave').disabled === false && document.querySelectorAll('#docFiles .doc-file').length === 3, 'calls=' + docCalls);
       $('docReadAi').click(); await sleep(800);
@@ -1361,6 +1365,144 @@
       window.__deleteEntriesById(['smoke-pr-1', 'smoke-pr-2', 'smoke-pr-3']);
       window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-pr-item'); window.__saveShopping();
       document.querySelector('.shop-show-btn[data-show="need"]').click();
+    }
+
+    // Ispravke D: dokumenti (obavestenje, tastatura, cuvanje, obnova, Excel, AI grupe), Pitaj, azuriranje, mesec iza tebe, Excel ciljevi
+    {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const now = new Date();
+      const cm = monthKey(now);
+      // 1) klik na obavestenje istice red dokumenta
+      const fId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D obaveštenje', group: 'Auto', expires: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3)), remindDays: 30 });
+      go('pregled'); await sleep(40);
+      window.__openNotificationTarget({ screen: 'dokumenti', rowId: fId }); await sleep(150);
+      const fRow = document.querySelector(`#screen-dokumenti .doc-row[data-id="${fId}"]`);
+      check('D dokumenti: obaveštenje ističe red', $('screen-dokumenti').classList.contains('active') && !!fRow && fRow.classList.contains('row-flash'), fRow && fRow.className);
+      // 5) red se otvara tastaturom (Enter), i kartica na Pregledu je dostupna tastaturom
+      if (fRow) { fRow.focus(); fRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); }
+      check('D dokumenti: Enter na redu otvara zapis', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke D obaveštenje');
+      if ($('docOverlay').classList.contains('show')) $('docCancel').click();
+      go('pregled'); await sleep(120);
+      const remRow = document.querySelector(`#docReminders .doc-row[data-id="${fId}"]`);
+      check('D dokumenti: red na Pregledu ima tabindex', !!remRow && remRow.tabIndex === 0);
+      if (remRow) { remRow.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })); await sleep(120); }
+      check('D dokumenti: razmak na redu Pregleda otvara zapis', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke D obaveštenje');
+      if ($('docOverlay').classList.contains('show')) $('docCancel').click();
+      // 4a) Esc tokom cuvanja ne zatvara prozor, cuvanje se zavrsava
+      go('dokumenti'); await sleep(60);
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 60; c.height = 40; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 60, 40); c.toBlob(r, 'image/png'); });
+      const pEsc = window.__addDocFiles([new File([png], 'esc.png', { type: 'image/png' })]); await sleep(900);
+      $('docTitle').value = 'Smoke D esc';
+      $('docSave').click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const openAfterEsc = $('docOverlay').classList.contains('show');
+      const escRes = await Promise.race([pEsc, sleep(3000).then(() => 'timeout')]);
+      await sleep(100);
+      check('D dokumenti: Esc tokom čuvanja ne prekida čuvanje', openAfterEsc && escRes === true && window.__documents().some(d => d.title === 'Smoke D esc') && !$('docOverlay').classList.contains('show'), JSON.stringify({ openAfterEsc, escRes }));
+      // 4b) opoziv obnove posle izmene cuva izmenu
+      const rExp = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10));
+      const rId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D obnova', group: 'Auto', expires: rExp, remindDays: 30 });
+      window.__renewDocument(rId); await sleep(80);
+      const renewed = window.__documents().find(d => d.id === rId);
+      window.__saveDocumentRaw(Object.assign({}, renewed, { notes: 'Smoke izmena posle obnove' })); await sleep(50);
+      window.__undoTop(); await sleep(80);
+      const afterUndo = window.__documents().find(d => d.id === rId);
+      check('D dokumenti: opoziv obnove vraća rok, a čuva kasniju izmenu', !!afterUndo && afterUndo.expires === rExp && afterUndo.notes === 'Smoke izmena posle obnove' && !(afterUndo.history || []).length, JSON.stringify(afterUndo));
+      // 6) AI-ju idu samo ugradjene grupe, ne korisnikove
+      const gId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D grupa', group: 'Smoke tajna grupa' });
+      let docPrompt = '';
+      window.__fakeDocReading = req => { docPrompt = req.prompt; return { ok: true, content: '{"kind":"dokument","title":"X"}' }; };
+      const pAi = window.__addDocFiles([new File([png], 'ai.png', { type: 'image/png' })]); await sleep(900);
+      $('docReadAi').click(); await sleep(400);
+      check('D dokumenti: AI prompt bez korisnikovih grupa', /"Tehnika"/.test(docPrompt) && !/Smoke tajna grupa/.test(docPrompt), docPrompt.slice(0, 300));
+      $('docCancel').click(); await pAi; window.__fakeDocReading = null;
+      // 2) Excel datumi dokumenata (broj iz Excela, dd.mm.gggg, smece -> prazno)
+      if (typeof window.__documentsFromWorkbook === 'function') {
+        const serial = 46100, pd = XLSX.SSF.parse_date_code(serial);
+        const isoSerial = pd.y + '-' + String(pd.m).padStart(2, '0') + '-' + String(pd.d).padStart(2, '0');
+        const xwb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(xwb, XLSX.utils.json_to_sheet([
+          { ID: 'smoke-xd-1', Vrsta: 'dokument', Naziv: 'Smoke X1', Grupa: 'Auto', Izdato: serial, Istice: '15.03.2027', Podsetnik: '' },
+          { ID: 'smoke-xd-2', Vrsta: 'garancija', Naziv: 'Smoke X2', Grupa: 'Tehnika', Izdato: 'nije datum', Istice: '', Podsetnik: 7 }
+        ]), 'Dokumenti');
+        const xd = window.__documentsFromWorkbook(xwb) || [];
+        const x1 = xd.find(d => d.id === 'smoke-xd-1'), x2 = xd.find(d => d.id === 'smoke-xd-2');
+        check('D dokumenti: Excel datumi kroz normalizaciju', !!x1 && x1.issued === isoSerial && x1.expires === '2027-03-15' && x1.remindDays === 30 && !!x2 && !x2.issued && !x2.expires && x2.remindDays === 7, JSON.stringify(xd));
+      } else check('D dokumenti: hook __documentsFromWorkbook', false);
+      window.__documents().filter(d => /^Smoke D /.test(d.title)).forEach(d => window.__deleteDocument(d.id, { confirm: false }));
+      void gId;
+
+      // Pitaj: 8) poruka kad AI nije podesen, 9) opseg sa raspodelom, 10) jezik odgovora, 11) predlog dok radi
+      go('pitaj'); await sleep(200);
+      const ki = await window.desktop.bills.keyInfo();
+      if (!ki.set) check('D pitaj: bez ključa poruka „nije podešeno“ i dugme isključeno', /nije podešeno/.test($('askHint').textContent) && $('askBtn').disabled === true, $('askHint').textContent);
+      else check('D pitaj: sa ključem nema poruke „nije podešeno“', !/nije podešeno/.test($('askHint').textContent));
+      window.__addEntriesRaw([{ id: 'smoke-d-spread', type: 'expense', desc: 'Smoke D osiguranje', amount: 2400, category: 'Ostalo', date: cm + '-01', paid: true, tags: [], spreadMonths: 24 }]);
+      const dreqs = [];
+      window.__fakeAsk = async (req, step) => { dreqs.push({ step, prompt: req.prompt }); await sleep(250);
+        return step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'monthSummary', months: [cm] }] }) } : { ok: true, content: '{"odgovor":"ok"}' }; };
+      window.__askLang = 'en';
+      go('pregled'); await sleep(30); go('pitaj'); await sleep(50);
+      $('askInput').value = 'Smoke D pitanje';
+      $('askBtn').click(); await sleep(20);
+      document.querySelector('.ask-suggest').click(); await sleep(20);
+      check('D pitaj: predlog dok radi ne menja pitanje', $('askInput').value === 'Smoke D pitanje', $('askInput').value);
+      await sleep(900);
+      const d1 = dreqs.find(r => r.step === 1), d2 = dreqs.find(r => r.step === 2);
+      const spreadEnd = window.BudzetCore.addMonths(cm, 23);
+      check('D pitaj: opseg meseci uključuje raspodelu', !!d1 && d1.prompt.includes('do ' + spreadEnd + '.'), d1 && d1.prompt.split('\n')[1]);
+      check('D pitaj: odgovor na jeziku aplikacije', !!d2 && /in English/.test(d2.prompt), d2 && d2.prompt.split('\n')[0]);
+      check('D pitaj: predlog nije poslao drugo pitanje', dreqs.filter(r => r.step === 1).length === 1, String(dreqs.length));
+      window.__askLang = null; window.__fakeAsk = null;
+      window.__deleteEntriesById(['smoke-d-spread']);
+      // 12) Podesavanja: pominju opise stavki za najvece troskove / ponavljajuce
+      go('podesavanja'); await sleep(60);
+      check('D podešavanja: AI tekst pominje opise za najveće troškove i ponavljajuće', /najveće troškove i ponavljajuće stavke/.test($('aiSettings').textContent) && /njihovi opisi/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-260));
+
+      // 13) traka azuriranja kaze kad je instalacija odlozena zbog cuvanja
+      if (typeof window.__renderUpdate === 'function') {
+        window.__renderUpdate({ status: 'ready', version: '9.9.9', current: window.desktop.info.version, saveFailed: true });
+        check('D ažuriranje: traka kaže da je odloženo zbog čuvanja', /odloženo/.test($('tbUpdateText').textContent) && /nisu mogli da se sačuvaju/.test($('deskUpdateStatus').textContent), $('tbUpdateText').textContent);
+        window.__renderUpdate(await window.desktop.update.get());
+      }
+
+      // 15) mesec iza tebe: dugme za placanje zaostalih ponavljajucih
+      if (window.__recurringRaw) {
+        const prevM = window.BudzetCore.addMonths(cm, -1), prev2 = window.BudzetCore.addMonths(cm, -2);
+        const rr = { id: 'smoke-d-rec', desc: 'Smoke D struja', amount: 4321, category: 'Ostalo', type: 'expense', day: 5, frequency: 'monthly', anchorMonth: 1 };
+        window.__recurringRaw.list().push(rr);
+        const ap = window.__recurringRaw.applied(); ap[prev2] = (ap[prev2] || []).concat(rr.id);
+        window.__recurringRaw.save();
+        window.__addEntriesRaw([{ id: 'smoke-d-prev', type: 'expense', desc: 'Smoke D prošli', amount: 100, category: 'Ostalo', date: prevM + '-03', paid: true, tags: [] }]);
+        localStorage.removeItem('budzet-mesecni-pregled-zatvoren-v1');
+        go('pregled'); await sleep(60);
+        window.__monthReview(cm + '-03'); await sleep(60);
+        const payBtn = $('monthReviewPayRec');
+        check('D mesec iza tebe: dugme za plaćanje zaostalih ponavljajućih', !!payBtn, $('monthReviewActions').textContent);
+        const recEid = 'rec-' + rr.id + '-' + prevM;
+        if (payBtn) { payBtn.click(); await sleep(100); }
+        check('D mesec iza tebe: plaćanje upisuje rashod za taj mesec', entries().some(e => e.id === recEid && e.amount === 4321 && e.date.startsWith(prevM)) && (window.__recurringRaw.applied()[prevM] || []).includes(rr.id));
+        window.__undoTop(); await sleep(80);
+        check('D mesec iza tebe: opoziv vraća neplaćeno', !entries().some(e => e.id === recEid) && !(window.__recurringRaw.applied()[prevM] || []).includes(rr.id));
+        window.__monthReview(null);
+        const list = window.__recurringRaw.list(); list.splice(list.findIndex(r => r.id === rr.id), 1);
+        Object.keys(ap).forEach(k => { ap[k] = ap[k].filter(id => id !== rr.id); });
+        window.__recurringRaw.save();
+        window.__deleteEntriesById(['smoke-d-prev']);
+        localStorage.setItem('budzet-mesecni-pregled-zatvoren-v1', prevM);
+      } else check('D mesec iza tebe: hook __recurringRaw', false);
+
+      // 16) Excel ciljevi cuvaju racun
+      if (typeof window.__goalsFromWorkbook === 'function') {
+        const gl = window.__goals();
+        gl.push({ id: 'smoke-d-goal', name: 'Smoke D cilj', target: 1000, current: 10, deadline: '', accountId: 'smoke-d-acc' });
+        const row = XLSX.utils.sheet_to_json(window.__buildWorkbook().Sheets['Ciljevi'], { defval: '' }).find(r => r.ID === 'smoke-d-goal');
+        gl.splice(gl.findIndex(g => g.id === 'smoke-d-goal'), 1);
+        const gwb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(gwb, XLSX.utils.json_to_sheet([row || {}]), 'Ciljevi');
+        const back = (window.__goalsFromWorkbook(gwb) || []).find(g => g.id === 'smoke-d-goal');
+        check('D Excel: cilj čuva račun (izvoz i uvoz)', !!row && row.RacunID === 'smoke-d-acc' && !!back && back.accountId === 'smoke-d-acc', JSON.stringify({ row, back }));
+      } else check('D Excel: hook __goalsFromWorkbook', false);
     }
 
     // Cuvanje u fajl
