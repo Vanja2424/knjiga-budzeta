@@ -2623,7 +2623,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     <div class="panel">
       <div class="rezije-toolbar">
         <div class="trend-range-toggle" role="group" aria-label="Prikaži">
-          <button class="doc-filter-btn" data-f="all">Sve</button><button class="doc-filter-btn" data-f="garancija">Garancije</button><button class="doc-filter-btn" data-f="dokument">Dokumenti</button>
+          <button class="trend-range-btn doc-filter-btn" data-f="all">Sve</button><button class="trend-range-btn doc-filter-btn" data-f="garancija">Garancije</button><button class="trend-range-btn doc-filter-btn" data-f="dokument">Dokumenti</button>
         </div>
         <span class="rezije-spacer"></span>
         <button class="save-btn" id="docAddBtn">Dodaj dokument…</button><input type="file" id="docAddInput" accept="application/pdf,image/*,.heic" multiple hidden>
@@ -10580,7 +10580,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     byId('deskOpenDataBtn').addEventListener('click', ()=> desktop.data.open());
 
     // Tekstovi koji u browseru govore o browseru
-    document.querySelector('footer').innerHTML = `<span>${t('Podaci se čuvaju u fajlu na ovom računaru — nikamo se ne šalju.')}</span><span class="footer-keys">${t('Pritisni {0} za prečice na tastaturi', '<kbd>?</kbd>')}</span>`;
+    document.querySelector('footer').innerHTML = `<span>${t('Podaci se čuvaju u fajlu na ovom računaru. AI čitanje šalje Groq-u samo ono što ubaciš (vidi Podešavanja).')}</span><span class="footer-keys">${t('Pritisni {0} za prečice na tastaturi', '<kbd>?</kbd>')}</span>`;
     byId('enableNotifBtn').style.display = 'none';
     byId('notifStatus').textContent = 'Notifikacije su uključene — podsetnici za kasna plaćanja i dugove stižu i kad je prozor zatvoren (dok aplikacija radi u tray-u).';
     // Excel: samo rucni izvoz/uvoz (podaci vise ne zavise od Excel fajla)
