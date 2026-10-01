@@ -1656,6 +1656,23 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-row{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto auto auto; gap:0.7em; align-items:center; padding:0.45em 0; border-bottom:1px solid var(--paper-line); }
 .shop-name{ min-width:0; overflow-wrap:anywhere; }
 .shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.shop-name-wrap{ min-width:0; display:flex; flex-direction:column; }
+.shop-cheapest{ font-size:11.5px; color:var(--ink-soft); }
+.shop-price-change{ font-size:11.5px; font-weight:600; margin-left:0.3em; }
+.shop-price-change.up{ color:var(--neg-text); }
+.shop-price-change.down{ color:var(--pos-text); }
+.price-filters{ display:flex; gap:0.4em; margin-bottom:0.7em; flex-wrap:wrap; }
+.price-filter.active{ background:var(--accent); color:#fff; }
+.price-row{ display:grid; grid-template-columns:minmax(0,1.3fr) minmax(0,1.6fr) auto minmax(0,1.4fr); gap:0.7em; align-items:center; padding:0.5em 0.3em; border-bottom:1px solid var(--paper-line); font-size:13px; cursor:default; border-radius:6px; }
+.price-row:hover{ background:var(--fill); }
+.price-row .muted{ color:var(--ink-soft); font-size:12px; }
+.price-chart{ width:100%; height:120px; margin:0.4em 0 0.8em; }
+.price-chart polyline{ fill:none; stroke:var(--accent); stroke-width:2; }
+.price-chart circle{ fill:var(--accent); }
+.price-hist{ width:100%; border-collapse:collapse; font-size:13px; }
+.price-hist td, .price-hist th{ padding:0.3em 0.4em; border-bottom:1px solid var(--paper-line); text-align:left; }
+.price-hist td.num, .price-hist th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+@media (max-width: 600px){ .price-row{ grid-template-columns:1fr auto; } .price-row > :nth-child(2), .price-row > :nth-child(4){ grid-column:1 / -1; } }
 .shop-row.done .shop-name{ color:var(--ink-soft); text-decoration:line-through; }
 .shop-check-space{ width:20px; }
 .shop-check{ appearance:none; -webkit-appearance:none; width:20px; height:20px; min-height:0; margin:0; padding:0; border-radius:50%; border:1.5px solid var(--ink-tertiary); background:transparent; position:relative; cursor:default; flex-shrink:0; align-self:center; transition:background-color var(--dur-fast) ease, border-color var(--dur-fast) ease, transform var(--dur-fast) ease; }
@@ -2594,6 +2611,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="trend-range-toggle" role="group" aria-label="Prikaži">
           <button class="shop-show-btn" data-show="need">Za kupovinu</button>
           <button class="shop-show-btn" data-show="all">Sve stavke</button>
+          <button class="shop-show-btn" data-show="prices">Cene</button>
         </div>
         <button class="btn-secondary" id="shopSectionsBtn">Delovi prodavnice</button>
       </div>
@@ -2602,6 +2620,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     <div class="panel shop-suggest" id="shopSuggest" style="display:none; margin-top:1.5em;"></div>
     <div class="panel" style="margin-top:1.5em;">
       <div id="shopList"></div>
+      <div id="shopPrices" style="display:none;"></div>
     </div>
     <div class="panel shop-footer" id="shopFooter" style="display:none;"></div>
   </div>
@@ -5310,7 +5329,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const made = rows.map(row=>{
       const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: row.amount, category: row.category, date, paid: true, tags: ['nabavka'],
         items: row.items.map(i=> C.purchaseItemLabel({ name: (i.name || '').trim() || i.raw || t('Stavka'), qty: qtyLabel(i) })),
-        itemPrices: row.itemPrices, receiptId };
+        itemPrices: row.itemPrices, itemQty: row.items.map(i=> ({ qty: i.qty > 0 ? i.qty : 1, unit: C.QTY_UNITS.includes(i.unit) ? i.unit : 'kom' })), receiptId };
       if(attachments.length) e.attachments = attachments.slice();
       if(accountId) e.accountId = accountId;
       entries.push(e); applyRoundUpSaving(row.amount);
@@ -6734,7 +6753,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---- Nabavka (lista za kupovinu) ----
   // Pravila (parsiranje, grupe, procena, raspodela) su u budzet-core.js; ovde stanje ekrana i crtanje.
   const SHOP_VIEW_KEY = 'budzet-nabavka-prikaz-v1';
-  const shopState = (()=>{ try{ const v = JSON.parse(localStorage.getItem(SHOP_VIEW_KEY) || 'null'); if(v && ['section','store','category'].includes(v.by) && ['need','all'].includes(v.show)) return { by: v.by, show: v.show, sectionsOpen: false }; } catch(e){} return { by: 'section', show: 'need', sectionsOpen: false }; })();
+  const shopState = (()=>{ try{ const v = JSON.parse(localStorage.getItem(SHOP_VIEW_KEY) || 'null'); if(v && ['section','store','category'].includes(v.by) && ['need','all','prices'].includes(v.show)) return { by: v.by, show: v.show, sectionsOpen: false }; } catch(e){} return { by: 'section', show: 'need', sectionsOpen: false }; })();
   const saveShopView = () => localStorage.setItem(SHOP_VIEW_KEY, JSON.stringify({ by: shopState.by, show: shopState.show }));
   const shopCategoryOf = it => expenseCats.includes(it.category) ? it.category : null;
   // Podrazumevani delovi prodavnice se prevode samo dok ih korisnik ne preimenuje
@@ -6759,10 +6778,81 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveShopping();
     return { item, created };
   }
+  // Kolicina stavke racuna: qty > 0, jedinica iz QTY_UNITS (inace 1 kom)
+  function cleanItemQty(q){
+    const qty = q && typeof q.qty === 'number' && isFinite(q.qty) && q.qty > 0 ? q.qty : 1;
+    const unit = q && C.QTY_UNITS.includes(q.unit) ? q.unit : 'kom';
+    return { qty: q && C.QTY_UNITS.includes(q.unit) ? qty : 1, unit };
+  }
+  // Excel kolone CeneStavki/Kolicine (JSON) -> itemPrices/itemQty, samo kad su iste duzine kao stavke
+  function itemArraysFromCells(n, pricesCell, qtyCell){
+    const parse = v => { try { const a = JSON.parse(String(v || '')); return Array.isArray(a) && a.length === n ? a : null; } catch(e){ return null; } };
+    const out = {};
+    if(!n) return out;
+    const p = parse(pricesCell), q = parse(qtyCell);
+    if(p) out.itemPrices = p.map(x=> (typeof x === 'number' && isFinite(x) && x >= 0) ? x : null);
+    if(q) out.itemQty = q.map(cleanItemQty);
+    return out;
+  }
+  const unitPriceTxt = (v, unit) => fmtNum(v, 2) + ' RSD/' + unit;
+  const daysAgo = iso => Math.max(0, Math.round((parseLocalDate(toISODateLocal(new Date())) - parseLocalDate(iso)) / 864e5));
+  const priceChangeHtml = ch => ch ? `<span class="shop-price-change ${ch.pct > 0 ? 'up' : 'down'}" title="${escapeHtml(ch.vs === 'store' ? t('u odnosu na prethodnu kupovinu u istoj prodavnici ({0})', fmtNum(ch.prev, 2)) : t('u odnosu na prosek poslednjih kupovina ({0})', fmtNum(ch.prev, 2)))}">${ch.pct > 0 ? '↑' : '↓'}${Math.abs(ch.pct)}%</span>` : '';
+  const cheapestHtml = ins => ins && ins.cheapest ? `<span class="shop-cheapest">${t('najjeftinije: {0} {1} (pre {2})', '<span translate="no">' + escapeHtml(ins.cheapest.store || t(C.NO_STORE)) + '</span>', unitPriceTxt(ins.cheapest.unitPrice, ins.unit), daysTxt(daysAgo(ins.cheapest.date)))}</span>` : '';
+  let priceFilter = 'all';
+  function renderShopPrices(hist){
+    const box = document.getElementById('shopPrices');
+    const today = toISODateLocal(new Date());
+    const all = [...hist.values()].map(h=> C.priceInsight(h, today)).filter(Boolean);
+    if(!all.length){ box.innerHTML = `<div class="empty">${t('Još nema cena — slikaj račun iz prodavnice (Ubaci račun iz prodavnice…).')}</div>`; return; }
+    const list = all.filter(x=> priceFilter === 'all' || (x.change && (priceFilter === 'up' ? x.change.pct > 0 : x.change.pct < 0)))
+      .sort((a, b)=> Math.abs((b.change || {}).pct || 0) - Math.abs((a.change || {}).pct || 0) || a.name.localeCompare(b.name));
+    const filters = [['all', t('Sve')], ['up', t('Poskupelo')], ['down', t('Pojeftinilo')]]
+      .map(([f, label])=> `<button class="btn-secondary price-filter${priceFilter === f ? ' active' : ''}" data-f="${f}">${label}</button>`).join('');
+    box.innerHTML = `<div class="price-filters">${filters}</div>` + (list.length ? list.map(x=> `<div class="price-row" data-key="${escapeHtml(x.key)}" role="button" tabindex="0">
+        <span class="shop-name" translate="no">${escapeHtml(x.name)}</span>
+        <span>${unitPriceTxt(x.last.unitPrice, x.unit)} <span class="muted">· <span translate="no">${escapeHtml(x.last.store || t(C.NO_STORE))}</span> · ${fmtDocDate(x.last.date)}</span></span>
+        <span>${priceChangeHtml(x.change)}</span>
+        ${cheapestHtml(x) || '<span></span>'}
+      </div>`).join('') : `<div class="empty">${t('Nema artikala za ovaj filter.')}</div>`);
+    box.querySelectorAll('.price-filter').forEach(b=> b.addEventListener('click', ()=>{ priceFilter = b.dataset.f; renderShopPrices(hist); }));
+    box.querySelectorAll('.price-row').forEach(r=>{
+      const open = ()=> openPriceHistory(hist.get(r.dataset.key));
+      r.addEventListener('click', open);
+      r.addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } });
+    });
+  }
+  function openPriceHistory(h){
+    if(!h) return;
+    const unit = h.obs[h.obs.length - 1].unit;
+    const pts = h.obs.filter(o=> o.unit === unit);
+    let chart = '';
+    if(pts.length > 1){
+      const W = 300, H = 100, P = 8;
+      const d0 = parseLocalDate(pts[0].date).getTime(), d1 = parseLocalDate(pts[pts.length - 1].date).getTime();
+      const vals = pts.map(o=> o.unitPrice), lo = Math.min(...vals), hi = Math.max(...vals);
+      const xy = pts.map(o=> [P + (d1 > d0 ? (parseLocalDate(o.date).getTime() - d0) / (d1 - d0) : 0.5) * (W - 2 * P), H - P - (hi > lo ? (o.unitPrice - lo) / (hi - lo) : 0.5) * (H - 2 * P)].map(v=> Math.round(v * 10) / 10));
+      chart = `<svg class="price-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${xy.map(p=> p.join(',')).join(' ')}"/>${xy.map(p=> `<circle cx="${p[0]}" cy="${p[1]}" r="2.5"/>`).join('')}</svg>`;
+    }
+    const rows = h.obs.slice().reverse().map(o=> `<tr><td>${fmtDocDate(o.date)}</td><td translate="no">${escapeHtml(o.store || t(C.NO_STORE))}</td><td class="num">${fmtNum(o.qty, 3)} ${o.unit}</td><td class="num">${unitPriceTxt(o.unitPrice, o.unit)}</td></tr>`).join('');
+    openDialog(h.name, chart + `<table class="price-hist"><thead><tr><th>${t('Datum')}</th><th>${t('Prodavnica')}</th><th class="num">${t('Količina')}</th><th class="num">${t('Cena po jedinici')}</th></tr></thead><tbody>${rows}</tbody></table>`, { html: true, alertOnly: true });
+  }
   function renderShopping(){
     document.querySelectorAll('.shop-by-btn').forEach(b=> b.classList.toggle('active', b.dataset.by === shopState.by));
     document.querySelectorAll('.shop-show-btn').forEach(b=> b.classList.toggle('active', b.dataset.show === shopState.show));
     const list = document.getElementById('shopList');
+    const hist = C.priceHistory(entries), today = toISODateLocal(new Date());
+    const preferredStore = C.mostCommonStore(shopping.items.filter(i=> i.needed));
+    const pricesBox = document.getElementById('shopPrices');
+    list.style.display = shopState.show === 'prices' ? 'none' : '';
+    pricesBox.style.display = shopState.show === 'prices' ? '' : 'none';
+    if(shopState.show === 'prices') renderShopPrices(hist); else pricesBox.innerHTML = '';
+    const metaHtml = i => {
+      const est = C.estimateShoppingItem(i, hist, preferredStore);
+      const fromReceipt = est.source === 'store' || est.source === 'last';
+      const ins = fromReceipt ? C.priceInsight(hist.get(C.itemKey(i.name)), today) : null;
+      const price = est.amount > 0 ? `<span title="${escapeHtml(fromReceipt ? t('po ceni sa računa: {0}', unitPriceTxt(est.unitPrice, ins ? ins.unit : 'kom')) : t('ručno upisana cena'))}">${fromReceipt ? '~' : ''}${fmt(est.amount)}</span>${fromReceipt && ins ? priceChangeHtml(ins.change) : ''}` : '';
+      return { html: [i.qty ? `<span translate="no">${escapeHtml(i.qty)}</span>` : '', price].filter(Boolean).join(' · '), cheapest: ins ? cheapestHtml(ins) : '' };
+    };
     const visible = shopState.show === 'need' ? shopping.items.filter(i=> i.needed) : shopping.items;
     if(!shopping.items.length) list.innerHTML = `<div class="empty">${t('Lista je prazna. Dodaj prve stavke, npr. Mleko, Hleb, Jaja.')}</div>`;
     else if(!visible.length) list.innerHTML = `<div class="empty">${t('Nema ništa za kupovinu. Uključi „treba“ u prikazu Sve stavke ili dodaj novu stavku.')}</div>`;
@@ -6772,14 +6862,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         const title = shopState.by === 'section' ? shopSectionLabelHtml(g.label)
           : g.key === '' ? escapeHtml(g.label) : (shopState.by === 'category' ? catTagHtml(g.label) : `<span translate="no">${escapeHtml(g.label)}</span>`);
         return `<div class="shop-group"><h3 class="shop-group-title">${title} <span class="muted">${g.items.length}</span></h3>
-          ${g.items.map(i=> `<div class="shop-row${i.checked ? ' done' : ''}" data-row-id="${i.id}">
+          ${g.items.map(i=> { const m = metaHtml(i); return `<div class="shop-row${i.checked ? ' done' : ''}" data-row-id="${i.id}">
             ${i.needed ? `<input type="checkbox" class="shop-check" data-id="${i.id}"${i.checked ? ' checked' : ''} title="${t('Kupljeno')}">` : '<span class="shop-check-space"></span>'}
-            <span class="shop-name" translate="no">${escapeHtml(i.name)}</span>
-            <span class="shop-meta">${[i.qty ? `<span translate="no">${escapeHtml(i.qty)}</span>` : '', i.price ? fmt(i.price) : ''].filter(Boolean).join(' · ')}</span>
+            <span class="shop-name-wrap"><span class="shop-name" translate="no">${escapeHtml(i.name)}</span>${m.cheapest}</span>
+            <span class="shop-meta">${m.html}</span>
             ${shopState.show === 'all' ? `<label class="paid-checkbox-label shop-need" title="${t('Treba')}"><input type="checkbox" class="shop-need-box" data-id="${i.id}"${i.needed ? ' checked' : ''}></label>` : ''}
             <button class="edit-btn shop-edit" data-id="${i.id}" title="${t('Uredi')}">✎</button>
             <button class="del-btn shop-del" data-id="${i.id}" title="${t('Obriši')}">✕</button>
-          </div>`).join('')}</div>`;
+          </div>`; }).join('')}</div>`;
       }).join('');
     }
     list.querySelectorAll('.shop-check').forEach(box=> box.addEventListener('change', ()=>{
@@ -6887,9 +6977,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const shopChecked = () => shopping.items.filter(i=> i.needed && i.checked);
   // Kategorija za racun: nepostojeca kategorija stavke -> prva kategorija rashoda (oznaceno u raspodeli)
   const shopPurchaseCat = it => shopCategoryOf(it) || expenseCats[0] || 'Ostalo';
+  const shopEstimateNow = () => C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY })),
+    { history: C.priceHistory(entries), preferredStore: C.mostCommonStore(shopping.items.filter(i=> i.needed)) });
   function renderShoppingFooter(){
     const foot = document.getElementById('shopFooter');
-    const est = C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY })));
+    const est = shopEstimateNow();
     if(!est.count){ foot.style.display = 'none'; return; }
     foot.style.display = '';
     const nChecked = shopChecked().length;
@@ -6902,7 +6994,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       return `<div class="shop-budget-row${over ? ' over' : ''}">${t('{0}: ostalo {1} od {2} · nabavka ~{3}', name, fmt(env.remaining), fmt(env.allocated + env.rollover), fmt(sum))}</div>`;
     }).join('');
     foot.innerHTML = `<div class="shop-foot-main">
-        <div class="shop-estimate"><b>${t('Za kupovinu: {0} · procena ~{1}', est.count, fmt(est.total))}</b>${est.unpriced ? ' ' + t('({0} bez cene)', est.unpriced) : ''}</div>
+        <div class="shop-estimate"><b>${t('Za kupovinu: {0} · procena ~{1}', est.count, fmt(est.total))}</b>${est.unpriced ? ' ' + t('({0} bez cene)', est.unpriced) : ''}${est.fromReceipts ? ' · ' + t('{0} od {1} po ceni sa računa', est.fromReceipts, est.count) : ''}</div>
         <button class="save-btn" id="shopFinishBtn"${nChecked ? '' : ' disabled'}>${t('Završi kupovinu ({0})', nChecked)}</button>
       </div>${catRows}`;
     document.getElementById('shopFinishBtn').addEventListener('click', openFinishPurchase);
@@ -8151,6 +8243,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const copy = Object.assign({}, entry, { id: newId(), date: toISODateLocal(new Date()) });
     if(Array.isArray(copy.items)) copy.items = copy.items.slice();
     if(Array.isArray(copy.itemPrices)) copy.itemPrices = copy.itemPrices.slice();
+    if(Array.isArray(copy.itemQty)) copy.itemQty = copy.itemQty.map(q=> Object.assign({}, q));
     entries.push(copy);
     newEntryId = copy.id;
     saveEntries(); renderAll();
@@ -8431,7 +8524,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(document.activeElement !== monthlyBudgetInput) monthlyBudgetInput.value = monthlyBudget > 0 ? monthlyBudget : '';
     const usedCats = new Set(entries.filter(e=>e.type==='expense').map(e=>e.category));
     const usedInRecurring = new Set(recurring.filter(r=>r.type==='expense').map(r=>r.category));
-    const shopEst = C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY }))).byCategory;
+    const shopEst = shopEstimateNow().byCategory;
     const list = document.getElementById('catList');
     list.innerHTML = expenseCats.map((c,i)=>{
       const inUse = usedCats.has(c) || usedInRecurring.has(c) || shoppingCategoryInUse(c);
@@ -9682,6 +9775,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const att = Array.isArray(e.attachments) ? e.attachments.filter(C.isAttachmentName) : [];
       if(att.length) o.attachments = att; else delete o.attachments;
       if(Array.isArray(o.items) && Array.isArray(e.itemPrices) && e.itemPrices.length === o.items.length) o.itemPrices = e.itemPrices.map(p=> (typeof p === 'number' && isFinite(p) && p >= 0) ? p : null); else delete o.itemPrices;
+      if(Array.isArray(o.items) && Array.isArray(e.itemQty) && e.itemQty.length === o.items.length) o.itemQty = e.itemQty.map(cleanItemQty); else delete o.itemQty;
       return o; });
     // Isti tip/opseg koercija kao rucni unos (recurringForm submit) i Excel uvoz (parseWorkbook) —
     // JSON backup ne sme biti jedini put uvoza koji propusti npr. day:31 ili day:0 nekoercirano.
@@ -9772,6 +9866,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     };
   }
   window.__sanitizeImportedBackup = sanitizeImportedBackup;
+  window.__itemArraysFromCells = itemArraysFromCells;
   window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
 
   document.getElementById('backupImportInput').addEventListener('change', function(e){
@@ -9999,7 +10094,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), DugID: e.debtId || '', RacunID: e.receiptId || '', Prilozi: (e.attachments || []).join('; ')})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), CeneStavki: Array.isArray(e.itemPrices) ? JSON.stringify(e.itemPrices) : '', Kolicine: Array.isArray(e.itemQty) ? JSON.stringify(e.itemQty) : '', DugID: e.debtId || '', RacunID: e.receiptId || '', Prilozi: (e.attachments || []).join('; ')})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -10088,6 +10183,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         ...((parseInt(r.PokrivaMeseci, 10) || 1) > 1 ? { spreadMonths: parseInt(r.PokrivaMeseci, 10), ...(/^\d{4}-\d{2}$/.test(String(r.OdMeseca)) ? { spreadStart: String(r.OdMeseca) } : {}) } : {}),
         ...(CURRENCIES.includes(String(r.Valuta)) && String(r.Valuta) !== 'RSD' ? { currency: String(r.Valuta), origAmount: Number(r.IznosUValuti) || undefined, rate: Number(r.Kurs) || undefined } : {}),
         ...(C.cellToItems(r.Kupljeno).length ? { items: C.cellToItems(r.Kupljeno) } : {}),
+        ...itemArraysFromCells(C.cellToItems(r.Kupljeno).length, r.CeneStavki, r.Kolicine),
         ...(r.DugID ? { debtId: String(r.DugID) } : {}),
         ...(/^[A-Za-z0-9_-]{1,64}$/.test(String(r.RacunID || '')) ? { receiptId: String(r.RacunID) } : {}),
         ...((att => att.length ? { attachments: att } : {})(String(r.Prilozi || '').split(';').map(x=> x.trim()).filter(C.isAttachmentName)))
