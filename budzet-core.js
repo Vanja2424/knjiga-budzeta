@@ -1561,6 +1561,80 @@
     return o ? ((categories || []).find(x => foldText(x) === foldText(o.category)) || '') : '';
   }
 
+  // ---------- Dokumenti: garancije i dokumenti sa rokom ----------
+  const DOC_GROUPS = ['Tehnika', 'Auto', 'Osiguranje', 'Lična dokumenta', 'Ugovori', 'Ostalo'];
+  const isoOk = s => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+  function addMonthsToDate(iso, n){
+    const [y, m, d] = iso.split('-').map(Number);
+    const first = new Date(y, m - 1 + n, 1);
+    const last = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+    return first.getFullYear() + '-' + pad2(first.getMonth() + 1) + '-' + pad2(Math.min(d, last));
+  }
+  function documentExpiry(doc){
+    if(doc && isoOk(doc.expires)) return doc.expires;
+    if(doc && isoOk(doc.issued) && doc.warrantyMonths > 0) return addMonthsToDate(doc.issued, doc.warrantyMonths);
+    return '';
+  }
+  function documentStatus(doc, today){
+    const exp = documentExpiry(doc);
+    if(!exp) return { state: 'none', days: null };
+    const days = dayNumber(exp) - dayNumber(today);
+    const rd = doc.remindDays >= 0 ? doc.remindDays : 30;
+    return { state: days < 0 ? 'expired' : days <= rd ? 'soon' : 'ok', days };
+  }
+  // za karticu i obavestenja: soon (i opciono skoro istekli), najblizi rok prvi
+  function documentReminders(docs, today, opts){
+    const back = (opts && opts.includeExpiredDays) || 0;
+    return (docs || []).map(doc => ({ doc, status: documentStatus(doc, today) }))
+      .filter(x => x.status.state === 'soon' || (x.status.state === 'expired' && -x.status.days <= back))
+      .sort((a, b) => a.status.days - b.status.days)
+      .map(x => Object.assign(x, { notifyKey: 'doc-' + x.doc.id + '-' + documentExpiry(x.doc) + '-' + (x.status.days === 0 ? 'day' : x.status.state === 'expired' ? 'expired' : 'soon') }));
+  }
+  // obnova: od starog roka ako nije istekao pre vise od 60 dana, inace od danas
+  function renewDocument(doc, today, months){
+    const n = months > 0 ? months : (doc.renewal && doc.renewal.months > 0 ? doc.renewal.months : 12);
+    const old = documentExpiry(doc);
+    const base = old && dayNumber(today) - dayNumber(old) <= 60 ? old : today;
+    return Object.assign({}, doc, { expires: addMonthsToDate(base, n), history: (doc.history || []).concat([{ expires: old || '', renewedAt: today }]) });
+  }
+  function cleanDocuments(arr){
+    const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+    return (Array.isArray(arr) ? arr : []).filter(d => d && isId(d.id) && str(d.title, 80)).map(d => {
+      const o = { id: d.id, kind: d.kind === 'garancija' ? 'garancija' : 'dokument', title: str(d.title, 80), group: str(d.group, 40) || 'Ostalo',
+        files: (Array.isArray(d.files) ? d.files : []).filter(isAttachmentName), remindDays: Number.isInteger(+d.remindDays) && +d.remindDays >= 0 && +d.remindDays <= 365 ? +d.remindDays : 30 };
+      if(isoOk(d.issued)) o.issued = d.issued;
+      if(isoOk(d.expires)) o.expires = d.expires;
+      const wm = parseInt(d.warrantyMonths, 10); if(wm > 0 && wm <= 240) o.warrantyMonths = wm;
+      if(str(d.vendor, 60)) o.vendor = str(d.vendor, 60);
+      if(str(d.notes, 300)) o.notes = str(d.notes, 300);
+      if(d.renewal && typeof d.renewal === 'object'){ const a = parseAmount(d.renewal.amount), m = parseInt(d.renewal.months, 10);
+        o.renewal = { amount: Number.isFinite(a) && a > 0 ? round2(a) : 0, category: str(d.renewal.category, 40), months: m > 0 && m <= 120 ? m : 12 }; }
+      if(Array.isArray(d.history)) o.history = d.history.filter(h => h && isoOk(h.renewedAt)).map(h => Object.assign({ expires: isoOk(h.expires) ? h.expires : '', renewedAt: h.renewedAt }, isId(h.entryId) ? { entryId: h.entryId } : {}));
+      if(isId(d.entryId)) o.entryId = d.entryId;
+      return o;
+    });
+  }
+  function documentPrompt(groups){
+    return ['Čitaš garantni list, polisu, saobraćajnu/registraciju, ugovor ili drugi dokument sa rokom (Srbija), sa slike ili iz teksta.',
+      'Vrati SAMO JSON: {"kind":"garancija|dokument","title":"","group":"","issued":"YYYY-MM-DD","expires":"YYYY-MM-DD","warrantyMonths":0,"vendor":"","confidence":{"expires":"high"}}',
+      '- title: kratak naziv (npr. "Frižider Gorenje", "Registracija Golf 7", "Kasko polisa").',
+      '- group: jedna od ovih ili "": ' + (groups || []).map(g => '"' + g + '"').join(', ') + '.',
+      '- issued: datum kupovine/izdavanja; expires: datum isteka ako piše; warrantyMonths: trajanje garancije u mesecima ako piše umesto datuma.',
+      '- vendor: prodavac ili izdavalac. Nečitljivo = null; ne izmišljaj datume.'].join('\n');
+  }
+  function cleanDocumentReading(raw, groups){
+    const o = extractJson(raw);
+    if(!o) return null;
+    const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
+    const conf = o.confidence && typeof o.confidence === 'object' ? o.confidence : {};
+    const wm = parseInt(o.warrantyMonths, 10);
+    const out = { kind: o.kind === 'garancija' ? 'garancija' : 'dokument', title: str(o.title, 80), group: (groups || []).find(g => foldText(g) === foldText(o.group)) || '',
+      issued: readDate(o.issued), expires: readDate(o.expires), warrantyMonths: wm > 0 && wm <= 240 ? wm : null, vendor: str(o.vendor, 60) };
+    out.low = Object.keys(conf).filter(k => conf[k] === 'low');
+    if(!out.expires && !(out.issued && out.warrantyMonths)) out.low.push('expires');
+    return out;
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -1608,7 +1682,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

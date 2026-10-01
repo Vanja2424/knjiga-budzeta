@@ -1401,3 +1401,49 @@ test('parseQuickSentence posle pregleda: broj u sredini nije iznos, km nije valu
   assert.deepEqual([noAmt.desc, noAmt.amount, noAmt.date, noAmt.accountId], ['iPhone 15', null, '2026-09-29', 'a2']);
   assert.equal(p('kafa 20 eur', { noAmount: true }).desc, 'kafa 20 eur');
 });
+
+test('dokumenti: rok, stanje, podsetnici, obnova', () => {
+  assert.equal(C.addMonthsToDate('2026-01-31', 1), '2026-02-28');
+  assert.equal(C.addMonthsToDate('2028-02-29', 12), '2029-02-28');
+  assert.equal(C.addMonthsToDate('2026-09-30', 24), '2028-09-30');
+  assert.equal(C.documentExpiry({ issued: '2026-01-15', warrantyMonths: 24 }), '2028-01-15');
+  assert.equal(C.documentExpiry({ expires: '2027-05-01', issued: '2026-01-15', warrantyMonths: 24 }), '2027-05-01');
+  assert.equal(C.documentExpiry({ issued: '2026-01-15' }), '');
+  const st = (expires, rd) => C.documentStatus({ expires, remindDays: rd == null ? 30 : rd }, '2026-10-01');
+  assert.deepEqual(st('2026-10-01'), { state: 'soon', days: 0 });
+  assert.deepEqual(st('2026-10-31'), { state: 'soon', days: 30 });
+  assert.deepEqual(st('2026-11-01'), { state: 'ok', days: 31 });
+  assert.deepEqual(st('2026-09-30'), { state: 'expired', days: -1 });
+  assert.deepEqual(C.documentStatus({}, '2026-10-01'), { state: 'none', days: null });
+  const docs = [{ id: 'd1', title: 'A', expires: '2026-10-10', remindDays: 30 }, { id: 'd2', title: 'B', expires: '2026-10-01', remindDays: 30 }, { id: 'd3', title: 'C', expires: '2027-01-01', remindDays: 30 }, { id: 'd4', title: 'D', expires: '2026-08-01', remindDays: 30 }, { id: 'd5', title: 'E' }];
+  const rem = C.documentReminders(docs, '2026-10-01');
+  assert.deepEqual(rem.map(r => [r.doc.id, r.notifyKey]), [['d2', 'doc-d2-2026-10-01-day'], ['d1', 'doc-d1-2026-10-10-soon']]);
+  assert.deepEqual(C.documentReminders(docs, '2026-10-01', { includeExpiredDays: 90 }).map(r => r.doc.id), ['d4', 'd2', 'd1']);
+  const ren = C.renewDocument({ id: 'd1', expires: '2026-10-10', renewal: { months: 12 } }, '2026-10-01');
+  assert.equal(ren.expires, '2027-10-10');
+  assert.deepEqual(ren.history, [{ expires: '2026-10-10', renewedAt: '2026-10-01' }]);
+  assert.equal(C.renewDocument({ id: 'd4', expires: '2025-09-01' }, '2026-10-01').expires, '2027-10-01');   // istekao davno -> od danas
+  assert.equal(C.renewDocument({ id: 'd6', expires: '2026-09-01' }, '2026-10-01', 6).expires, '2027-03-01'); // istekao skoro -> od starog roka
+});
+
+test('dokumenti: ciscenje zapisa i AI odgovora', () => {
+  const evil = '"><img onerror=1>';
+  const c = C.cleanDocuments([
+    { id: 'd1', kind: 'garancija', title: ' Frižider ', group: 'Tehnika', issued: '2026-01-15', warrantyMonths: '24', files: ['a.pdf', '..\\x.pdf', 'b.bat'], remindDays: 'x', renewal: { amount: '25.000', category: 'Prevoz', months: 12 } },
+    { id: evil, title: 'X' }, { id: 'd3', title: '' }, null
+  ]);
+  assert.equal(c.length, 1);
+  assert.deepEqual(c[0].files, ['a.pdf']);
+  assert.equal(c[0].title, 'Frižider');
+  assert.equal(c[0].warrantyMonths, 24);
+  assert.equal(c[0].remindDays, 30);
+  assert.equal(c[0].renewal.amount, 25000);
+  assert.equal(c[0].kind, 'garancija');
+  assert.match(C.documentPrompt(['Tehnika', 'Auto']), /"Tehnika", "Auto"/);
+  const r = C.cleanDocumentReading('```json\n{"kind":"garancija","title":"Gorenje frižider","group":"tehnika","issued":"15.01.2026","expires":"","warrantyMonths":"24","vendor":"Tehnomanija","confidence":{"issued":"low"}}\n```', ['Tehnika', 'Auto']);
+  assert.deepEqual([r.kind, r.title, r.group, r.issued, r.expires, r.warrantyMonths, r.vendor], ['garancija', 'Gorenje frižider', 'Tehnika', '2026-01-15', '', 24, 'Tehnomanija']);
+  assert.deepEqual(r.low, ['issued']);
+  assert.equal(C.cleanDocumentReading({ kind: 'nesto', title: 'X', group: 'Nepoznata' }, ['Tehnika']).kind, 'dokument');
+  assert.equal(C.cleanDocumentReading({ kind: 'nesto', title: 'X', group: 'Nepoznata' }, ['Tehnika']).group, '');
+  assert.equal(C.cleanDocumentReading('nista', []), null);
+});
