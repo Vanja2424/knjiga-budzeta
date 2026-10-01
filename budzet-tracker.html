@@ -1824,6 +1824,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .doc-file{ display: flex; justify-content: space-between; align-items: center; gap: 6px; padding: 3px 6px; background: var(--fill); border-radius: 6px; }
 .doc-file span{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-filter-btn.active{ background: var(--card); box-shadow: 0 1px 2px rgba(0,0,0,0.12); }
+.warranty-btn{ font-size: 0.8em; padding: 0.2em 0.35em; white-space: nowrap; }
+.doc-reminders h3{ font-size: 1.05em; }
 </style>
 </head>
 <body>
@@ -1893,6 +1895,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   <!-- PREGLED -->
   <div class="screen active" id="screen-pregled">
+    <div class="panel doc-reminders" id="docReminders" style="display:none; margin-bottom:1.8em;"></div>
 
     <div class="panel month-review" id="monthReviewPanel" style="display:none; margin-bottom:1.8em;">
       <div class="month-review-head">
@@ -3826,7 +3829,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   let activeScreen = 'pregled';
   // Iscrtavanje po ekranu — posle izmene se odmah crta samo vidljivi ekran, ostali pri otvaranju.
   const SCREEN_RENDER = {
-    pregled: ()=>{ renderPregledStart(); renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
+    pregled: ()=>{ renderDocReminders(); renderPregledStart(); renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
     prihodi: ()=> renderIncome(),
     rashodi: ()=> renderExpenses(),
     racuni: ()=> renderAccounts(),
@@ -5465,11 +5468,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const d = documents.find(x=> x.id === id); if(!d) return;
     const run = ()=>{
       documents = documents.filter(x=> x.id !== id); saveDocuments();
-      if(window.desktop && window.desktop.bills) d.files.forEach(n=> window.desktop.bills.deleteFile(n));
+      const shared = new Set(entries.flatMap(e=> e.attachments || []));
+      const own = d.files.filter(n=> !shared.has(n));
+      if(window.desktop && window.desktop.bills) own.forEach(n=> window.desktop.bills.deleteFile(n));
       renderAll();
       showUndoToast(t('Obrisan zapis: {0}', d.title), ()=>{
         documents = documents.concat(d); saveDocuments();
-        if(window.desktop && window.desktop.bills) d.files.forEach(n=> window.desktop.bills.restoreFile(n));
+        if(window.desktop && window.desktop.bills) own.forEach(n=> window.desktop.bills.restoreFile(n));
         renderAll();
       });
     };
@@ -5495,6 +5500,24 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     });
   }
   window.__renewDocument = renewDocumentNow;
+  // Pregled: "Uskoro istice" (uskoro + istekli u poslednjih 30 dana)
+  function renderDocReminders(){
+    const box = dEl('docReminders'); if(!box) return;
+    const list = C.documentReminders(documents, docToday(), { includeExpiredDays: 30 });
+    box.style.display = list.length ? '' : 'none';
+    if(!list.length){ box.innerHTML = ''; return; }
+    box.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Uskoro ističe'))}</h3>`
+      + list.slice(0, 6).map(x=> `<div class="doc-row doc-${x.status.state}" data-id="${x.doc.id}"><div class="doc-main"><b translate="no">${escapeHtml(x.doc.title)}</b><span class="hint" translate="no">${escapeHtml(x.doc.group || '')}</span></div><span class="doc-badge">${escapeHtml(docStatusLabel(x.doc).text)}</span><span></span><span></span></div>`).join('')
+      + `<div class="file-row"><button type="button" class="btn-secondary" id="docRemindersOpen">${escapeHtml(t('Otvori Dokumenti'))}</button></div>`;
+    box.querySelectorAll('.doc-row').forEach(r=> r.addEventListener('click', ()=>{ showScreen('dokumenti'); const d = documents.find(x=> x.id === r.dataset.id); if(d) openDocReview({ doc: d }); }));
+    dEl('docRemindersOpen').addEventListener('click', ()=> showScreen('dokumenti'));
+  }
+  window.__docNotifyKeys = ()=> C.documentReminders(documents, docToday()).map(x=> x.notifyKey);
+  // Garancija iz rashoda: popunjen nov zapis sa prilozima rashoda
+  function openWarrantyFromEntry(e){
+    const first = Array.isArray(e.items) && e.items[0] ? C.purchasedItemName(e.items[0]) : '';
+    openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id } });
+  }
 
   // ---- Plati sve zakasnele ----
   let payOverdueLastFocus = null;
@@ -7659,6 +7682,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   window.__openNotificationTarget = openNotificationTarget;
   function checkAndSendNotifications(){
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
+    C.documentReminders(documents, toISODateLocal(new Date())).forEach(x=>{
+      sendNotificationOnce(x.notifyKey, x.status.days === 0 ? t('Danas ističe') : t('Uskoro ističe'), x.doc.title + ' — ' + docStatusLabel(x.doc).text, { screen: 'dokumenti', rowId: x.doc.id });
+    });
     const todayDay = new Date().getDate();
     const curMonthKey = currentMonthKey();
     recurring.forEach(r=>{
@@ -8026,7 +8052,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           <td class="paid-check"><input type="checkbox" data-paid-id="${e.id}" ${paid?'checked':''} title="Plaćeno"></td>
           <td>${d}</td><td>${escapeHtml(e.desc)}${itemsSummaryHtml(e.items)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
-          <td class="row-actions">${e.attachments && e.attachments.length && window.desktop ? `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button>` : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
+          <td class="row-actions">${e.attachments && e.attachments.length && window.desktop ? `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button><button class="btn-link warranty-btn" data-id="${e.id}" title="${escapeHtml(t('Dodaj garanciju za ovu kupovinu'))}">${escapeHtml(t('+ garancija'))}</button>` : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
       selectAllCb.checked = filtered.every(e=>selectedExpenseIds.has(e.id));
       body.querySelectorAll('.row-select').forEach(cb=>{
@@ -8048,6 +8074,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           const entry = entries.find(e=>e.id === b.dataset.id);
           if(entry) duplicateEntry(entry);
         });
+      });
+      body.querySelectorAll('.warranty-btn').forEach(b=>{
+        b.addEventListener('click', ()=>{ const entry = entries.find(e=> e.id === b.dataset.id); if(entry) openWarrantyFromEntry(entry); });
       });
       body.querySelectorAll('.att-btn').forEach(b=>{
         b.addEventListener('click', async ()=>{

@@ -555,6 +555,7 @@
     'Zapis nije sačuvan.': 'The record wasn’t saved.', 'Obrisan zapis: {0}': 'Record deleted: {0}',
     'Obrisati „{0}“? Prilozi idu u Prilozi/.obrisano i trajno se brišu posle 30 dana.': 'Delete “{0}”? Attachments go to Prilozi/.obrisano and are permanently deleted after 30 days.',
     'Obnova: {0}': 'Renewal: {0}', 'Obnovljeno: {0} — važi do {1}': 'Renewed: {0} — valid until {1}',
+    'Uskoro ističe': 'Expiring soon', 'Otvori Dokumenti': 'Open Documents', 'Danas ističe': 'Expires today', 'Dodaj garanciju za ovu kupovinu': 'Add a warranty for this purchase', '+ garancija': '+ warranty',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

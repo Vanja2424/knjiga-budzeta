@@ -1241,6 +1241,32 @@
       window.__fakeDocReading = null;
     } else check('dokumenti: hook __addDocFiles', false);
 
+    // Dokumenti: podsetnik na Pregledu, obavestenja, garancija iz rashoda (prilog rashoda ostaje posle brisanja zapisa)
+    if (typeof window.__docNotifyKeys === 'function') {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const now = new Date();
+      const soonId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke osiguranje', group: 'Osiguranje', expires: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 5)), remindDays: 30 });
+      go('pregled'); await sleep(150);
+      check('dokumenti: kartica Uskoro ističe na Pregledu', $('docReminders') && $('docReminders').style.display !== 'none' && /Smoke osiguranje/.test($('docReminders').textContent), $('docReminders') && $('docReminders').textContent.slice(0, 120));
+      check('dokumenti: ključ obaveštenja', window.__docNotifyKeys().some(k => k.startsWith('doc-' + soonId + '-') && k.endsWith('-soon')), JSON.stringify(window.__docNotifyKeys()));
+      window.__deleteDocument(soonId, { confirm: false });
+      const att = await window.desktop.bills.saveFile(new Uint8Array([1, 2, 3]), 'smoke-garancija.pdf');
+      window.__addEntriesRaw([{ id: 'smoke-war-1', type: 'expense', desc: 'Smoke Tehno', amount: 50000, category: 'Ostalo', date: iso(now), paid: true, tags: [], items: ['Frižider Gorenje'], attachments: [att.name] }]);
+      go('rashodi'); await sleep(100);
+      const wb = document.querySelector('.warranty-btn[data-id="smoke-war-1"]');
+      check('dokumenti: dugme + garancija kod rashoda sa prilogom', !!wb);
+      if (wb) {
+        wb.click(); await sleep(200);
+        check('dokumenti: garancija iz rashoda popunjena', $('docOverlay').classList.contains('show') && $('docKind').value === 'garancija' && $('docIssued').value === iso(now) && $('docMonths').value === '24' && $('docTitle').value === 'Frižider Gorenje' && document.querySelectorAll('#docFiles .doc-file').length === 1, $('docTitle').value + ' ' + $('docMonths').value);
+        $('docSave').click(); await sleep(250);
+        const wd = window.__documents().find(d => d.entryId === 'smoke-war-1');
+        check('dokumenti: garancija vezana za rashod', !!wd && wd.files[0] === att.name);
+        if (wd) { window.__deleteDocument(wd.id, { confirm: false }); await sleep(100); }
+        check('dokumenti: prilog rashoda ostaje posle brisanja garancije', (await window.desktop.bills.openFile(att.name)).ok === true);
+      }
+      window.__deleteEntriesById(['smoke-war-1']);
+    } else check('dokumenti: hook __docNotifyKeys', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
