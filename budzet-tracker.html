@@ -3291,7 +3291,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const saveSavedScenarios = () => localStorage.setItem(SAVED_SCENARIOS_KEY, JSON.stringify(savedScenarios));
 
   const fmt = n => Math.round(n).toLocaleString(LOCALE) + ' RSD';
-  const saveEntries = () => localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries));
+  let entriesVersion = 0; // raste pri svakom cuvanju stavki (kes istorije cena)
+  const saveEntries = () => { entriesVersion++; localStorage.setItem(ENTRIES_KEY, JSON.stringify(entries)); };
   const saveCats = () => localStorage.setItem(CATS_KEY, JSON.stringify(expenseCats));
   const saveLimits = () => localStorage.setItem(LIMITS_KEY, JSON.stringify(limits));
   const saveRecurring = () => localStorage.setItem(RECURRING_KEY, JSON.stringify(recurring));
@@ -5167,6 +5168,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const RECEIPT_MAX_SIDE = 2000;
   let fakeReceiptReading = null; // test: (req, partIndex) -> { ok, content }
   Object.defineProperty(window, '__fakeReceiptReading', { get: ()=> fakeReceiptReading, set: v=>{ fakeReceiptReading = v; }, configurable: true });
+  let fakeSaveFile = null; // test: (bytes, name) -> { ok, name }
+  Object.defineProperty(window, '__fakeSaveFile', { get: ()=> fakeSaveFile, set: v=>{ fakeSaveFile = v; }, configurable: true });
   let receipt = null; // { parts: [{ prep, reading, error }], items, store, date, total, page, resolve, duplicate, diff }
   const rEl = id => document.getElementById(id);
   const defaultShopCat = () => expenseCats.includes('Ostalo') ? 'Ostalo' : (expenseCats[0] || 'Ostalo');
@@ -5186,10 +5189,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!part.reading) part.error = t('AI odgovor nije mogao da se pročita. Popuni podatke ručno.');
     } else { part.reading = null; part.error = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); }
   }
-  // stavke posle popusta, sa kategorijom iz memorije (lista/istorija), pa predlog AI-ja, pa Ostalo
+  // stavke posle popusta, sa kategorijom trazene stavke sa liste (i po pocetku imena: "Sapun" ~ "Sapun Dove 100g"),
+  // pa iz memorije (lista/istorija), pa predlog AI-ja, pa Ostalo
   function receiptItemsWithCategories(list){
     const memory = C.itemCategoryMemory(entries, shopping.items);
-    return C.applyReceiptDiscounts(list).map(i=> Object.assign({}, i, { category: memory.get(C.itemKey(i.name)) || i.category || defaultShopCat() }));
+    const items = C.applyReceiptDiscounts(list);
+    const fromList = new Map(C.matchReceiptToShopping(items, shopping.items).map(m=> [m.receiptIndex, shopCategoryOf(shopping.items.find(s=> s.id === m.shoppingId) || {})]));
+    return items.map((i, idx)=> Object.assign({}, i, { category: fromList.get(idx) || memory.get(C.itemKey(i.name)) || i.category || defaultShopCat() }));
   }
   // Novi deo (dodat ili ponovo procitan): bez korisnikovih izmena -> sve iz pocetka; sa izmenama -> samo taj deo na njegovo mesto
   function applyReceiptPart(idx){
@@ -5224,6 +5230,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       <input type="number" step="0.01" data-f="price" value="${i.price != null ? i.price : ''}" aria-label="${escapeHtml(t('Cena'))}">
       <button type="button" class="del-btn rc-del" aria-label="${escapeHtml(t('Ukloni stavku'))}">×</button></div>`).join('');
     renderReceiptSums();
+    renderReceiptStatus();
+  }
+  function renderReceiptStatus(){
     const errs = receipt.parts.map((pp, i)=> pp.error ? (receipt.parts.length > 1 ? t('Deo {0} nije pročitan ({1})', i + 1, pp.error) : pp.error) : '').filter(Boolean);
     const dup = receipt.date && receipt.total > 0 ? C.findReceiptDuplicate(entries, receipt.date, receipt.total) : null;
     receipt.duplicate = dup;
@@ -5235,7 +5244,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     rEl('receiptSums').innerHTML = rows.length ? rows.map(r=> `<span translate="no">${escapeHtml(r.category)}</span>: ${escapeHtml(fmtNum(r.amount, 2))}`).join(' · ') + ' · ' + escapeHtml(t('Stavke ukupno: {0}', fmtNum(sum, 2))) : '';
     const total = parseFloat(rEl('receiptTotal').value);
     const diff = total > 0 ? Math.round((total - sum) * 100) / 100 : 0;
-    rEl('receiptDiff').textContent = Math.abs(diff) >= 0.5 ? t('Razlika: {0}', fmtNum(diff, 2)) : '';
+    // stavke vece od ukupnog (vise od 1%, bar 10 din): verovatno pogresno procitana cena ili propusten popust
+    const over = diff < 0 && -diff >= Math.max(10, total * 0.01);
+    rEl('receiptDiff').textContent = over ? t('Stavke su veće od ukupnog za {0} — proveri cene ili popust koji nedostaje.', fmtNum(-diff, 2))
+      : Math.abs(diff) >= 0.5 ? t('Razlika: {0}', fmtNum(diff, 2)) : '';
     rEl('receiptAddDiff').style.display = diff >= 0.5 ? '' : 'none';
     receipt.diff = diff;
   }
@@ -5278,7 +5290,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   rEl('receiptAddDiff').addEventListener('click', ()=>{ if(!receipt || !(receipt.diff > 0)) return; receipt.edited = true; receipt.items.push(Object.assign(emptyReceiptItem(), { name: t('Razlika do ukupnog'), price: receipt.diff })); renderReceipt(); });
   rEl('receiptStore').addEventListener('input', e=>{ if(receipt){ receipt.store = e.target.value; receipt.storeTouched = true; } });
   rEl('receiptDate').addEventListener('change', e=>{ if(receipt){ receipt.date = e.target.value; receipt.dateTouched = true; renderReceipt(); } });
-  rEl('receiptTotal').addEventListener('input', e=>{ if(receipt){ const v = parseFloat(e.target.value); receipt.total = Number.isFinite(v) ? v : null; receipt.totalTouched = true; renderReceiptSums(); } });
+  rEl('receiptTotal').addEventListener('input', e=>{ if(receipt){ const v = parseFloat(e.target.value); receipt.total = Number.isFinite(v) ? v : null; receipt.totalTouched = true; renderReceiptSums(); renderReceiptStatus(); } });
   const flipReceipt = d => { if(!receipt || receipt.parts.length < 2) return; receipt.page = (receipt.page + receipt.parts.length + d) % receipt.parts.length; renderReceipt(); };
   rEl('receiptPrev').addEventListener('click', ()=> flipReceipt(-1));
   rEl('receiptNext').addEventListener('click', ()=> flipReceipt(1));
@@ -5316,20 +5328,29 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const store = (rEl('receiptStore').value || '').trim(), date = rEl('receiptDate').value || toISODateLocal(new Date());
     // prilozi: sve slike delova; neuspeh priloga ne blokira rashode
     const attachments = [];
-    if(window.desktop && window.desktop.bills){
+    let photoFailed = 0, photoTotal = 0;
+    const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
+    if(saveFile){
       for(let i = 0; i < r.parts.length; i++){
         const pr = r.parts[i].prep; if(!pr.bytes) continue;
-        const res = await window.desktop.bills.saveFile(pr.bytes, `${date}-racun-${billSlug(store || 'prodavnica')}-${i + 1}.${pr.ext}`);
-        if(res && res.ok) attachments.push(res.name);
+        photoTotal++;
+        let res;
+        try{ res = await saveFile(pr.bytes, `${date}-racun-${billSlug(store || 'prodavnica')}-${i + 1}.${pr.ext}`); } catch(e){ res = null; }
+        if(res && res.ok) attachments.push(res.name); else photoFailed++;
       }
     }
-    const rows = C.receiptToExpenses(items.length ? items : [Object.assign(emptyReceiptItem(), { name: t('Nabavka'), price: total })], total > 0 ? total : null);
+    // bez stavki: jedan rashod na ukupan iznos, bez izmisljene stavke (ne ulazi u Cene)
+    let rows = items.length ? C.receiptToExpenses(items, total > 0 ? total : null) : [];
+    if(!rows.length) rows = [{ category: defaultShopCat(), amount: Math.round(total * 100) / 100, items: [], itemPrices: [] }];
     const receiptId = newId(), accountId = accounts.length ? defaultAccountId() : undefined;
-    const qtyLabel = i => (i.qty > 1 || i.unit) ? `${fmtNum(i.qty, 3)} ${i.unit || 'kom'}` : '';
+    // "1 kom" se ne pise (podrazumevano)
+    const qtyLabel = i => { const u = C.normUnit(i.unit) || i.unit || 'kom'; return (i.qty > 1 || (u !== 'kom' && i.unit)) ? `${fmtNum(i.qty, 3)} ${u}` : ''; };
     const made = rows.map(row=>{
-      const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: row.amount, category: row.category, date, paid: true, tags: ['nabavka'],
-        items: row.items.map(i=> C.purchaseItemLabel({ name: (i.name || '').trim() || i.raw || t('Stavka'), qty: qtyLabel(i) })),
-        itemPrices: row.itemPrices, itemQty: row.items.map(i=> ({ qty: i.qty > 0 ? i.qty : 1, unit: C.normUnit(i.unit) || 'kom' })), receiptId };
+      const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: row.amount, category: row.category, date, paid: true, tags: ['nabavka'], receiptId };
+      // nazivi se cuvaju na srpskom (red razlike, stavka bez naziva), bez obzira na jezik aplikacije
+      if(row.items.length) Object.assign(e, {
+        items: row.items.map(i=> C.purchaseItemLabel({ name: C.canonicalItemName(i.name) || i.raw || 'Stavka', qty: qtyLabel(i) })),
+        itemPrices: row.itemPrices, itemQty: row.items.map(i=> ({ qty: i.qty > 0 ? i.qty : 1, unit: C.normUnit(i.unit) || 'kom' })) });
       if(attachments.length) e.attachments = attachments.slice();
       if(accountId) e.accountId = accountId;
       entries.push(e); applyRoundUpSaving(row.amount);
@@ -5340,8 +5361,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     matches.forEach(m=>{ const s = shopping.items.find(x=> x.id === m.shoppingId); const it = items[m.receiptIndex]; s.needed = false; s.checked = false; if(it.price > 0) s.price = it.price; });
     saveEntries(); saveShopping();
     closeReceipt(true); renderAll();
+    if(photoFailed) appAlert(t('Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.', photoFailed, photoTotal));
     showUndoToast(t('Račun iz prodavnice dodat ({0} stavki)', items.length), ()=>{
       const ids = new Set(made.map(e=> e.id)); entries = entries.filter(e=> !ids.has(e.id));
+      // slike ovog racuna idu u Prilozi/.obrisano (nijedan drugi rashod ih ne koristi)
+      if(attachments.length && window.desktop && window.desktop.bills) attachments.forEach(n=> window.desktop.bills.deleteFile(n));
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
       saveEntries(); saveShopping(); renderAll();
     });
@@ -6611,7 +6635,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
             <td class="muted">${t('{0}×', g.count)} · ${t('prosečno {0}', fmt(g.avgPurchase))}</td>
             <td class="num">${fmt(g.total)}</td></tr>`).join('')}</table>
           ${all.length > 5 ? `<button class="btn-link analiza-more" data-cat="${escapeHtml(r.cat)}">${analizaState.showAll.has(r.cat) ? t('prikaži manje') : t('prikaži sve')}</button>` : ''}`;
-        const bought = C.purchasedItemStats(entries, [b.month], r.cat).slice(0, 8);
+        const bought = C.purchasedItemStats(entries, [b.month], r.cat, shopping.items).slice(0, 8);
         if(bought.length) groups += `<div class="analiza-bought"><div class="analiza-bought-title">${t('Kupljene stvari')}</div>${bought.map(s=>
           `<span class="analiza-bought-item"><span translate="no">${escapeHtml(s.name)}</span> ×${s.count}${s.amount != null ? ' · ~' + fmt(s.amount) : ''}</span>`).join('')}</div>`;
       }
@@ -6794,11 +6818,23 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(q) out.itemQty = q.map(cleanItemQty);
     return out;
   }
-  const unitPriceTxt = (v, unit) => fmtNum(v, 2) + ' RSD/' + unit;
+  // jedinica iz podataka (kom, kg, l, pak) -> prikaz (EN: pcs, pack)
+  const unitTxt = unit => t(String(unit || 'kom'));
+  const unitPriceTxt = (v, unit) => fmtNum(v, 2) + ' RSD/' + unitTxt(unit);
   const daysAgo = iso => Math.max(0, Math.round((parseLocalDate(toISODateLocal(new Date())) - parseLocalDate(iso)) / 864e5));
   const priceChangeHtml = ch => ch ? `<span class="shop-price-change ${ch.pct > 0 ? 'up' : 'down'}" title="${escapeHtml(ch.vs === 'store' ? t('u odnosu na prethodnu kupovinu u istoj prodavnici ({0})', fmtNum(ch.prev, 2)) : t('u odnosu na prosek poslednjih kupovina ({0})', fmtNum(ch.prev, 2)))}">${ch.pct > 0 ? '↑' : '↓'}${Math.abs(ch.pct)}%</span>` : '';
-  const cheapestHtml = ins => ins && ins.cheapest ? `<span class="shop-cheapest">${t('najjeftinije: {0} {1} (pre {2})', '<span translate="no">' + escapeHtml(ins.cheapest.store || t(C.NO_STORE)) + '</span>', unitPriceTxt(ins.cheapest.unitPrice, ins.unit), daysTxt(daysAgo(ins.cheapest.date)))}</span>` : '';
+  const cheapestHtml = ins => {
+    if(!ins || !ins.cheapest) return '';
+    const store = '<span translate="no">' + escapeHtml(ins.cheapest.store || t(C.NO_STORE)) + '</span>', price = unitPriceTxt(ins.cheapest.unitPrice, ins.unit), days = daysAgo(ins.cheapest.date);
+    return `<span class="shop-cheapest">${days === 0 ? t('najjeftinije: {0} {1} (danas)', store, price) : t('najjeftinije: {0} {1} (pre {2})', store, price, daysTxt(days))}</span>`;
+  };
   let priceFilter = 'all';
+  let priceHistCache = null;
+  function shopPriceHistory(){
+    if(!priceHistCache || priceHistCache.entries !== entries || priceHistCache.version !== entriesVersion)
+      priceHistCache = { entries, version: entriesVersion, hist: C.priceHistory(entries) };
+    return priceHistCache.hist;
+  }
   function renderShopPrices(hist){
     const box = document.getElementById('shopPrices');
     const today = toISODateLocal(new Date());
@@ -6833,14 +6869,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const xy = pts.map(o=> [P + (d1 > d0 ? (parseLocalDate(o.date).getTime() - d0) / (d1 - d0) : 0.5) * (W - 2 * P), H - P - (hi > lo ? (o.unitPrice - lo) / (hi - lo) : 0.5) * (H - 2 * P)].map(v=> Math.round(v * 10) / 10));
       chart = `<svg class="price-chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><polyline points="${xy.map(p=> p.join(',')).join(' ')}"/>${xy.map(p=> `<circle cx="${p[0]}" cy="${p[1]}" r="2.5"/>`).join('')}</svg>`;
     }
-    const rows = h.obs.slice().reverse().map(o=> `<tr><td>${fmtDocDate(o.date)}</td><td translate="no">${escapeHtml(o.store || t(C.NO_STORE))}</td><td class="num">${fmtNum(o.qty, 3)} ${o.unit}</td><td class="num">${unitPriceTxt(o.unitPrice, o.unit)}</td></tr>`).join('');
+    const rows = h.obs.slice().reverse().map(o=> `<tr><td>${fmtDocDate(o.date)}</td><td translate="no">${escapeHtml(o.store || t(C.NO_STORE))}</td><td class="num">${fmtNum(o.qty, 3)} ${unitTxt(o.unit)}</td><td class="num">${unitPriceTxt(o.unitPrice, o.unit)}</td></tr>`).join('');
     openDialog(h.name, chart + `<table class="price-hist"><thead><tr><th>${t('Datum')}</th><th>${t('Prodavnica')}</th><th class="num">${t('Količina')}</th><th class="num">${t('Cena po jedinici')}</th></tr></thead><tbody>${rows}</tbody></table>`, { html: true, alertOnly: true });
   }
   function renderShopping(){
     document.querySelectorAll('.shop-by-btn').forEach(b=> b.classList.toggle('active', b.dataset.by === shopState.by));
     document.querySelectorAll('.shop-show-btn').forEach(b=> b.classList.toggle('active', b.dataset.show === shopState.show));
     const list = document.getElementById('shopList');
-    const hist = C.priceHistory(entries), today = toISODateLocal(new Date());
+    const hist = shopPriceHistory(), today = toISODateLocal(new Date());
     const preferredStore = C.mostCommonStore(shopping.items.filter(i=> i.needed));
     const pricesBox = document.getElementById('shopPrices');
     list.style.display = shopState.show === 'prices' ? 'none' : '';
@@ -6849,8 +6885,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const metaHtml = i => {
       const est = C.estimateShoppingItem(i, hist, preferredStore);
       const fromReceipt = est.source === 'store' || est.source === 'last';
-      const ins = fromReceipt ? C.priceInsight(hist.get(C.itemKey(i.name)), today) : null;
-      const price = est.amount > 0 ? `<span title="${escapeHtml(fromReceipt ? t('po ceni sa računa: {0}', unitPriceTxt(est.unitPrice, ins ? ins.unit : 'kom')) : t('ručno upisana cena'))}">${fromReceipt ? '~' : ''}${fmt(est.amount)}</span>${fromReceipt && ins ? priceChangeHtml(ins.change) : ''}` : '';
+      const ins = fromReceipt ? C.priceInsight(C.itemPriceHistory(i, hist), today) : null;
+      const price = est.amount > 0 ? `<span title="${escapeHtml(fromReceipt ? t('po ceni sa računa: {0}', unitPriceTxt(est.unitPrice, est.unit)) : t('ručno upisana cena'))}">${fromReceipt ? '~' : ''}${fmt(est.amount)}</span>${fromReceipt && ins ? priceChangeHtml(ins.change) : ''}` : '';
       return { html: [i.qty ? `<span translate="no">${escapeHtml(i.qty)}</span>` : '', price].filter(Boolean).join(' · '), cheapest: ins ? cheapestHtml(ins) : '' };
     };
     const visible = shopState.show === 'need' ? shopping.items.filter(i=> i.needed) : shopping.items;
@@ -6910,8 +6946,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }));
     box.querySelectorAll('.shop-suggest-hide').forEach(b=> b.addEventListener('click', ()=>{
       const key = b.dataset.key;
-      const last = entries.filter(e=> e.type === 'expense' && e.paid !== false && Array.isArray(e.items) && e.items.some(l=> C.purchasedItemKey(l) === key)).map(e=> e.date).sort().pop();
-      if(!shopping.dismissed) shopping.dismissed = {};
+      const last = C.lastPurchaseDates(entries, shopping).get(key);
+      shopping.dismissed = C.pruneDismissed(entries, shopping);
       shopping.dismissed[key] = last || toISODateLocal(new Date());
       saveShopping(); renderShopping();
     }));
@@ -6932,6 +6968,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!name) return;
       const other = C.findShoppingItem(shopping.items, name);
       if(other && other.id !== it.id){ appAlert(t('Stavka sa tim imenom već postoji.')); return; }
+      // staro ime ostaje kao alias: kupovine i cene pod starim imenom i dalje pripadaju stavci
+      if(C.normShoppingName(name) !== C.normShoppingName(it.name)){
+        const aliases = (it.aliases || []).concat([it.name]).filter((a, ai, arr)=> C.normShoppingName(a) !== C.normShoppingName(name) && arr.findIndex(b=> C.normShoppingName(b) === C.normShoppingName(a)) === ai).slice(-10);
+        if(aliases.length) it.aliases = aliases; else delete it.aliases;
+      }
       it.name = name; it.qty = String(vals.qty || '').trim();
       it.price = vals.price > 0 ? vals.price : null;
       it.section = shopping.sections.includes(vals.section) ? vals.section : C.SHOPPING_OTHER;
@@ -6978,7 +7019,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Kategorija za racun: nepostojeca kategorija stavke -> prva kategorija rashoda (oznaceno u raspodeli)
   const shopPurchaseCat = it => shopCategoryOf(it) || expenseCats[0] || 'Ostalo';
   const shopEstimateNow = () => C.shoppingEstimate(shopping.items.map(i=> Object.assign({}, i, { category: shopCategoryOf(i) || C.NO_CATEGORY })),
-    { history: C.priceHistory(entries), preferredStore: C.mostCommonStore(shopping.items.filter(i=> i.needed)) });
+    { history: shopPriceHistory(), preferredStore: C.mostCommonStore(shopping.items.filter(i=> i.needed)) });
   function renderShoppingFooter(){
     const foot = document.getElementById('shopFooter');
     const est = shopEstimateNow();
@@ -8241,6 +8282,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function duplicateEntry(entry){
     const copy = Object.assign({}, entry, { id: newId(), date: toISODateLocal(new Date()) });
+    // kopija je nova kupovina: nije isti racun (duplikat, Cene) i nema njegove slike
+    delete copy.receiptId; delete copy.attachments;
     if(Array.isArray(copy.items)) copy.items = copy.items.slice();
     if(Array.isArray(copy.itemPrices)) copy.itemPrices = copy.itemPrices.slice();
     if(Array.isArray(copy.itemQty)) copy.itemQty = copy.itemQty.map(q=> Object.assign({}, q));
@@ -8249,6 +8292,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveEntries(); renderAll();
   }
 
+  window.__duplicateEntry = duplicateEntry;
   function updateExpenseBulkBar(){
     [...selectedExpenseIds].forEach(id=>{ if(!entries.some(e=>e.id===id)) selectedExpenseIds.delete(id); });
     const bar = document.getElementById('expenseBulkBar');

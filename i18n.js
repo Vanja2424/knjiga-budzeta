@@ -582,6 +582,10 @@
     'ručno upisana cena': 'manually entered price',
     '{0} od {1} po ceni sa računa': '{0} of {1} at receipt price',
     'Količina': 'Quantity',
+    'kom': 'pcs', 'pak': 'pack',
+    'najjeftinije: {0} {1} (danas)': 'cheapest: {0} {1} (today)',
+    'Stavke su veće od ukupnog za {0} — proveri cene ili popust koji nedostaje.': 'Items exceed the total by {0} — check the prices or a missing discount.',
+    'Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.': 'The expenses were saved, but {0} of {1} receipt images could not be saved to the Prilozi folder.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

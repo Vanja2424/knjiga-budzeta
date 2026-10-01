@@ -1580,9 +1580,9 @@ test('cene: kolicina, opazanja, promena, najjeftinije, procena', () => {
   assert.equal(small.change, null);                    // +2% je ispod praga
   // procena
   const est = it => C.estimateShoppingItem(it, hist, 'Maxi');
-  assert.deepEqual(est({ name: 'Mleko', qty: '3 kom', store: 'Lidl' }), { amount: 345, source: 'store', unitPrice: 115 });
-  assert.deepEqual(est({ name: 'Mleko', qty: '' }), { amount: 129, source: 'store', unitPrice: 129 });
-  assert.deepEqual(est({ name: 'Sir', qty: '250 g' }), { amount: 190, source: 'store', unitPrice: 760 });
+  assert.deepEqual(est({ name: 'Mleko', qty: '3 kom', store: 'Lidl' }), { amount: 345, source: 'store', unitPrice: 115, unit: 'kom' });
+  assert.deepEqual(est({ name: 'Mleko', qty: '' }), { amount: 129, source: 'store', unitPrice: 129, unit: 'kom' });
+  assert.deepEqual(est({ name: 'Sir', qty: '250 g' }), { amount: 190, source: 'store', unitPrice: 760, unit: 'kg' });
   assert.equal(est({ name: 'Sir', qty: '2 kom' }).amount, 760);   // jedinice se ne slazu -> cena reda
   assert.deepEqual(est({ name: 'Sapun', price: 150 }), { amount: 150, source: 'manual' });
   assert.deepEqual(est({ name: 'Nesto' }), { amount: 0, source: null });
@@ -1590,4 +1590,76 @@ test('cene: kolicina, opazanja, promena, najjeftinije, procena', () => {
   assert.deepEqual([e1.total, e1.unpriced], [100, 0]);
   const e2 = C.shoppingEstimate([{ needed: true, name: 'Mleko', qty: '2 kom', category: 'A' }, { needed: true, name: 'X', category: 'A' }], { history: hist, preferredStore: 'Maxi' });
   assert.deepEqual([e2.total, e2.unpriced, e2.fromReceipts], [258, 1, 1]);
+});
+
+// ---------- Ispravke: racun iz prodavnice i pracenje cena ----------
+test('cleanReceiptReading: popust sa pozitivnom cenom postaje negativan', () => {
+  const r = C.cleanReceiptReading(JSON.stringify({ items: [{ name: 'Mleko', price: 100 }, { raw: 'POPUST', price: '15,00', discount: true }] }), { categories: [] });
+  assert.equal(r.items[1].discount, true);
+  assert.equal(r.items[1].price, -15);
+  assert.deepEqual(C.applyReceiptDiscounts(r.items).map(x => [x.name, x.price]), [['Mleko', 85]]);
+});
+test('receiptToExpenses: negativna upisana cena je popust, ne ide u itemPrices', () => {
+  const it = (name, price, category) => ({ name, qty: 1, unit: '', price, category, discount: false });
+  const rows = C.receiptToExpenses([it('A', 100, 'Hrana'), it('Popust', -20, 'Hrana'), it('B', 50, 'Hrana')], null);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].amount, 130);
+  assert.deepEqual(rows[0].itemPrices, [80, 50]);
+  assert.deepEqual(rows[0].items.map(i => i.name), ['A', 'B']);
+});
+test('canonicalItemName: red razlike se cuva na srpskom', () => {
+  assert.equal(C.canonicalItemName('Difference to total'), 'Razlika do ukupnog');
+  assert.equal(C.canonicalItemName('  razlika do ukupnog '), 'Razlika do ukupnog');
+  assert.equal(C.canonicalItemName('Mleko'), 'Mleko');
+});
+test('estimateShoppingItem vraca jedinicu posmatranja koje je koristio', () => {
+  const R = (id, date, store, items, prices, qty) => ({ id, type: 'expense', receiptId: 'r' + id, date, desc: store, amount: 1, category: 'Hrana', items, itemPrices: prices, itemQty: qty });
+  const hist = C.priceHistory([R('1', '2026-09-01', 'Maxi', ['Sir'], [800], [{ qty: 1, unit: 'kg' }]), R('2', '2026-09-20', 'Lidl', ['Sir'], [300], [{ qty: 1, unit: 'kom' }])]);
+  const e = C.estimateShoppingItem({ name: 'Sir', store: 'Maxi' }, hist, '');
+  assert.equal(e.unit, 'kg');
+  assert.equal(e.unitPrice, 800);
+  assert.equal(C.estimateShoppingItem({ name: 'Sir' }, hist, '').unit, 'kom');
+});
+test('itemKey / purchasedItemName skidaju sve zagrade sa kolicinom na kraju', () => {
+  assert.equal(C.itemKey('Mleko (2 kom) (2 kom)'), 'mleko');
+  assert.equal(C.purchasedItemName('Mleko (2 kom) (1 l)'), 'Mleko');
+  assert.equal(C.purchasedItemName('Hleb (crni) (2 kom)'), 'Hleb (crni)');
+});
+test('preimenovana stavka liste zadrzava istoriju kupovina (aliases)', () => {
+  const buy = (id, date, items) => ({ id, type: 'expense', date, amount: 100, category: 'Hrana', desc: 'x', items, itemPrices: items.map(() => 100) });
+  const entries = [buy('1', '2026-09-01', ['Mleko']), buy('2', '2026-09-08', ['Mleko (2 kom)']), buy('3', '2026-09-15', ['Mleko 2,8%'])];
+  const shopping = { items: [{ id: 'm', name: 'Mleko 2,8%', aliases: ['Mleko'], needed: false }] };
+  const r = C.restockSuggestions(entries, shopping, '2026-09-29');
+  assert.deepEqual(r, [{ name: 'Mleko 2,8%', key: 'mleko 2,8%', intervalDays: 7, daysSince: 14, itemId: 'm' }]);
+  const s = C.purchasedItemStats(entries, null, null, shopping.items);
+  assert.deepEqual(s.map(x => [x.name, x.count]), [['Mleko 2,8%', 3]]);
+  // nova stavka sa starim imenom ima prednost nad aliasom
+  const two = { items: shopping.items.concat([{ id: 'n', name: 'Mleko', needed: false }]) };
+  assert.equal(C.purchasedItemStats(entries, null, null, two.items).length, 2);
+  // procena po ceni sa racuna i za staro ime
+  const R = (id, date, items, prices) => ({ id, type: 'expense', receiptId: 'r' + id, date, desc: 'Maxi', amount: 1, category: 'Hrana', items, itemPrices: prices });
+  const hist = C.priceHistory([R('a', '2026-09-01', ['Mleko'], [120])]);
+  assert.equal(C.estimateShoppingItem(shopping.items[0], hist, '').amount, 120);
+  assert.equal(C.itemPriceHistory(shopping.items[0], hist).obs.length, 1);
+  // kopija cuva aliase
+  const n = C.normalizeShopping({ items: [{ id: 'm', name: 'Mleko 2,8%', aliases: ['Mleko', 'mleko', '', 5, 'Mleko 2,8%'] }] }, () => 'x');
+  assert.deepEqual(n.items[0].aliases, ['Mleko']);
+  assert.equal('aliases' in C.normalizeShopping({ items: [{ id: 'z', name: 'Z' }] }, () => 'x').items[0], false);
+});
+test('pruneDismissed: izbacuje sakrivanja posle novije kupovine i za stvari koje vise nisu kupljene', () => {
+  const buy = (id, date, items) => ({ id, type: 'expense', date, amount: 100, category: 'Hrana', desc: 'x', items });
+  const entries = [buy('1', '2026-09-01', ['Sok']), buy('2', '2026-09-10', ['Hleb']), buy('3', '2026-09-20', ['Hleb'])];
+  const shopping = { items: [], dismissed: { sok: '2026-09-01', hleb: '2026-09-10', kafa: '2026-08-01' } };
+  assert.deepEqual(C.pruneDismissed(entries, shopping), { sok: '2026-09-01' });
+  assert.equal(C.lastPurchaseDates(entries, shopping).get('hleb'), '2026-09-20');
+});
+test('i18n: jedinice i "danas" na engleskom', () => {
+  const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+  const ctx = { localStorage: { getItem: () => 'en' } };
+  ctx.self = ctx;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../i18n.js'), 'utf8'), ctx);
+  const t = ctx.I18N.t;
+  assert.equal(t('kom'), 'pcs');
+  assert.equal(t('pak'), 'pack');
+  assert.equal(t('najjeftinije: {0} {1} (danas)', 'Lidl', '10 RSD/pcs'), 'cheapest: Lidl 10 RSD/pcs (today)');
 });
