@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { createBills, registerBillsIpc } = require('./bills');
+const { createTelegram, registerTelegramIpc } = require('./telegram');
 // Azuriranja postoje samo u instaliranoj verziji (portable i razvojno pokretanje ih nemaju).
 const IS_MAC = process.platform === 'darwin';
 // Na Mac-u aplikacija nije potpisana (nema Apple developer naloga), pa samo-azuriranje ne radi —
@@ -113,6 +114,7 @@ const dataDir = () => process.env.KNJIGA_DATA_DIR || path.join(app.getPath('docu
 const dataFile = () => path.join(dataDir(), 'podaci.json');
 const backupDir = () => process.env.KNJIGA_BACKUP_DIR || path.join(dataDir(), 'Rezervne kopije');
 const BACKUP_KEEP_DAYS = 30;
+let telegramApi = null; // Telegram bot (vidi telegram.js); pravi se u init()
 let billsApi = null; // Kucni racuni: Groq citanje i prilozi (vidi bills.js); pravi se u init() posle loadSettings
 let lastSavedAt = null;
 
@@ -974,6 +976,15 @@ function init() {
   loadSettings();
   billsApi = createBills({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, dataDir });
   registerBillsIpc(ipcMain, billsApi, shell);
+  // Telegram: poruku obradjuje stranica (__telegramBridge); dok stranica nije spremna, poruka se ne potvrdjuje Telegramu
+  const runTelegramBridge = async (fn, arg) => {
+    const r = await runInMain(`window.__telegramBridge ? window.__telegramBridge.${fn}(${arg === undefined ? '' : JSON.stringify(arg)}) : '__notready'`);
+    if (r === '__notready') throw new Error('stranica nije spremna');
+    return r;
+  };
+  telegramApi = createTelegram({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, T,
+    handle: p => runTelegramBridge('handle', p), tick: () => runTelegramBridge('tick'), onStatus: st => sendToMain('telegram:status', st) });
+  registerTelegramIpc(ipcMain, telegramApi);
   setTimeout(() => billsApi.purgeTrash(30), 60 * 1000);
 
   protocol.handle('app', async (req) => {
@@ -1028,9 +1039,12 @@ function init() {
   setInterval(() => runExtraBackup(false), 15 * 60 * 1000);
   setupUpdater();
   mainWindow.webContents.once('did-finish-load', () => handleArgs(process.argv));
+  // u testovima bot ne radi (osim zivog testa sa test tokenom)
+  if (!process.env.KNJIGA_TEST || process.env.KNJIGA_TELEGRAM_LIVE) mainWindow.webContents.once('did-finish-load', () => setTimeout(() => telegramApi.start(), 3000));
 }
 
 app.on('before-quit', (e) => {
+  if (telegramApi) telegramApi.stop();
   if (!isQuitting) { e.preventDefault(); quitApp(); }
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());

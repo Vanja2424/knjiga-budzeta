@@ -77,6 +77,17 @@ contextBridge.exposeInMainWorld('desktop', {
     saveFile: (bytes, name) => ipcRenderer.invoke('bills:save-file', bytes, name),
     openFile: (name) => ipcRenderer.invoke('bills:open-file', name),
     deleteFile: (name) => ipcRenderer.invoke('bills:delete-file', name),
-    restoreFile: (name) => ipcRenderer.invoke('bills:restore-file', name)
+    restoreFile: (name) => ipcRenderer.invoke('bills:restore-file', name),
+    readFile: (name) => ipcRenderer.invoke('bills:read-file', name)
+  },
+
+  // Telegram bot: token i petlja su u glavnom procesu; stranica vidi samo status
+  telegram: {
+    status: () => ipcRenderer.invoke('telegram:status'),
+    setToken: (t) => ipcRenderer.invoke('telegram:set-token', t),
+    pair: () => ipcRenderer.invoke('telegram:pair'),
+    unlink: () => ipcRenderer.invoke('telegram:unlink'),
+    setOn: (on) => ipcRenderer.invoke('telegram:set-on', on),
+    onStatus: (cb) => ipcRenderer.on('telegram:status', (_e, st) => cb(st))
   }
 });
