@@ -30,6 +30,7 @@ let LANG = readLangEarly();
 app.commandLine.appendSwitch('lang', LANG === 'en' ? 'en-GB' : 'sr-Latn-RS');
 app.commandLine.appendSwitch('accept-lang', LANG === 'en' ? 'en-GB,en' : 'sr-Latn-RS,sr');
 const EN = {
+  '✓ Povezano sa Knjigom budžeta. Pošalji npr. „kafa 250“ ili sliku računa. /pomoc za uputstvo.': '✓ Connected to Budget Book. Send e.g. “coffee 250” or a receipt photo. /pomoc for help.', '⏳ Čitam…': '⏳ Reading…',
   'Ažuriranja': 'Updates', 'Ažuriranja rade samo u instaliranoj verziji aplikacije.': 'Updates only work in the installed version of the app.',
   'Imaš najnoviju verziju ({0}).': 'You have the latest version ({0}).', 'Provera ažuriranja nije uspela.': 'The update check failed.',
   'Sačuvaj izveštaj kao PDF': 'Save report as PDF', '{0} kasnih plaćanja': '{0} late payments', 'Knjiga budžeta': 'Budget Book',

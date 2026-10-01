@@ -2718,6 +2718,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="import-status" id="aiStatus" aria-live="polite"></div>
         <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi (za najveće troškove i ponavljajuće stavke to su i njihovi opisi). Ostali podaci ostaju samo na ovom računaru.</div>
       </div>
+      <div class="settings-group" id="tgSettings" style="display:none;">
+        <h3>Telegram bot</h3>
+        <div class="import-status" style="margin-top:0;">Šalji botu rashode („kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
+        <div class="import-status"><label for="tgToken">Token bota</label></div>
+        <div class="file-row"><input type="password" id="tgToken" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="tgTokenSave">Sačuvaj token</button><button class="btn-link" id="tgTokenClear">Obriši token</button></div>
+        <div class="file-row"><button class="btn-secondary" id="tgPair">Poveži Telegram</button><button class="btn-link" id="tgUnlink">Prekini vezu</button></div>
+        <label class="paid-checkbox-label"><input type="checkbox" id="tgOn"> Bot uključen</label>
+        <div class="import-status" id="tgStatus" aria-live="polite"></div>
+        <div class="import-status">Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).</div>
+      </div>
 
       <div id="desktopSettings" style="display:none;">
         <div class="settings-group">
@@ -3897,7 +3907,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     kursevi: ()=> renderRatesScreen(),
     nabavka: ()=> renderShopping(),
     dokumenti: ()=> renderDocuments(),
-    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); }
+    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); renderTgSettings(); }
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
   function invalidate(){
@@ -4142,7 +4152,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(roundup <= 0) return;
     g.current += roundup;
     saveGoals();
+  }  function unapplyRoundUpSaving(amount){
+    if(!roundUpGoalId) return;
+    const g = goals.find(x=>x.id === roundUpGoalId);
+    const roundup = Math.ceil(amount/100)*100 - amount;
+    if(!g || roundup <= 0) return;
+    g.current = Math.max(0, Math.round((g.current - roundup) * 100) / 100);
+    saveGoals();
   }
+
   function renderRoundUpSelect(){
     const sel = document.getElementById('roundUpGoalSelect');
     const prev = roundUpGoalId;
@@ -5236,6 +5254,42 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     aiStatus(r.ok ? t('Ključ radi ✓') : (BILL_ERR[r.kind] || BILL_ERR.http)(r));
   });
   document.getElementById('aiKeysLink').addEventListener('click', ()=> window.open('https://console.groq.com/keys'));
+  // ---------- Telegram bot: podesavanja (token i petlja su u glavnom procesu) ----------
+  const tgEl = id => document.getElementById(id);
+  const TG_STATE = { notoken: ()=> t('Token nije upisan.'), off: ()=> t('Bot je isključen.'), running: ()=> t('Radi.'), offline: ()=> t('Nema veze sa Telegramom — pokušavam ponovo.'),
+    conflict: ()=> t('Isti bot radi na drugom mestu (drugi računar ili webhook).'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
+  let tgPairTimer = null;
+  function renderTgStatus(st){
+    if(!st) return;
+    tgEl('tgToken').value = ''; tgEl('tgToken').placeholder = st.set ? t('upisan (…{0})', st.last4) : t('nije upisan');
+    tgEl('tgOn').checked = st.on;
+    ['tgPair', 'tgOn'].forEach(id=> { tgEl(id).disabled = !st.set; });
+    tgEl('tgUnlink').style.display = st.linked ? '' : 'none';
+    const parts = [];
+    if(st.pairCode) parts.push(t('Pošalji botu {0} kod: {1} (važi još {2} min).', st.botName ? '@' + st.botName : '', st.pairCode, Math.max(1, Math.ceil((st.pairUntil - Date.now()) / 60000))));
+    else if(st.linked) parts.push(t('Povezan sa {0}.', st.botName ? '@' + st.botName : t('botom')));
+    else if(st.set) parts.push(t('Nije povezan — klikni „Poveži Telegram“.'));
+    if(TG_STATE[st.state] && (st.state !== 'running' || !st.linked)) parts.push(TG_STATE[st.state]());
+    if(st.set && !(document.getElementById('deskCloseToTray') || {}).checked) parts.push(t('Zatvaranje prozora gasi aplikaciju, pa i bota — uključi „Zatvaranje prozora ostavlja aplikaciju u system tray-u“.'));
+    if(st.encryption === false) parts.push(t('Šifrovanje ključa nije dostupno na ovom računaru, pa ključ ne može da se sačuva.'));
+    tgEl('tgStatus').textContent = parts.join(' ');
+    clearTimeout(tgPairTimer);
+    if(st.pairCode) tgPairTimer = setTimeout(async ()=> renderTgStatus(await window.desktop.telegram.status()), 30000);
+  }
+  async function renderTgSettings(){
+    const box = tgEl('tgSettings');
+    if(!(window.desktop && window.desktop.telegram)){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    renderTgStatus(await window.desktop.telegram.status());
+  }
+  if(window.desktop && window.desktop.telegram){
+    window.desktop.telegram.onStatus(st=> renderTgStatus(st));
+    tgEl('tgTokenSave').addEventListener('click', async ()=>{ const v = tgEl('tgToken').value.trim(); if(!v) return; tgEl('tgStatus').textContent = t('Proveravam…'); renderTgStatus(await window.desktop.telegram.setToken(v)); });
+    tgEl('tgTokenClear').addEventListener('click', async ()=> renderTgStatus(await window.desktop.telegram.setToken('')));
+    tgEl('tgPair').addEventListener('click', async ()=> renderTgStatus(await window.desktop.telegram.pair()));
+    tgEl('tgUnlink').addEventListener('click', async ()=>{ if(await appConfirm(t('Prekinuti vezu sa Telegramom? Bot više neće primati tvoje poruke dok ga ponovo ne povežeš.'))) renderTgStatus(await window.desktop.telegram.unlink()); });
+    tgEl('tgOn').addEventListener('change', async e=> renderTgStatus(await window.desktop.telegram.setOn(e.target.checked)));
+  }
 
   // ---------- Fiskalni racun iz prodavnice: slike (delovi) -> Groq po delu -> spajanje -> stavke/kategorije/lista -> rashodi ----------
   const RECEIPT_MAX_SIDE = 2000;
@@ -5447,6 +5501,82 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   window.__saveReceipt = saveReceipt;
   rEl('shopReceiptBtn').addEventListener('click', ()=> rEl('shopReceiptInput').click());
   rEl('shopReceiptInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addReceiptFiles(f); });
+
+  // ---------- Telegram bot: obrada poruka (glavni proces prosledi poruku, ovde se upisuje i vrati odgovor) ----------
+  const TG_DONE_KEY = 'budzet-telegram-obradjeno-v1', TG_PENDING_KEY = 'budzet-telegram-cekanje-v1', TG_LOG_KEY = 'budzet-telegram-unosi-v1';
+  const tgLoad = k => { try{ const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; } };
+  const tgSave = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  let fakeTgCategory = null; // test: req -> { ok, content }
+  Object.defineProperty(window, '__fakeTgCategory', { get: ()=> fakeTgCategory, set: v=>{ fakeTgCategory = v; }, configurable: true });
+  const tgReply = (text, extra) => ({ replies: [Object.assign({ text }, extra || {})] });
+  const tgDayLabel = iso => { const today = toISODateLocal(new Date()); const y = new Date(); y.setDate(y.getDate() - 1);
+    return iso === today ? t('danas') : iso === toISODateLocal(y) ? t('juče') : fmtDocDate(iso); };
+  const TG_HELP = () => t('Pošalji rashod kao „kafa 250“, „gorivo 6000 juče visa“ ili prihod sa + („+honorar 30000“). Pošalji sliku ili PDF računa iz prodavnice, kućnog računa ili uplatnice — pokazaću šta sam pročitao pa ti potvrdiš. /ponisti poništava poslednji unos.');
+  async function tgAiCategory(desc){
+    if(String(desc).replace(/[^\p{L}]/gu, '').length < 4) return null;
+    const req = { images: [], text: '', prompt: C.quickCategoryPrompt(expenseCats, desc) };
+    const call = fakeTgCategory ? fakeTgCategory(req) : (window.desktop && window.desktop.bills ? window.desktop.bills.read(req) : null);
+    if(!call) return null;
+    const res = await Promise.race([Promise.resolve(call).catch(()=> null), new Promise(r=> setTimeout(()=> r(null), 3000))]);
+    return res && res.ok ? C.cleanQuickCategory(res.content, expenseCats) : null;
+  }
+  function tgLog(ids, label){
+    const id = newId();
+    tgSave(TG_LOG_KEY, tgLoad(TG_LOG_KEY).concat({ id, ids, label, at: Date.now() }).slice(-50));
+    return id;
+  }
+  function tgUndo(logId){
+    const log = tgLoad(TG_LOG_KEY), item = logId ? log.find(l=> l.id === logId) : log.filter(l=> !l.undone && Date.now() - l.at < 864e5).pop();
+    if(!item || item.undone) return null;
+    const set = new Set(item.ids), gone = entries.filter(e=> set.has(e.id));
+    gone.forEach(e=>{ if(e.type === 'expense') unapplyRoundUpSaving(e.amount); });
+    if(gone.length){ entries = entries.filter(e=> !set.has(e.id)); saveEntries(); renderAll(); }
+    item.undone = true; tgSave(TG_LOG_KEY, log);
+    return item;
+  }
+  async function tgText(text){
+    const intent = C.telegramIntent(text);
+    if(intent.kind === 'command' && intent.command === 'ponisti'){
+      const it = tgUndo(null);
+      return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
+    }
+    if(intent.kind !== 'entry') return tgReply(TG_HELP());
+    const data = window.__desktopBridge.getQuickAddData();
+    const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
+      rules: data.rules, history: data.history, expenseCats, incomeCats });
+    if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
+    if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
+    const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
+    const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true });
+    if(!r || !r.ok) return tgReply('✕ ' + ((r && r.error) || t('Stavka nije dodata.')));
+    const label = `${d.desc} · ${r.amountText}`;
+    const logId = tgLog(r.ids, label);
+    return tgReply(`✓ ${d.type === 'income' ? t('Prihod') + ': ' : ''}${label} · ${r.category} · ${tgDayLabel(d.date)}`, { buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] });
+  }
+  async function tgCallback(p){
+    const cb = C.parseTelegramCallback(p.data);
+    if(!cb) return { replies: [] };
+    if(cb.action === 'u'){
+      const it = tgUndo(cb.id);
+      return { callbackText: it ? t('Poništeno') : t('Već poništeno'), replies: it ? [{ editMessageId: p.messageId, text: t('↩ Poništeno: {0}', it.label) }] : [] };
+    }
+    return tgFileCallback(p, cb); // Task 5
+  }
+  async function tgHandle(p){
+    const done = tgLoad(TG_DONE_KEY);
+    if(!p || done.includes(p.update_id)) return { replies: [] };
+    let out = { replies: [] };
+    if(p.kind === 'text') out = await tgText(p.text);
+    else if(p.kind === 'callback') out = await tgCallback(p);
+    else if(p.kind === 'file') out = await tgFile(p); // Task 5
+    tgSave(TG_DONE_KEY, tgLoad(TG_DONE_KEY).concat(p.update_id).slice(-500));
+    return out;
+  }
+  async function tgTick(){ return tgFileTick(); } // Task 5
+  // Task 4: privremeno, dok Task 5 ne doda obradu fajlova
+  async function tgFile(p){ return tgReply(t('Slike još ne primam.'), p.progressMessageId ? { editMessageId: p.progressMessageId } : null); }
+  async function tgFileCallback(){ return { replies: [] }; }
+  async function tgFileTick(){ return { replies: [] }; }
 
   // ---------- Dokumenti: garancije i dokumenti sa rokom (prilozi, AI citanje, podsetnici, obnova) ----------
   const dEl = id => document.getElementById(id);
@@ -11309,6 +11439,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           parts = [{ category: pickCat(input.category), orig: parsed.amount }];
         }
         let total = 0, lastId = null;
+        const made = [];
         parts.forEach(p=>{
           const id = newId();
           const entry = { id, type, desc: parsed.desc, amount: toRsd(p.orig), category: p.category, date, tags };
@@ -11318,17 +11449,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           if(spreadMonths > 1){ entry.spreadMonths = spreadMonths; if(spreadStart) entry.spreadStart = spreadStart; }
           entries.push(entry);
           if(type === 'expense') applyRoundUpSaving(entry.amount);
-          total += entry.amount; lastId = id;
+          total += entry.amount; lastId = id; made.push(id);
         });
         newEntryId = lastId;
         saveEntries(); renderAll();
-        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : '') };
+        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : ''), ids: made, category: parts[0].category, type };
       },
       async flush(){
         const ok = dataStore.flushSync();
         return { ok: ok !== false, error: ok === false ? (dataStore.status && dataStore.status.error) || 'save failed' : null };
       }
     };
+    // Telegram bot: glavni proces prosledjuje poruke ovde (vidi app/telegram.js)
+    window.__telegramBridge = { handle: tgHandle, tick: tgTick };
   }
 })();
 </script>

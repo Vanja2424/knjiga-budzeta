@@ -1858,6 +1858,36 @@
       window.__fakeImportCategorizing = null;
     } else check('uvoz AI posle pregleda: hook', false);
 
+    // Telegram: tekst -> rashod, dupli update, ponisti, komande, bez iznosa, podesavanja
+    {
+      check('telegram: most postoji', !!window.__telegramBridge && typeof window.__telegramBridge.handle === 'function');
+      if (window.__telegramBridge) {
+        const B = window.__telegramBridge;
+        const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+        window.__fakeTgCategory = async () => ({ ok: true, content: JSON.stringify({ kategorija: 'Ostalo' }) });
+        const n0 = ents().length;
+        const r1 = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        const e1 = ents().find(e => e.desc === 'Smoke tg kafa');
+        check('telegram: tekst postaje rashod', !!e1 && e1.amount === 250 && e1.type === 'expense', JSON.stringify(e1));
+        check('telegram: odgovor sa iznosom i dugmetom Poništi', /✓/.test(r1.replies[0].text) && /250/.test(r1.replies[0].text) && /^u:/.test(r1.replies[0].buttons[0][0].data), JSON.stringify(r1));
+        const r1b = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        check('telegram: isti update se ne upisuje dvaput', ents().length === n0 + 1 && r1b.replies.length === 0);
+        const r2 = await B.handle({ update_id: 900002, kind: 'callback', data: r1.replies[0].buttons[0][0].data, messageId: 5 });
+        check('telegram: Poništi briše rashod i menja poruku', !ents().some(e => e.desc === 'Smoke tg kafa') && r2.replies[0].editMessageId === 5, JSON.stringify(r2));
+        const r3 = await B.handle({ update_id: 900003, kind: 'text', text: 'Smoke tg kafa' });
+        check('telegram: bez iznosa ne upisuje', ents().length === n0 && /iznos/i.test(r3.replies[0].text), r3.replies[0] && r3.replies[0].text);
+        const r4 = await B.handle({ update_id: 900004, kind: 'text', text: '/pomoc' });
+        check('telegram: /pomoc daje uputstvo', /kafa 250/.test(r4.replies[0].text));
+        await B.handle({ update_id: 900005, kind: 'text', text: '+Smoke tg honorar 3000' });
+        check('telegram: + znači prihod', ents().some(e => e.desc === 'Smoke tg honorar' && e.type === 'income' && e.amount === 3000));
+        const r6 = await B.handle({ update_id: 900006, kind: 'text', text: '/ponisti' });
+        check('telegram: /ponisti poništava poslednji unos', !ents().some(e => e.desc === 'Smoke tg honorar') && /Poništeno/.test(r6.replies[0].text), r6.replies[0] && r6.replies[0].text);
+        window.__fakeTgCategory = null;
+      }
+      go('podesavanja'); await sleep(150);
+      check('telegram: podešavanja imaju odeljak', !!$('tgSettings') && $('tgSettings').style.display !== 'none' && !!$('tgToken') && !!$('tgPair'));
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
