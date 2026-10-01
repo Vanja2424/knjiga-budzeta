@@ -1600,11 +1600,17 @@
     const base = old && dayNumber(today) - dayNumber(old) <= 60 ? old : today;
     return Object.assign({}, doc, { expires: addMonthsToDate(base, n), history: (doc.history || []).concat([{ expires: old || '', renewedAt: today }]) });
   }
+  // null/prazno/false = podrazumevanih 30 dana (+null bi dalo 0 = "bez podsetnika pre roka")
+  function remindDaysOf(v){
+    if(v == null || typeof v === 'boolean' || String(v).trim() === '') return 30;
+    const n = +v;
+    return Number.isInteger(n) && n >= 0 && n <= 365 ? n : 30;
+  }
   function cleanDocuments(arr){
     const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
     return (Array.isArray(arr) ? arr : []).filter(d => d && isId(d.id) && str(d.title, 80)).map(d => {
       const o = { id: d.id, kind: d.kind === 'garancija' ? 'garancija' : 'dokument', title: str(d.title, 80), group: str(d.group, 40) || 'Ostalo',
-        files: (Array.isArray(d.files) ? d.files : []).filter(isAttachmentName), remindDays: Number.isInteger(+d.remindDays) && +d.remindDays >= 0 && +d.remindDays <= 365 ? +d.remindDays : 30 };
+        files: (Array.isArray(d.files) ? d.files : []).filter(isAttachmentName), remindDays: remindDaysOf(d.remindDays) };
       if(isoOk(d.issued)) o.issued = d.issued;
       if(isoOk(d.expires)) o.expires = d.expires;
       const wm = parseInt(d.warrantyMonths, 10); if(wm > 0 && wm <= 240) o.warrantyMonths = wm;
@@ -1733,8 +1739,20 @@
     const v = o && (o.odgovor || o.answer || o.text);
     return typeof v === 'string' && v.trim() ? v.trim() : s;
   }
+  // Opseg meseci za "Pitaj": i raspodeljene stavke (spreadMonths) pokrivaju svoje mesece, kao u mesecnim zbirovima
+  function askMonthRange(entries, curMonth){
+    let first = '', last = '';
+    (entries || []).forEach(e => {
+      if(!e || (e.type !== 'income' && e.type !== 'expense') || !/^\d{4}-\d{2}/.test(String(e.date || ''))) return;
+      const s = spreadOf(e);
+      if(!first || s.start < first) first = s.start;
+      if(!last || s.end > last) last = s.end;
+    });
+    return { first: first || curMonth, last: last && last > curMonth ? last : curMonth };
+  }
   function askAnswerPrompt(o){
-    return ['Ti si pomoćnik za lični budžet. Odgovori na srpskom (latinica), kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
+    const lang = o.lang === 'en' ? 'Odgovori na engleskom jeziku (answer in English)' : 'Odgovori na srpskom (latinica)';
+    return ['Ti si pomoćnik za lični budžet. ' + lang + ', kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
       'U rezultatu "top": "amount" je pun iznos stavke, a "uPeriodu" deo koji pripada traženim mesecima (stavka raspodeljena na "spreadMonths" meseci); za zbirove koristi "uPeriodu".',
       'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',
@@ -1831,7 +1849,7 @@
   }
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
   const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
-    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1'];
+    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-dokumenti-v1'];
   const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -1865,7 +1883,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
     checkWorkbookShape, checkDataFileShape
   };
 });

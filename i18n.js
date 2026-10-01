@@ -568,7 +568,7 @@
     'Ova funkcija radi samo u desktop aplikaciji.': 'This feature only works in the desktop app.', 'Napomena: {0}': 'Note: {0}', 'Šta je poslato AI-ju': 'What was sent to AI',
     'Razmišljam…': 'Thinking…', 'Mogu da odgovorim samo na pitanja o tvom budžetu.': 'I can only answer questions about your budget.',
     'Za ovo pitanje nema podataka u knjizi.': 'There’s no data in the book for this question.',
-    'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi. Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), in quick add the description of a new expense to suggest a category, and in “Ask” the question plus the results of the calculations the app runs. All other data stays on this computer only.',
+    'Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi (za najveće troškove i ponavljajuće stavke to su i njihovi opisi). Ostali podaci ostaju samo na ovom računaru.': 'Groq only receives the bill, payment-slip and document files you add (documents only after “Read with AI”), the descriptions of unknown items when importing a statement (no amounts, dates or card numbers), in quick add the description of a new expense to suggest a category, and in “Ask” the question plus the results of the calculations the app runs (for the largest expenses and recurring items that includes their descriptions). All other data stays on this computer only.',
     'Pitanje traži previše podataka za besplatni Groq limit — suzi period ili pokušaj za minut.': 'The question needs too much data for the free Groq limit — narrow the period or try again in a minute.',    'Cene': 'Prices',
     'u odnosu na prethodnu kupovinu u istoj prodavnici ({0})': 'compared with the previous purchase at the same store ({0})',
     'u odnosu na prosek poslednjih kupovina ({0})': 'compared with the average of recent purchases ({0})',
@@ -582,6 +582,10 @@
     'ručno upisana cena': 'manually entered price',
     '{0} od {1} po ceni sa računa': '{0} of {1} at receipt price',
     'Količina': 'Quantity',
+    // ---- Ispravke (Dokumenti, Pitaj, Mesec iza tebe) ----
+    'AI čitanje nije podešeno (Podešavanja → AI čitanje računa).': 'AI reading isn’t set up (Settings → AI bill reading).',
+    'Plati zaostale ponavljajuće ({0})': 'Pay overdue recurring ({0})',
+    'Plaćeno za {0}: {1}': 'Paid for {0}: {1}',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
