@@ -702,6 +702,12 @@
         needed: !!i.needed,
         checked: !!i.checked
       });
+      // stara imena (posle preimenovanja) — da istorija kupovina i cena ostane uz stavku
+      if(Array.isArray(i.aliases)){
+        const ak = new Set([key]), aliases = [];
+        i.aliases.forEach(a => { if(typeof a !== 'string') return; const n = a.replace(/\s+/g, ' ').trim().slice(0, 80), k = n.toLowerCase(); if(n && !ak.has(k)){ ak.add(k); aliases.push(n); } });
+        if(aliases.length) items[items.length - 1].aliases = aliases.slice(-10);
+      }
     });
     const dismissed = {};
     if(src.dismissed && typeof src.dismissed === 'object' && !Array.isArray(src.dismissed))
@@ -884,10 +890,23 @@
 
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
   // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
-  const purchasedItemName = label => String(label == null ? '' : label).replace(/\s*\(\d[^()]*\)\s*$/, '').replace(/\s+/g, ' ').trim();
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d[^()]*\))+\s*$/, '').replace(/\s+/g, ' ').trim();
   const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
+  // Preimenovana stavka liste (aliases = stara imena): kupovine pod starim imenom pripadaju njoj; stavka koja se bas tako zove ima prednost
+  function aliasOwners(shoppingItems, keyFn){
+    const list = (shoppingItems || []).filter(i => i && typeof i === 'object');
+    const own = new Set(list.map(i => keyFn(i.name)).filter(Boolean));
+    const m = new Map();
+    list.forEach(i => { if(Array.isArray(i.aliases)) i.aliases.forEach(a => { const k = keyFn(a); if(k && !own.has(k) && !m.has(k)) m.set(k, i); }); });
+    return m;
+  }
+  const purchaseOwner = (owners, label) => {
+    const key = purchasedItemKey(label), o = owners.get(key);
+    return o ? { key: normShoppingName(o.name), name: o.name } : { key, name: purchasedItemName(label) };
+  };
   // Po stvari: broj kupovina i deo stvarnog iznosa racuna (srazmerno cenama sa liste; bez cene = prosek iz tog racuna)
-  function purchasedItemStats(entries, months, category){
+  function purchasedItemStats(entries, months, category, shoppingItems){
+    const owners = aliasOwners(shoppingItems, normShoppingName);
     const map = new Map();
     (entries || []).forEach(e => {
       if(!isPaidExp(e) || !Array.isArray(e.items) || !e.items.length) return;
@@ -899,9 +918,9 @@
       const weights = priced.length ? prices.map(p => p > 0 ? p : avg) : null;
       const W = weights ? weights.reduce((s, w) => s + w, 0) : 0;
       e.items.forEach((label, i) => {
-        const key = purchasedItemKey(label);
+        const { key, name } = purchaseOwner(owners, label);
         if(!key) return;
-        if(!map.has(key)) map.set(key, { key, name: purchasedItemName(label), count: 0, amount: null, withAmount: 0 });
+        if(!map.has(key)) map.set(key, { key, name, count: 0, amount: null, withAmount: 0 });
         const g = map.get(key);
         g.count++;
         if(weights && W > 0){ g.amount = round2((g.amount || 0) + e.amount * weights[i] / W); g.withAmount++; }
@@ -911,19 +930,36 @@
   }
   const dayNumber = iso => Math.round(Date.UTC(+iso.slice(0, 4), +iso.slice(5, 7) - 1, +iso.slice(8, 10)) / 86400000);
   // "Vreme je da kupis": stvari kupljene bar 3 dana, medijan razmaka, proslo >= interval; bez needed i sakrivenih
-  function restockSuggestions(entries, shopping, todayISO){
-    const items = (shopping && shopping.items) || [];
-    const dismissed = (shopping && shopping.dismissed) || {};
+  function purchaseDateSets(entries, shopping){
+    const owners = aliasOwners(shopping && shopping.items, normShoppingName);
     const dates = new Map(), names = new Map();
     (entries || []).forEach(e => {
       if(!isPaidExp(e) || !Array.isArray(e.items)) return;
       e.items.forEach(label => {
-        const key = purchasedItemKey(label);
+        const { key, name } = purchaseOwner(owners, label);
         if(!key) return;
-        if(!dates.has(key)){ dates.set(key, new Set()); names.set(key, purchasedItemName(label)); }
+        if(!dates.has(key)){ dates.set(key, new Set()); names.set(key, name); }
         dates.get(key).add(e.date);
       });
     });
+    return { dates, names };
+  }
+  // Poslednja kupovina po stvari (kljuc kao u predlozima)
+  function lastPurchaseDates(entries, shopping){
+    const out = new Map();
+    purchaseDateSets(entries, shopping).dates.forEach((set, key) => out.set(key, [...set].sort().pop()));
+    return out;
+  }
+  // Sakrivanje vazi samo do sledece kupovine: posle nje (ili kad stvari vise nema u kupovinama) se izbacuje
+  function pruneDismissed(entries, shopping){
+    const last = lastPurchaseDates(entries, shopping), src = (shopping && shopping.dismissed) || {}, out = {};
+    Object.keys(src).forEach(k => { const l = last.get(k); if(l && src[k] >= l) out[k] = src[k]; });
+    return out;
+  }
+  function restockSuggestions(entries, shopping, todayISO){
+    const items = (shopping && shopping.items) || [];
+    const dismissed = (shopping && shopping.dismissed) || {};
+    const { dates, names } = purchaseDateSets(entries, shopping);
     const today = dayNumber(todayISO);
     const out = [];
     dates.forEach((set, key) => {
@@ -1049,6 +1085,7 @@
       amount: Number.isFinite(amt) && amt > 0 ? round2(amt) : null,
       currency: (ctx.currencies || []).includes(cur) ? cur : (loc ? loc.currency : 'RSD'),
       dueDate: readDate(o.dueDate), values, payee };
+    if((ctx.currencies || []).includes(cur)) out.currencyRead = true;
     if(!out.billTypeId) low.add('billTypeId');
     if(!out.month) low.add('month');
     if(out.amount == null) low.add('amount');
@@ -1065,10 +1102,38 @@
       if(r.amount != null && Math.abs(r.amount - qr.amount) > 0.01){ if(!r.low.includes('amount')) r.low.push('amount'); }
       else r.low = r.low.filter(k => k !== 'amount');
       r.amount = round2(qr.amount);
-      if(qr.currency) r.currency = qr.currency;
+      if(qr.currency){ r.currency = qr.currency; r.currencyRead = true; }
     }
     r.payee = cleanPayee(Object.assign({}, r.payee || {}, { account: qr.account, name: qr.name || (r.payee && r.payee.name), code: qr.code, purpose: qr.purpose, model: qr.model, reference: qr.reference })) || r.payee;
     return r;
+  }
+
+  // Valuta procitana sa racuna (AI ili QR) koja se razlikuje od valute lokacije -> kod valute za upozorenje, inace ''
+  function billCurrencyMismatch(reading, locCurrency){
+    if(!reading || !reading.currencyRead || !reading.currency) return '';
+    return reading.currency !== (locCurrency || 'RSD') ? reading.currency : '';
+  }
+  // IPS placanje ponavljajuce stavke: poziv na broj (i model) sa racuna ovog meseca, ako je racun istog primaoca
+  function payeeWithBillReference(recPayee, billPayee){
+    if(!recPayee) return recPayee || null;
+    const ref = billPayee ? String(billPayee.reference || '').replace(/\s/g, '') : '';
+    if(!ref) return recPayee;
+    const acc = normalizeAccount(billPayee.account);
+    if(acc && acc !== normalizeAccount(recPayee.account)) return recPayee;
+    return Object.assign({}, recPayee, { model: String(billPayee.model || '').trim() || String(recPayee.model || '').trim(), reference: ref });
+  }
+  // Postojeca ponavljajuca (rashod) za istog primaoca: isti racun primaoca i isti poziv na broj, ili isti naziv kad
+  // jedna strana nema poziv na broj (isti primalac sa drugim pozivom na broj, npr. drugi stan, je druga stavka)
+  function findRecurringByPayee(recurring, payee){
+    const acc = payee && normalizeAccount(payee.account);
+    if(!acc) return null;
+    const name = foldText(payee.name || '').trim(), ref = String(payee.reference || '').replace(/\s/g, '');
+    return (recurring || []).find(r => {
+      if(!r || r.type !== 'expense' || !r.payee || normalizeAccount(r.payee.account) !== acc) return false;
+      const rName = foldText(r.payee.name || '').trim(), rRef = String(r.payee.reference || '').replace(/\s/g, '');
+      if(ref && rRef) return ref === rRef;
+      return !!name && name === rName;
+    }) || null;
   }
 
   // Kljuc novog merenja: posle svih kljuceva vrste I onih koji jos stoje u racunima (obrisano merenje ne sme da ozivi pod drugim imenom)
@@ -1247,8 +1312,9 @@
       const price = parseAmount(i.price);
       const qty = parseQtyNum(i.qty);
       const discount = !!i.discount || (Number.isFinite(price) && price < 0);
+      // popust je uvek negativan, i kad ga AI procita kao pozitivan iznos ("POPUST 15,00")
       return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: normUnit(i.unit) || String(i.unit || '').trim().slice(0, 8),
-        price: Number.isFinite(price) ? round2(price) : null, category: catFor(i.category), discount };
+        price: Number.isFinite(price) ? round2(discount ? -Math.abs(price) : price) : null, category: catFor(i.category), discount };
     }).filter(i => i.name || i.price != null);
     const total = parseAmount(o.total);
     const out = { store: String(o.store || '').trim().slice(0, 60), date: readDate(o.date), total: Number.isFinite(total) && total > 0 ? round2(total) : null, items, low: [] };
@@ -1350,7 +1416,8 @@
   // Stavke -> rashod po kategoriji; iznos = zbir cena, a razlika do unetog ukupnog ide srazmerno (tacno na pare)
   function receiptToExpenses(items, total){
     const groups = new Map();
-    (items || []).forEach(i => { const c = i.category || 'Ostalo'; if(!groups.has(c)) groups.set(c, []); groups.get(c).push(i); });
+    // rucno upisana negativna cena = popust (oduzima se od prethodne stavke, ne ide u itemPrices)
+    applyReceiptDiscounts((items || []).map(i => i && i.price < 0 && !i.discount ? Object.assign({}, i, { discount: true }) : i)).forEach(i => { const c = i.category || 'Ostalo'; if(!groups.has(c)) groups.set(c, []); groups.get(c).push(i); });
     const rows = [...groups.entries()].map(([category, its]) => ({ category, items: its, itemPrices: its.map(i => i.price != null ? i.price : null),
       cents: its.reduce((s, i) => s + (i.price > 0 ? Math.round(i.price * 100) : 0), 0) }));
     if(!rows.length) return [];
@@ -1472,18 +1539,23 @@
     });
     return out;
   }
-  // izabrani predlozi -> nova pravila (bez praznih, bez vec postojecih kljucnih reci)
-  function rulesFromSuggestions(choices, existingRules){
-    const have = new Set((existingRules || []).map(r => foldText(r.keyword)));
-    const out = [];
+  // izabrani predlozi -> nova pravila (bez praznih, bez pravila za podrazumevanu kategoriju "Ostalo" — ona je ionako rezerva).
+  // Kljucna rec koja vec vodi u DRUGU kategoriju (postojece pravilo ili ranije u istom uvozu) se ne dodaje, ali se prijavljuje u conflicts.
+  function importRulePlan(choices, existingRules, fallback){
+    const fb = foldText(fallback || 'Ostalo');
+    const have = new Map((existingRules || []).map(r => [foldText(r.keyword), r.category]));
+    const rules = [], conflicts = [];
     (choices || []).forEach(ch => {
       const kw = String(ch.keyword || '').trim();
-      if(!ch.make || kw.length < 3 || !ch.category || have.has(foldText(kw))) return;
-      have.add(foldText(kw));
-      out.push({ keyword: kw, category: ch.category });
+      if(!ch.make || kw.length < 3 || !ch.category || foldText(ch.category) === fb) return;
+      const k = foldText(kw);
+      if(have.has(k)){ if(have.get(k) !== ch.category) conflicts.push({ keyword: kw, category: ch.category, existing: have.get(k) }); return; }
+      have.set(k, ch.category);
+      rules.push({ keyword: kw, category: ch.category });
     });
-    return out;
+    return { rules, conflicts };
   }
+  function rulesFromSuggestions(choices, existingRules, fallback){ return importRulePlan(choices, existingRules, fallback).rules; }
 
   // ---------- Brzi unos obicnim recima: "kafa i kroasan 520 juce gotovinom" (lokalno, bez AI) ----------
   const QS_WEEKDAYS = { nedelja: 0, nedelju: 0, nedelje: 0, ponedeljak: 1, ponedeljka: 1, utorak: 2, utorka: 2, sreda: 3, sredu: 3, srede: 3,
@@ -1512,13 +1584,14 @@
       const x = mkDate(today.getFullYear(), m, d);
       return x && x > today ? mkDate(today.getFullYear() - 1, m, d) : x;   // buduci datum bez godine -> prosla godina
     };
+    const accCands = [];       // reci koje se poklapaju sa imenom racuna: { i, id }
     const nums = [];           // kandidati za iznos: { i, dm } (dm = "15.9" bez tacke na kraju, moze biti i datum)
     tokens.forEach((tok, i) => {
       if(used[i]) return;
       const dm = /^(\d{1,2})\.(\d{1,2})\.(?:(\d{2}|\d{4})\.?)?$/.exec(tok);
       if(dm){ const d = dayMonth(+dm[1], +dm[2], dm[3]); if(d){ out.date = qsIso(d); used[i] = true; } return; }
       if(f[i] in QS_RELATIVE){ const d = new Date(today); d.setDate(d.getDate() - QS_RELATIVE[f[i]]); out.date = qsIso(d); used[i] = true; return; }
-      if(f[i] in QS_WEEKDAYS){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
+      if(f[i] in QS_WEEKDAYS && !(f[i].startsWith('nedelj') && f[i + 1] === 'dana')){ const d = new Date(today); d.setDate(d.getDate() - ((today.getDay() - QS_WEEKDAYS[f[i]] + 7) % 7)); out.date = qsIso(d); used[i] = true; usePrep(i); return; }
       if(!c.noAmount){
         const a1 = /^(\d[\d.,]*)(€|\$|£|eur|din|rsd|bam)$/i.exec(tok), a2 = /^(€|\$|£)(\d[\d.,]*)$/.exec(tok);
         if((a1 || a2) && out.amount == null){ const n = parseAmount(a1 ? a1[1] : a2[2]); if(Number.isFinite(n) && n > 0){ out.amount = round2(n); setCur(QS_CURRENCY[(a1 ? a1[2] : a2[1]).toLowerCase()]); used[i] = true; return; } }
@@ -1536,8 +1609,15 @@
         if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
         return;
       }
+      // ime racuna ("Visa", "Intesa") je racun samo uz predlog ("sa visa") ili na kraju recenice — inace je obicna rec u opisu
       const acc = (c.accounts || []).find(a => foldText(a.name).split(/\s+/).some(w => w.length >= 4 && w === f[i]));
-      if(acc){ out.accountId = acc.id; used[i] = true; usePrep(i); }
+      if(acc) accCands.push({ i, id: acc.id });
+    });
+    accCands.forEach(a => {
+      if(out.accountId) return;
+      const afterPrep = a.i > 0 && !used[a.i - 1] && QS_PREP.has(f[a.i - 1]);
+      const tail = tokens.every((_, j) => j <= a.i || used[j] || /^\d[\d.,]*$/.test(tokens[j]));
+      if(afterPrep || tail){ out.accountId = a.id; used[a.i] = true; usePrep(a.i); }
     });
     if(!c.noAmount && out.amount == null && nums.length){
       // "15.9" pored drugog broja je datum ("gorivo 3000 15.9"); sam je decimalni broj ("knjiga 12.5")
@@ -1600,11 +1680,17 @@
     const base = old && dayNumber(today) - dayNumber(old) <= 60 ? old : today;
     return Object.assign({}, doc, { expires: addMonthsToDate(base, n), history: (doc.history || []).concat([{ expires: old || '', renewedAt: today }]) });
   }
+  // null/prazno/false = podrazumevanih 30 dana (+null bi dalo 0 = "bez podsetnika pre roka")
+  function remindDaysOf(v){
+    if(v == null || typeof v === 'boolean' || String(v).trim() === '') return 30;
+    const n = +v;
+    return Number.isInteger(n) && n >= 0 && n <= 365 ? n : 30;
+  }
   function cleanDocuments(arr){
     const str = (v, max) => String(v == null ? '' : v).trim().slice(0, max);
     return (Array.isArray(arr) ? arr : []).filter(d => d && isId(d.id) && str(d.title, 80)).map(d => {
       const o = { id: d.id, kind: d.kind === 'garancija' ? 'garancija' : 'dokument', title: str(d.title, 80), group: str(d.group, 40) || 'Ostalo',
-        files: (Array.isArray(d.files) ? d.files : []).filter(isAttachmentName), remindDays: Number.isInteger(+d.remindDays) && +d.remindDays >= 0 && +d.remindDays <= 365 ? +d.remindDays : 30 };
+        files: (Array.isArray(d.files) ? d.files : []).filter(isAttachmentName), remindDays: remindDaysOf(d.remindDays) };
       if(isoOk(d.issued)) o.issued = d.issued;
       if(isoOk(d.expires)) o.expires = d.expires;
       const wm = parseInt(d.warrantyMonths, 10); if(wm > 0 && wm <= 240) o.warrantyMonths = wm;
@@ -1733,8 +1819,20 @@
     const v = o && (o.odgovor || o.answer || o.text);
     return typeof v === 'string' && v.trim() ? v.trim() : s;
   }
+  // Opseg meseci za "Pitaj": i raspodeljene stavke (spreadMonths) pokrivaju svoje mesece, kao u mesecnim zbirovima
+  function askMonthRange(entries, curMonth){
+    let first = '', last = '';
+    (entries || []).forEach(e => {
+      if(!e || (e.type !== 'income' && e.type !== 'expense') || !/^\d{4}-\d{2}/.test(String(e.date || ''))) return;
+      const s = spreadOf(e);
+      if(!first || s.start < first) first = s.start;
+      if(!last || s.end > last) last = s.end;
+    });
+    return { first: first || curMonth, last: last && last > curMonth ? last : curMonth };
+  }
   function askAnswerPrompt(o){
-    return ['Ti si pomoćnik za lični budžet. Odgovori na srpskom (latinica), kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
+    const lang = o.lang === 'en' ? 'Odgovori na engleskom jeziku (answer in English)' : 'Odgovori na srpskom (latinica)';
+    return ['Ti si pomoćnik za lični budžet. ' + lang + ', kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
       'U rezultatu "top": "amount" je pun iznos stavke, a "uPeriodu" deo koji pripada traženim mesecima (stavka raspodeljena na "spreadMonths" meseci); za zbirove koristi "uPeriodu".',
       'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',
@@ -1767,6 +1865,10 @@
     const q = parseQtyNum(m[1]);
     return q > 0 ? normQty(q, m[2]) : { qty: 1, unit: 'kom' };
   }
+  // Red "razlika do ukupnog" se u podacima cuva na srpskom, bez obzira na jezik aplikacije
+  const RECEIPT_DIFF_NAME = 'Razlika do ukupnog';
+  const isReceiptDiffName = name => /^(razlika do ukupnog|difference to total)$/i.test(String(name == null ? '' : name).replace(/\s+/g, ' ').trim());
+  const canonicalItemName = name => isReceiptDiffName(name) ? RECEIPT_DIFF_NAME : String(name == null ? '' : name).trim();
   function priceObservations(entries){
     const out = [];
     (entries || []).forEach(e => {
@@ -1774,7 +1876,7 @@
       e.items.forEach((label, i) => {
         const total = e.itemPrices[i];
         const name = purchasedItemName(label);
-        if(!(total > 0) || !name || /^razlika do ukupnog$/i.test(name) || /^difference to total$/i.test(name)) return;
+        if(!(total > 0) || !name || isReceiptDiffName(name)) return;
         const q = Array.isArray(e.itemQty) && e.itemQty[i] && e.itemQty[i].qty > 0 && normUnit(e.itemQty[i].unit) ? normQty(e.itemQty[i].qty, e.itemQty[i].unit) : parseItemQty(label);
         out.push({ date: e.date, store: String(e.desc || '').trim(), name, key: itemKey(label), qty: q.qty, unit: q.unit, total, unitPrice: round2(total / q.qty) });
       });
@@ -1804,15 +1906,24 @@
     return { key: hist.key, name: hist.name, last, change, cheapest, unit: last.unit };
   }
   // procena za stavku sa liste: cena po jedinici iz racuna x kolicina sa liste (jedinice moraju da se slazu)
+  // Istorija cena za stavku liste: trenutno ime + stara imena (aliases), spojeno po datumu
+  function itemPriceHistory(item, history){
+    if(!history || !item) return null;
+    const keys = [...new Set([item.name].concat(Array.isArray(item.aliases) ? item.aliases : []).map(itemKey).filter(Boolean))];
+    const hs = keys.map(k => history.get(k)).filter(Boolean);
+    if(hs.length <= 1) return hs[0] || null;
+    const obs = [].concat(...hs.map(h => h.obs)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+    return { key: itemKey(item.name), name: String(item.name), obs };
+  }
   function estimateShoppingItem(item, history, preferredStore){
-    const h = history && history.get(itemKey(item && item.name));
+    const h = itemPriceHistory(item, history);
     if(h && h.obs.length){
       const store = (item.store || preferredStore || '').trim();
       const atStore = store ? h.obs.filter(o => foldText(o.store) === foldText(store)).pop() : null;
       const o = atStore || h.obs[h.obs.length - 1];
       const listQ = item.qty ? (() => { const m = /(\d+(?:[.,]\d+)?)\s*(kom|kg|g|l|ml|pak)/i.exec(item.qty); return m && parseQtyNum(m[1]) > 0 ? normQty(parseQtyNum(m[1]), m[2]) : null; })() : null;
       const amount = listQ ? (listQ.unit === o.unit ? round2(o.unitPrice * listQ.qty) : o.total) : (o.unit === 'kom' ? o.unitPrice : o.total);
-      return { amount, source: atStore ? 'store' : 'last', unitPrice: o.unitPrice };
+      return { amount, source: atStore ? 'store' : 'last', unitPrice: o.unitPrice, unit: o.unit };
     }
     if(item && item.price > 0) return { amount: item.price, source: 'manual' };
     return { amount: 0, source: null };
@@ -1831,7 +1942,7 @@
   }
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
   const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
-    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1'];
+    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-dokumenti-v1'];
   const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -1863,9 +1974,9 @@
     round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
-    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr,
+    BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });

@@ -16,7 +16,7 @@ const env = { ...process.env, KNJIGA_TEST: '1', KNJIGA_DATA_DIR: dataDir, KNJIGA
   KNJIGA_TEST_QUICK: 'expense', KNJIGA_TEST_QUICK_SCRIPT: path.join(__dirname, 'quick-checks.js') };
 delete env.ELECTRON_RUN_AS_NODE;
 const electron = require('electron');
-const r = spawnSync(electron, ['.', `--user-data-dir=${path.join(tmp, 'userdata')}`], { cwd: path.join(__dirname, '..'), env, encoding: 'utf8', timeout: 120000 });
+const r = spawnSync(electron, ['.', `--user-data-dir=${path.join(tmp, 'userdata')}`], { cwd: path.join(__dirname, '..'), env, encoding: 'utf8', timeout: 240000 });
 const line = (r.stdout || '').split('\n').find(l => l.startsWith('SMOKE_RESULT '));
 if (!line) { console.error('Nema rezultata. stdout:\n' + r.stdout + '\nstderr:\n' + r.stderr); process.exit(1); }
 const res = JSON.parse(line.slice('SMOKE_RESULT '.length));

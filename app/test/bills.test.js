@@ -153,3 +153,32 @@ test('read: bez slike i teksta (npr. uvoz izvoda) poruka ne trazi citanje slike'
   const parts = JSON.parse(calls[0].opts.body).messages[1].content;
   assert.ok(!/sa slike/.test(parts[0].text), parts[0].text);
 });
+test('prilozi: brisanje i vracanje nikad ne prepisuju fajl istog imena', () => {
+  const { api, dir } = setup(() => okResponse('{}'));
+  const P = path.join(dir, 'Prilozi'), T = path.join(P, '.obrisano');
+  // novi fajl ne uzima ime koje jos stoji u smecu (da bi vracanje radilo)
+  const a = api.saveFile(new Uint8Array([1]), 'a.pdf');
+  api.deleteFile(a.name);
+  const a2 = api.saveFile(new Uint8Array([2]), 'a.pdf');
+  assert.notEqual(a2.name, 'a.pdf');
+  // brisanje: u smecu vec postoji isto ime -> stari obrisani ostaje sacuvan
+  fs.mkdirSync(T, { recursive: true });
+  fs.writeFileSync(path.join(T, 'b.pdf'), 'STARI');
+  fs.writeFileSync(path.join(P, 'b.pdf'), 'NOVI');
+  const d = api.deleteFile('b.pdf');
+  assert.equal(d.ok, true);
+  assert.equal(fs.readFileSync(path.join(T, 'b.pdf'), 'utf8'), 'NOVI');   // poslednji obrisani je pod svojim imenom (za vracanje)
+  const kept = fs.readdirSync(T).filter(n => n !== 'b.pdf' && n.startsWith('b'));
+  assert.equal(kept.length, 1);
+  assert.equal(fs.readFileSync(path.join(T, kept[0]), 'utf8'), 'STARI');
+  // vracanje: u Prilozi vec postoji isto ime -> vraca se pod novim imenom, postojeci ostaje
+  fs.writeFileSync(path.join(T, 'c.pdf'), 'OBRISANI');
+  fs.writeFileSync(path.join(P, 'c.pdf'), 'POSTOJECI');
+  const r = api.restoreFile('c.pdf');
+  assert.equal(r.ok, true);
+  assert.notEqual(r.name, 'c.pdf');
+  assert.equal(fs.readFileSync(path.join(P, 'c.pdf'), 'utf8'), 'POSTOJECI');
+  assert.equal(fs.readFileSync(path.join(P, r.name), 'utf8'), 'OBRISANI');
+  // bez sudara ime ostaje isto
+  assert.equal(api.restoreFile('b.pdf').name, 'b.pdf');
+});

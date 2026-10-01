@@ -689,11 +689,16 @@
       const gg = window.__goals().find(x => x.id === 'p4-goal');
       gg.monthly = { amount: 1000, day: 1, since: window.BudzetCore.addMonths(cur, -2) };
       window.__saveGoals(); await sleep(40);
-      const did = window.__processGoalPlans(); await sleep(60);
+      // zaklonjen prozor (Windows: visibilityState 'hidden') ne sme da odlozi poruku u testu — ranije povremeni pad opoziva
+      Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true });
+      let did;
+      try { did = window.__processGoalPlans(); } finally { delete document.visibilityState; }
+      await sleep(60);
       const after = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: propušteni meseci se uplaćuju', did && after.current === 3000 && after.monthly.last === cur, after.current + ' ' + after.monthly.last);
       check('mesečna uplata: ponovna obrada ne uplaćuje dvaput', !window.__processGoalPlans());
-      $('undoBtn').click(); await sleep(80);
+      check('mesečna uplata: poruka sa opozivom je odmah na vrhu', /Automatski uplaćeno u ciljeve/.test($('undoMessage').textContent), $('undoMessage').textContent + ' / ' + document.visibilityState);
+      window.__undoTop(); await sleep(80);
       const undone = window.__goals().find(x => x.id === 'p4-goal');
       check('mesečna uplata: Poništi vraća iznos i poslednji mesec', undone.current === 0 && !undone.monthly.last, undone.current + ' ' + undone.monthly.last);
       go('ciljevi'); await sleep(60);
@@ -1201,8 +1206,7 @@
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 300; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 300, 200); c.toBlob(r, 'image/png'); });
       go('dokumenti'); await sleep(80);
       const pd = window.__addDocFiles([new File([png], 'g.png', { type: 'image/png' }), new File([png], 'g2.png', { type: 'image/png' }), new File([png], 'g3.png', { type: 'image/png' })]);
-      await sleep(20);
-      check('dokumenti: Sačuvaj isključeno dok se fajlovi pripremaju', $('docSave').disabled === true);
+      check('dokumenti: Sačuvaj isključeno dok se fajlovi pripremaju', $('docSave').disabled === true, JSON.stringify({ show: $('docOverlay').classList.contains('show'), n: document.querySelectorAll('#docFiles .doc-file').length, st: $('docStatus').textContent }));
       await sleep(1500);
       check('dokumenti: AI ne čita sam, čeka dugme', docCalls === 0 && $('docReadAi').style.display !== 'none' && $('docSave').disabled === false && document.querySelectorAll('#docFiles .doc-file').length === 3, 'calls=' + docCalls);
       $('docReadAi').click(); await sleep(800);
@@ -1362,6 +1366,497 @@
       window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-pr-item'); window.__saveShopping();
       document.querySelector('.shop-show-btn[data-show="need"]').click();
     }
+
+    // Ispravke D: dokumenti (obavestenje, tastatura, cuvanje, obnova, Excel, AI grupe), Pitaj, azuriranje, mesec iza tebe, Excel ciljevi
+    {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const now = new Date();
+      const cm = monthKey(now);
+      // 1) klik na obavestenje istice red dokumenta
+      const fId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D obaveštenje', group: 'Auto', expires: iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3)), remindDays: 30 });
+      go('pregled'); await sleep(40);
+      window.__openNotificationTarget({ screen: 'dokumenti', rowId: fId }); await sleep(150);
+      const fRow = document.querySelector(`#screen-dokumenti .doc-row[data-id="${fId}"]`);
+      check('D dokumenti: obaveštenje ističe red', $('screen-dokumenti').classList.contains('active') && !!fRow && fRow.classList.contains('row-flash'), fRow && fRow.className);
+      // 5) red se otvara tastaturom (Enter), i kartica na Pregledu je dostupna tastaturom
+      if (fRow) { fRow.focus(); fRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })); await sleep(80); }
+      check('D dokumenti: Enter na redu otvara zapis', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke D obaveštenje');
+      if ($('docOverlay').classList.contains('show')) $('docCancel').click();
+      go('pregled'); await sleep(120);
+      const remRow = document.querySelector(`#docReminders .doc-row[data-id="${fId}"]`);
+      check('D dokumenti: red na Pregledu ima tabindex', !!remRow && remRow.tabIndex === 0);
+      if (remRow) { remRow.dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true })); await sleep(120); }
+      check('D dokumenti: razmak na redu Pregleda otvara zapis', $('docOverlay').classList.contains('show') && $('docTitle').value === 'Smoke D obaveštenje');
+      if ($('docOverlay').classList.contains('show')) $('docCancel').click();
+      // 4a) Esc tokom cuvanja ne zatvara prozor, cuvanje se zavrsava
+      go('dokumenti'); await sleep(60);
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 60; c.height = 40; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 60, 40); c.toBlob(r, 'image/png'); });
+      const pEsc = window.__addDocFiles([new File([png], 'esc.png', { type: 'image/png' })]); await sleep(900);
+      $('docTitle').value = 'Smoke D esc';
+      $('docSave').click();
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      const openAfterEsc = $('docOverlay').classList.contains('show');
+      const escRes = await Promise.race([pEsc, sleep(3000).then(() => 'timeout')]);
+      await sleep(100);
+      check('D dokumenti: Esc tokom čuvanja ne prekida čuvanje', openAfterEsc && escRes === true && window.__documents().some(d => d.title === 'Smoke D esc') && !$('docOverlay').classList.contains('show'), JSON.stringify({ openAfterEsc, escRes }));
+      // 4b) opoziv obnove posle izmene cuva izmenu
+      const rExp = iso(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10));
+      const rId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D obnova', group: 'Auto', expires: rExp, remindDays: 30 });
+      window.__renewDocument(rId); await sleep(80);
+      const renewed = window.__documents().find(d => d.id === rId);
+      window.__saveDocumentRaw(Object.assign({}, renewed, { notes: 'Smoke izmena posle obnove' })); await sleep(50);
+      window.__undoTop(); await sleep(80);
+      const afterUndo = window.__documents().find(d => d.id === rId);
+      check('D dokumenti: opoziv obnove vraća rok, a čuva kasniju izmenu', !!afterUndo && afterUndo.expires === rExp && afterUndo.notes === 'Smoke izmena posle obnove' && !(afterUndo.history || []).length, JSON.stringify(afterUndo));
+      // 6) AI-ju idu samo ugradjene grupe, ne korisnikove
+      const gId = window.__saveDocumentRaw({ kind: 'dokument', title: 'Smoke D grupa', group: 'Smoke tajna grupa' });
+      let docPrompt = '';
+      window.__fakeDocReading = req => { docPrompt = req.prompt; return { ok: true, content: '{"kind":"dokument","title":"X"}' }; };
+      const pAi = window.__addDocFiles([new File([png], 'ai.png', { type: 'image/png' })]); await sleep(900);
+      $('docReadAi').click(); await sleep(400);
+      check('D dokumenti: AI prompt bez korisnikovih grupa', /"Tehnika"/.test(docPrompt) && !/Smoke tajna grupa/.test(docPrompt), docPrompt.slice(0, 300));
+      $('docCancel').click(); await pAi; window.__fakeDocReading = null;
+      // 2) Excel datumi dokumenata (broj iz Excela, dd.mm.gggg, smece -> prazno)
+      if (typeof window.__documentsFromWorkbook === 'function') {
+        const serial = 46100, pd = XLSX.SSF.parse_date_code(serial);
+        const isoSerial = pd.y + '-' + String(pd.m).padStart(2, '0') + '-' + String(pd.d).padStart(2, '0');
+        const xwb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(xwb, XLSX.utils.json_to_sheet([
+          { ID: 'smoke-xd-1', Vrsta: 'dokument', Naziv: 'Smoke X1', Grupa: 'Auto', Izdato: serial, Istice: '15.03.2027', Podsetnik: '' },
+          { ID: 'smoke-xd-2', Vrsta: 'garancija', Naziv: 'Smoke X2', Grupa: 'Tehnika', Izdato: 'nije datum', Istice: '', Podsetnik: 7 }
+        ]), 'Dokumenti');
+        const xd = window.__documentsFromWorkbook(xwb) || [];
+        const x1 = xd.find(d => d.id === 'smoke-xd-1'), x2 = xd.find(d => d.id === 'smoke-xd-2');
+        check('D dokumenti: Excel datumi kroz normalizaciju', !!x1 && x1.issued === isoSerial && x1.expires === '2027-03-15' && x1.remindDays === 30 && !!x2 && !x2.issued && !x2.expires && x2.remindDays === 7, JSON.stringify(xd));
+      } else check('D dokumenti: hook __documentsFromWorkbook', false);
+      window.__documents().filter(d => /^Smoke D /.test(d.title)).forEach(d => window.__deleteDocument(d.id, { confirm: false }));
+      void gId;
+
+      // Pitaj: 8) poruka kad AI nije podesen, 9) opseg sa raspodelom, 10) jezik odgovora, 11) predlog dok radi
+      go('pitaj'); await sleep(200);
+      const ki = await window.desktop.bills.keyInfo();
+      if (!ki.set) check('D pitaj: bez ključa poruka „nije podešeno“ i dugme isključeno', /nije podešeno/.test($('askHint').textContent) && $('askBtn').disabled === true, $('askHint').textContent);
+      else check('D pitaj: sa ključem nema poruke „nije podešeno“', !/nije podešeno/.test($('askHint').textContent));
+      window.__addEntriesRaw([{ id: 'smoke-d-spread', type: 'expense', desc: 'Smoke D osiguranje', amount: 2400, category: 'Ostalo', date: cm + '-01', paid: true, tags: [], spreadMonths: 24 }]);
+      const dreqs = [];
+      window.__fakeAsk = async (req, step) => { dreqs.push({ step, prompt: req.prompt }); await sleep(250);
+        return step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'monthSummary', months: [cm] }] }) } : { ok: true, content: '{"odgovor":"ok"}' }; };
+      window.__askLang = 'en';
+      go('pregled'); await sleep(30); go('pitaj'); await sleep(50);
+      $('askInput').value = 'Smoke D pitanje';
+      $('askBtn').click(); await sleep(20);
+      document.querySelector('.ask-suggest').click(); await sleep(20);
+      check('D pitaj: predlog dok radi ne menja pitanje', $('askInput').value === 'Smoke D pitanje', $('askInput').value);
+      await sleep(900);
+      const d1 = dreqs.find(r => r.step === 1), d2 = dreqs.find(r => r.step === 2);
+      const spreadEnd = window.BudzetCore.addMonths(cm, 23);
+      check('D pitaj: opseg meseci uključuje raspodelu', !!d1 && d1.prompt.includes('do ' + spreadEnd + '.'), d1 && d1.prompt.split('\n')[1]);
+      check('D pitaj: odgovor na jeziku aplikacije', !!d2 && /in English/.test(d2.prompt), d2 && d2.prompt.split('\n')[0]);
+      check('D pitaj: predlog nije poslao drugo pitanje', dreqs.filter(r => r.step === 1).length === 1, String(dreqs.length));
+      window.__askLang = null; window.__fakeAsk = null;
+      window.__deleteEntriesById(['smoke-d-spread']);
+      // 12) Podesavanja: pominju opise stavki za najvece troskove / ponavljajuce
+      go('podesavanja'); await sleep(60);
+      check('D podešavanja: AI tekst pominje opise za najveće troškove i ponavljajuće', /najveće troškove i ponavljajuće stavke/.test($('aiSettings').textContent) && /njihovi opisi/.test($('aiSettings').textContent), $('aiSettings').textContent.slice(-260));
+
+      // 13) traka azuriranja kaze kad je instalacija odlozena zbog cuvanja
+      if (typeof window.__renderUpdate === 'function') {
+        window.__renderUpdate({ status: 'ready', version: '9.9.9', current: window.desktop.info.version, saveFailed: true });
+        check('D ažuriranje: traka kaže da je odloženo zbog čuvanja', /odloženo/.test($('tbUpdateText').textContent) && /nisu mogli da se sačuvaju/.test($('deskUpdateStatus').textContent), $('tbUpdateText').textContent);
+        window.__renderUpdate(await window.desktop.update.get());
+      }
+
+      // 15) mesec iza tebe: dugme za placanje zaostalih ponavljajucih
+      if (window.__recurringRaw) {
+        const prevM = window.BudzetCore.addMonths(cm, -1), prev2 = window.BudzetCore.addMonths(cm, -2);
+        const rr = { id: 'smoke-d-rec', desc: 'Smoke D struja', amount: 4321, category: 'Ostalo', type: 'expense', day: 5, frequency: 'monthly', anchorMonth: 1 };
+        window.__recurringRaw.list().push(rr);
+        const ap = window.__recurringRaw.applied(); ap[prev2] = (ap[prev2] || []).concat(rr.id);
+        window.__recurringRaw.save();
+        window.__addEntriesRaw([{ id: 'smoke-d-prev', type: 'expense', desc: 'Smoke D prošli', amount: 100, category: 'Ostalo', date: prevM + '-03', paid: true, tags: [] }]);
+        localStorage.removeItem('budzet-mesecni-pregled-zatvoren-v1');
+        go('pregled'); await sleep(60);
+        window.__monthReview(cm + '-03'); await sleep(60);
+        const payBtn = $('monthReviewPayRec');
+        check('D mesec iza tebe: dugme za plaćanje zaostalih ponavljajućih', !!payBtn, $('monthReviewActions').textContent);
+        const recEid = 'rec-' + rr.id + '-' + prevM;
+        if (payBtn) { payBtn.click(); await sleep(100); }
+        check('D mesec iza tebe: plaćanje upisuje rashod za taj mesec', entries().some(e => e.id === recEid && e.amount === 4321 && e.date.startsWith(prevM)) && (window.__recurringRaw.applied()[prevM] || []).includes(rr.id));
+        window.__undoTop(); await sleep(80);
+        check('D mesec iza tebe: opoziv vraća neplaćeno', !entries().some(e => e.id === recEid) && !(window.__recurringRaw.applied()[prevM] || []).includes(rr.id));
+        window.__monthReview(null);
+        const list = window.__recurringRaw.list(); list.splice(list.findIndex(r => r.id === rr.id), 1);
+        Object.keys(ap).forEach(k => { ap[k] = ap[k].filter(id => id !== rr.id); });
+        window.__recurringRaw.save();
+        window.__deleteEntriesById(['smoke-d-prev']);
+        localStorage.setItem('budzet-mesecni-pregled-zatvoren-v1', prevM);
+      } else check('D mesec iza tebe: hook __recurringRaw', false);
+
+      // 16) Excel ciljevi cuvaju racun
+      if (typeof window.__goalsFromWorkbook === 'function') {
+        const gl = window.__goals();
+        gl.push({ id: 'smoke-d-goal', name: 'Smoke D cilj', target: 1000, current: 10, deadline: '', accountId: 'smoke-d-acc' });
+        const row = XLSX.utils.sheet_to_json(window.__buildWorkbook().Sheets['Ciljevi'], { defval: '' }).find(r => r.ID === 'smoke-d-goal');
+        gl.splice(gl.findIndex(g => g.id === 'smoke-d-goal'), 1);
+        const gwb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(gwb, XLSX.utils.json_to_sheet([row || {}]), 'Ciljevi');
+        const back = (window.__goalsFromWorkbook(gwb) || []).find(g => g.id === 'smoke-d-goal');
+        check('D Excel: cilj čuva račun (izvoz i uvoz)', !!row && row.RacunID === 'smoke-d-acc' && !!back && back.accountId === 'smoke-d-acc', JSON.stringify({ row, back }));
+      } else check('D Excel: hook __goalsFromWorkbook', false);
+    }
+    // Ispravke: racun iz prodavnice (popust, kategorija sa liste, duplikat, razlika, prilozi, undo) i pracenje cena
+    if (typeof window.__addReceiptFiles === 'function') {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
+      const typeIn = (el, v) => { el.value = v; el.dispatchEvent(new Event('input', { bubbles: true })); };
+      go('nabavka'); await sleep(60);
+      window.__addExpenseCategory('Smoke rc2');
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-fx-sapun', name: 'Smokesapun', section: 'Ostalo', store: '', category: 'Smoke rc2', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      const dA = monthKey(new Date()) + '-03', dB = monthKey(new Date()) + '-04';
+      window.__addEntriesRaw([{ id: 'smoke-fx-dup', type: 'expense', desc: 'Smoke dup', amount: 999, category: 'Hrana', date: dA, paid: true, receiptId: 'smokeFxDup' }]);
+      const img = await new Promise(r => { const c = document.createElement('canvas'); c.width = 200; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 200, 300); c.toBlob(r, 'image/jpeg'); });
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke Fx', date: dA, total: 160, items: [
+        { raw: 'SMOKESAPUN DOVE 100G', name: 'Smokesapun Dove 100g', price: 150, category: '' },
+        { raw: 'SMOKEKESA', name: 'Smokekesa', qty: 1, unit: 'kom', price: 10, category: '' }] }) });
+      const pA = window.__addReceiptFiles([new File([img], 'fx.jpg', { type: 'image/jpeg' })]); await sleep(1200);
+      const stA = window.__receiptState();
+      check('račun fix: kategorija sa liste i kad je upareno po početku imena', !!stA && stA.items[0].category === 'Smoke rc2', stA && stA.items[0].category);
+      setVal('receiptTotal', '999'); await sleep(30);
+      check('račun fix: upozorenje o duplikatu posle izmene ukupnog', /već unet/.test($('receiptStatus').textContent), $('receiptStatus').textContent);
+      setVal('receiptTotal', '100'); await sleep(30);
+      check('račun fix: upozorenje kad su stavke veće od ukupnog', /veće od ukupnog/.test($('receiptDiff').textContent) && !/već unet/.test($('receiptStatus').textContent), $('receiptDiff').textContent + ' | ' + $('receiptStatus').textContent);
+      setVal('receiptTotal', '160'); await sleep(30);
+      // rucno upisano: popust -5 i red "Difference to total" 5
+      const addRow = async (name, price) => {
+        $('receiptAddItem').click(); await sleep(30);
+        const rows = document.querySelectorAll('#receiptItems .receipt-row'), row = rows[rows.length - 1];
+        typeIn(row.querySelector('input[data-f="name"]'), name); typeIn(row.querySelector('input[data-f="price"]'), price);
+      };
+      await addRow('Smokepopust', '-5');
+      await addRow('Difference to total', '5');
+      const n0 = entries().length;
+      $('receiptSave').click(); await pA; await sleep(250);
+      const madeA = entries().slice(n0);
+      const allItems = [].concat(...madeA.map(e => e.items || [])), allPrices = [].concat(...madeA.map(e => e.itemPrices || []));
+      check('račun fix: negativna upisana cena je popust, ne ide u itemPrices', madeA.length > 0 && allPrices.every(p => p == null || p >= 0) && !allItems.some(l => /Smokepopust/.test(l)) && allPrices[allItems.indexOf('Smokekesa')] === 5, JSON.stringify(madeA.map(e => [e.items, e.itemPrices])));
+      check('račun fix: red razlike se čuva na srpskom', allItems.includes('Razlika do ukupnog') && !allItems.includes('Difference to total'), JSON.stringify(allItems));
+      check('račun fix: bez oznake "1 kom"', allItems.includes('Smokekesa') && !allItems.some(l => /\(1 kom\)/.test(l)), JSON.stringify(allItems));
+      const attA = (madeA[0] && madeA[0].attachments) || [];
+      window.__undoTop(); await sleep(200);
+      let restored = attA.length > 0;
+      for (const n of attA) { const r = await window.desktop.bills.restoreFile(n); restored = restored && !!(r && r.ok); await window.desktop.bills.deleteFile(n); }
+      check('račun fix: undo sklanja slike iz Priloga', restored && !entries().some(e => madeA.some(m => m.id === e.id)), JSON.stringify(attA));
+      // racun bez stavki (samo ukupno) + neuspelo cuvanje slike
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke Fx2', date: dB, total: 77, items: [] }) });
+      window.__fakeSaveFile = () => ({ ok: false, error: 'test' });
+      const pB = window.__addReceiptFiles([new File([img], 'fx2.jpg', { type: 'image/jpeg' })]); await sleep(1200);
+      const n1 = entries().length;
+      $('receiptSave').click(); await pB; await sleep(250);
+      window.__fakeSaveFile = null;
+      const madeB = entries().slice(n1);
+      check('račun fix: neuspelo čuvanje slike se javlja', $('dialogOverlay').classList.contains('show') && /nije sačuvan/.test($('dialogBody').textContent), $('dialogBody').textContent);
+      if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      check('račun fix: račun bez stavki ne pravi lažni artikal', madeB.length === 1 && madeB[0].amount === 77 && !(madeB[0].items && madeB[0].items.length) && !BudzetCore.priceObservations(entries()).some(o => o.date === dB && o.store === 'Smoke Fx2'), JSON.stringify(madeB));
+      window.__undoTop(); await sleep(100);
+      // dupliranje rashoda sa racuna: bez receiptId i priloga, nema nove cene
+      const src = { id: 'smoke-fx-src', type: 'expense', desc: 'Smoke Fx3', amount: 50, category: 'Hrana', date: ago(1), paid: true, tags: ['nabavka'], items: ['Smokedupli'], itemPrices: [50], receiptId: 'smokeFx3', attachments: ['smoke-nema.jpg'] };
+      window.__addEntriesRaw([src]);
+      const nObs = BudzetCore.priceObservations(entries()).filter(o => o.key === 'smokedupli').length;
+      if (typeof window.__duplicateEntry === 'function') window.__duplicateEntry(src);
+      const copy = entries().find(e => e.desc === 'Smoke Fx3' && e.id !== src.id);
+      check('račun fix: kopija rashoda bez receiptId i priloga', !!copy && copy.receiptId === undefined && copy.attachments === undefined && BudzetCore.priceObservations(entries()).filter(o => o.key === 'smokedupli').length === nObs, JSON.stringify(copy));
+      window.__deleteEntriesById(['smoke-fx-dup', 'smoke-fx-src'].concat(copy ? [copy.id] : []));
+      // cene: istorija se racuna jednom po prikazu, a osvezava posle promene
+      const R = (id, date, store, items, prices, qty) => ({ id: 'smoke-fx-' + id, type: 'expense', receiptId: 'smokeFxR' + id, date, desc: store, amount: prices.reduce((a, b) => a + b, 0), category: 'Hrana', paid: true, tags: ['nabavka'], items, itemPrices: prices, itemQty: qty });
+      window.__addEntriesRaw([
+        R('d1', ago(0), 'Smoke Lidl', ['Smokedanas'], [100], [{ qty: 1, unit: 'kom' }]),
+        R('d2', ago(0), 'Smoke Maxi', ['Smokedanas'], [120], [{ qty: 1, unit: 'kom' }]),
+        R('s1', ago(10), 'Smoke Maxi', ['Smokesir'], [800], [{ qty: 1, unit: 'kg' }]),
+        R('s2', ago(5), 'Smoke Lidl', ['Smokesir'], [300], [{ qty: 1, unit: 'kom' }])
+      ]);
+      sh.items.push({ id: 'smoke-fx-danas', name: 'Smokedanas', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false },
+        { id: 'smoke-fx-sir', name: 'Smokesir', section: 'Ostalo', store: 'Smoke Maxi', category: 'Hrana', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      const origPH = BudzetCore.priceHistory; let phCalls = 0;
+      BudzetCore.priceHistory = (...a) => { phCalls++; return origPH(...a); };
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      const callsTwo = phCalls;
+      window.__addEntriesRaw([R('n1', ago(0), 'Smoke Maxi', ['Smokenovo'], [10], [{ qty: 1, unit: 'kom' }])]);
+      sh.items.push({ id: 'smoke-fx-novo', name: 'Smokenovo', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false }); window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click(); await sleep(60);
+      BudzetCore.priceHistory = origPH;
+      const rowNovo = document.querySelector('.shop-row[data-row-id="smoke-fx-novo"]');
+      check('cene fix: istorija cena jednom za dva prikaza, osvežena posle novog računa', callsTwo <= 1 && !!rowNovo && /~/.test(rowNovo.textContent), 'poziva: ' + callsTwo + ' | ' + (rowNovo && rowNovo.textContent));
+      const rowD = document.querySelector('.shop-row[data-row-id="smoke-fx-danas"]');
+      const ch = rowD && rowD.querySelector('.shop-cheapest');
+      check('cene fix: kupovina danas piše "danas"', !!ch && /danas/.test(ch.textContent) && !/pre 0/.test(ch.textContent), ch && ch.textContent);
+      const rowS = document.querySelector('.shop-row[data-row-id="smoke-fx-sir"]');
+      const tip = rowS && rowS.querySelector('.shop-meta span[title]');
+      check('cene fix: jedinica u opisu procene je iz korišćene kupovine', !!tip && /RSD\/kg/.test(tip.title), tip && tip.title);
+      window.__deleteEntriesById(['smoke-fx-d1', 'smoke-fx-d2', 'smoke-fx-s1', 'smoke-fx-s2', 'smoke-fx-n1']);
+      // preimenovanje stavke liste ne gubi istoriju kupovina; sakrivanje predloga cisti stara sakrivanja
+      const P = (id, n) => ({ id: 'smoke-fx-p' + id, type: 'expense', desc: 'Smoke Fx4', amount: 10, category: 'Hrana', date: ago(n), paid: true, items: ['Smokepreime'] });
+      window.__addEntriesRaw([P('1', 74), P('2', 67), P('3', 60)]);
+      sh.items.push({ id: 'smoke-fx-pre', name: 'Smokepreime', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: false, checked: false });
+      sh.dismissed = Object.assign({}, sh.dismissed, { 'smoke stara stvar': '2020-01-01' });
+      window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="all"]').click(); await sleep(80);
+      const editBtn = document.querySelector('.shop-edit[data-id="smoke-fx-pre"]');
+      if (editBtn) {
+        editBtn.click(); await sleep(60);
+        $('edit-field-name').value = 'Smokepreime novo';
+        $('editModalSave').click(); await sleep(100);
+      }
+      const sugg = [...document.querySelectorAll('#shopSuggest .shop-suggest-row')].find(r => /Smokepreime/.test(r.textContent));
+      check('nabavka fix: preimenovana stavka zadržava istoriju kupovina', !!sugg && /Smokepreime novo/.test(sugg.textContent) && (window.__shopping().items.find(i => i.id === 'smoke-fx-pre').aliases || []).includes('Smokepreime'), sugg ? sugg.textContent : 'nema predloga');
+      if (sugg) { sugg.querySelector('.shop-suggest-hide').click(); await sleep(60); }
+      const dis = window.__shopping().dismissed || {};
+      check('nabavka fix: sakrivanje predloga čisti zastarela sakrivanja', !!dis['smokepreime novo'] && !('smoke stara stvar' in dis), JSON.stringify(dis));
+      window.__deleteEntriesById(['smoke-fx-p1', 'smoke-fx-p2', 'smoke-fx-p3']);
+      window.__shopping().items = window.__shopping().items.filter(i => !i.id.startsWith('smoke-fx-'));
+      delete window.__shopping().dismissed['smokepreime novo'];
+      window.__saveShopping();
+      document.querySelector('.shop-show-btn[data-show="need"]').click();
+      window.__deleteExpenseCategory('Smoke rc2');
+      window.__fakeReceiptReading = null;
+    } else check('račun fix: hook __addReceiptFiles', false);
+
+    // ---- Popravke: kucni racuni i uplatnica ----
+    if (typeof window.__setBillState === 'function') {
+      const B = () => window.__bills();
+      const waitFor = async (cond, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (cond()) return true; await sleep(50); } return false; };
+      const billReady = () => waitFor(() => $('billOverlay').classList.contains('show') && !$('billSavePaid').disabled, 6000);
+      const slipReady = () => waitFor(() => /Pročitano/.test($('ipsImageStatus').textContent), 6000);
+      const recs = () => JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]');
+      const delRec = async id => {
+        go('ponavljajuce'); await sleep(80);
+        const del = document.querySelector(`.recurring-item[data-row-id="${CSS.escape(id)}"] .del-btn`);
+        if (del) { del.click(); await sleep(400); if ($('dialogOverlay').classList.contains('show')) { $('dialogOk').click(); await sleep(400); } }
+      };
+      // 1) Podesavanja ne prave lokaciju "Stan" korisniku koji ne koristi racune
+      const snap = JSON.parse(JSON.stringify(B()));
+      window.__setBillState({ locations: [], billTypes: [], bills: [] });
+      go('podesavanja'); await sleep(80);
+      check('fix: Podešavanja ne prave podrazumevanu lokaciju', B().locations.length === 0 && B().billTypes.length === 0, JSON.stringify(B().locations));
+      $('billAddLoc').click(); await sleep(50);
+      check('fix: Dodaj lokaciju bez lokacija pravi jednu sa vrstama', B().locations.length === 1 && B().billTypes.length === 4, B().locations.length + '/' + B().billTypes.length);
+      window.__setBillState(snap);
+      window.__ensureBillDefaults();
+      const stan = B().locations[0];
+      const struja = B().billTypes.find(x => x.locationId === stan.id && x.name === 'Struja');
+      const voda = B().billTypes.find(x => x.locationId === stan.id && x.name === 'Voda');
+      const pdfFile = new File([tinyPdf(['Smoke popravke', 'Ukupno za uplatu 40'])], 'fix.pdf', { type: 'application/pdf' });
+      const read = obj => () => ({ ok: true, content: JSON.stringify(Object.assign({ locationId: stan.id, billTypeId: struja.id }, obj)) });
+      // 3) valuta sa racuna razlicita od valute lokacije -> upozorenje; 6) pdf.js dokument se zatvara
+      window.__fakeBillReading = read({ month: '2023-03', amount: 40, currency: 'EUR' });
+      const c1 = window.__addBillFiles([pdfFile]); await billReady();
+      check('fix: upozorenje kad je valuta sa računa druga od valute lokacije', !!$('billCurWarn') && /EUR/.test($('billCurWarn').textContent) && /RSD/.test($('billCurWarn').textContent), $('billCurWarn') && $('billCurWarn').textContent);
+      check('fix: pdf.js dokument zatvoren posle čitanja', typeof window.__pdfDocsOpen === 'function' && window.__pdfDocsOpen() === 0, typeof window.__pdfDocsOpen === 'function' && window.__pdfDocsOpen());
+      $('billCancel').click(); await c1;
+      window.__fakeBillReading = read({ month: '2023-03', amount: 40 });
+      const c2 = window.__addBillFiles([pdfFile]); await billReady();
+      check('fix: bez pročitane valute nema upozorenja', !$('billCurWarn') || !$('billCurWarn').textContent, $('billCurWarn') && $('billCurWarn').textContent);
+      $('billCancel').click(); await c2;
+      // 5) zatvoren prozor "Citam racun..." odbacuje kasni rezultat
+      window.__fakeBillReading = async () => { await sleep(900); return read({ month: '2023-04', amount: 77 })(); };
+      const c3 = window.__addBillFiles([pdfFile]); await sleep(300);
+      $('billCancel').click(); await sleep(1300);
+      check('fix: zatvaranje prozora tokom čitanja odbacuje kasni rezultat', !$('billOverlay').classList.contains('show'));
+      if ($('billOverlay').classList.contains('show')) $('billCancel').click();
+      await Promise.race([c3, sleep(300)]);
+      // 4) zamena i izmena racuna azuriraju povezani rashod (placen, kategorija, datum)
+      const oldCat = struja.category;
+      const newCat = [...$('recCategory').options].map(o => o.value).find(v => v && v !== oldCat);
+      window.__fakeBillReading = read({ month: '2023-05', amount: 100 });
+      const r1 = window.__addBillFiles([pdfFile]); await billReady();
+      $('billExpMonth').value = '2023-06'; $('billExpMonth').dispatchEvent(new Event('change'));
+      $('billSavePending').click(); await r1; await sleep(150);
+      const b1 = B().bills.find(b => b.billTypeId === struja.id && b.month === '2023-05');
+      const e1 = b1 && entries().find(e => e.id === b1.entryId);
+      check('fix: račun za plaćanje -> neplaćen rashod', !!e1 && e1.paid === false && e1.date === '2023-06-30', JSON.stringify(e1));
+      struja.category = newCat;
+      window.__fakeBillReading = read({ month: '2023-05', amount: 120, dueDate: '2023-07-15' });
+      const r2 = window.__addBillFiles([pdfFile]); await billReady();
+      $('billExpMonth').value = '2023-07'; $('billExpMonth').dispatchEvent(new Event('change'));
+      $('billSavePaid').click(); await r2; await sleep(150);
+      const e2 = b1 && entries().find(e => e.id === b1.entryId);
+      check('fix: zamena ažurira povezani rashod (plaćen, kategorija, datum, iznos)', !!e2 && e2.paid !== false && e2.category === newCat && e2.date === '2023-07-15' && e2.amount === 120
+        && B().bills.filter(b => b.billTypeId === struja.id && b.month === '2023-05').length === 1, JSON.stringify(e2));
+      const b2 = b1 && B().bills.find(b => b.id === b1.id);
+      if (b2 && voda) {
+        const ed = window.__openBillReview({ bill: b2 }); await sleep(100);
+        $('billType').value = voda.id; $('billType').dispatchEvent(new Event('change'));
+        $('billDue').value = '2023-07-20';
+        $('billSavePaid').click(); await ed; await sleep(150);
+        const e3 = entries().find(e => e.id === b1.entryId);
+        check('fix: izmena računa (vrsta, rok) ažurira kategoriju i datum rashoda', !!e3 && e3.category === voda.category && e3.date === '2023-07-20', JSON.stringify(e3));
+      }
+      struja.category = oldCat;
+      if (b1) { window.__deleteBill(b1.id, { confirm: false }); window.__deleteEntriesById([b1.entryId]); }
+      // 7) "Otvori prilog" bez fajla javlja poruku
+      const ghost = { id: 'smoke-ghost-bill', billTypeId: struja.id, month: '2023-08', amount: 5, currency: 'RSD', values: {}, source: 'manual', file: 'smoke-nema-ovog-fajla.pdf' };
+      window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.concat(ghost) });
+      if (typeof window.__openBillDetail === 'function') {
+        window.__openBillDetail([ghost.id]); await sleep(100);
+        const ob = document.querySelector('#dialogBody .bill-detail [data-act="open"]');
+        if (ob) { ob.click(); await sleep(400); }
+        check('fix: „Otvori prilog“ javlja kad fajl ne postoji', /nije pronađen/.test($('dialogBody').textContent), $('dialogBody').textContent.slice(0, 200));
+        if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      } else check('fix: hook __openBillDetail', false);
+      window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.filter(b => b.id !== ghost.id) });
+      // 8) IPS placanje uzima poziv na broj sa racuna ovog meseca
+      go('ponavljajuce'); await sleep(60);
+      setVal('recDesc', '');
+      window.__fillRecFromSlipText('K:PR|V:01|C:1|R:845000000040484987|N:Smoke Ref Primalac|I:RSD100,00|SF:189');
+      setVal('recDay', '28'); $('recAutoPay').checked = false;
+      $('recurringForm').requestSubmit(); await sleep(150);
+      const refRec = recs().find(r => r.desc === 'Smoke Ref Primalac');
+      if (refRec) {
+        const rb = { id: 'smoke-ref-bill', billTypeId: struja.id, month: monthKey(new Date()), expenseMonth: monthKey(new Date()), amount: 100, currency: 'RSD', values: {}, source: 'qr', recurringId: refRec.id,
+          payee: { account: '845000000040484987', name: 'Smoke Ref Primalac', code: '189', purpose: '', model: '', reference: '2023555' } };
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.concat(rb) });
+        window.__openIps(refRec.id, 'pay'); await sleep(100);
+        check('fix: IPS plaćanje koristi poziv na broj sa računa', /RO:002023555/.test($('ipsQr').dataset.text || '') && /2023555/.test($('ipsInfo').textContent), $('ipsQr').dataset.text);
+        $('ipsClose').click();
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.filter(b => b.id !== rb.id) });
+        await delRec(refRec.id);
+      } else check('fix: ponavljajuća sa uplatnice napravljena', false);
+      window.__fakeBillReading = null;
+      // 9, 11, 13) jednokratna uplatnica
+      const slip = { name: 'JKP Smoke Jednokratno', account: '845-0000000404849-87', code: '189', amount: 300, purpose: 'Komunalije', model: '', reference: '' };
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(slip) });
+      const blank = await new Promise(r => { const c = document.createElement('canvas'); c.width = 400; c.height = 200; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 400, 200); c.toBlob(r, 'image/png'); });
+      const setFile = (id, f) => { const dt = new DataTransfer(); dt.items.add(f); $(id).files = dt.files; $(id).dispatchEvent(new Event('change')); };
+      const otherCat = [...$('recCategory').options].map(o => o.value).find(v => v && v !== 'Stanovanje');
+      const made = [];
+      go('rashodi'); await sleep(60);
+      setFile('expSlipInput', new File([blank], 'f1.png', { type: 'image/png' })); await slipReady();
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: posle „Dalje“ fokus je na iznosu (ne na dugmetu „Plaćeno“)', document.activeElement === $('ipsAmount'), document.activeElement && document.activeElement.id);
+      setVal('ipsAmount', '1234.567'); $('ipsOneOffCat').value = otherCat;
+      $('ipsMakeRec').checked = true;
+      let nE = entries().length;
+      $('ipsPrimary').click(); $('ipsMakeRec').checked = false;
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      const sr = recs().filter(r => r.desc === 'JKP Smoke Jednokratno');
+      const se = entries().slice(nE);
+      se.forEach(e => made.push(e.id));
+      check('fix: „Sačuvaj i kao ponavljajuću“ se čita u trenutku klika', sr.length === 1, String(sr.length));
+      check('fix: iznos ponavljajuće i rashoda zaokružen na pare', sr.length === 1 && sr[0].amount === 1234.57 && se.length === 1 && se[0].amount === 1234.57, JSON.stringify({ r: sr[0] && sr[0].amount, e: se.map(e => e.amount) }));
+      check('fix: dugme „Plaćeno“ ponovo aktivno', !$('ipsPrimary').disabled);
+      setFile('expSlipInput', new File([blank], 'f2.png', { type: 'image/png' })); await slipReady();
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: nova uplatnica ne nasleđuje kategoriju prethodne', $('ipsOneOffCat').value !== otherCat, $('ipsOneOffCat').value);
+      setVal('ipsAmount', '500'); $('ipsMakeRec').checked = true;
+      nE = entries().length;
+      $('ipsPrimary').click(); await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      check('fix: ne pravi duplu ponavljajuću za istog primaoca', recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length === 1 && entries().length === nE + 1, recs().filter(r => r.desc === 'JKP Smoke Jednokratno').length + ' / ' + (entries().length - nE));
+      if ($('ipsOverlay').classList.contains('show')) $('ipsClose').click();
+      // isti primalac i naziv, drugi poziv na broj: pita pre nove ponavljajuce; "Samo rashod" ne pravi novu
+      if ($('ipsOverlay').classList.contains('show')) $('ipsClose').click();
+      if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+      await sleep(60);
+      const prevFake = window.__fakeSlipReading;
+      const twinSlip = ref => () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { name: 'JKP Smoke Dva Stana', model: '', reference: ref })) });
+      const paySlip = async (ref, amt, name) => {
+        window.__fakeSlipReading = twinSlip(ref);
+        setFile('expSlipInput', new File([blank], name, { type: 'image/png' })); await slipReady();
+        $('ipsPrimary').click(); await sleep(120);
+        setVal('ipsAmount', amt); $('ipsMakeRec').checked = true;
+        $('ipsPrimary').click();
+      };
+      nE = entries().length;
+      await paySlip('111', '700', 'f3.png');
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      const twins = () => recs().filter(r => r.payee && r.payee.name === 'JKP Smoke Dva Stana');
+      nE = entries().length;
+      await paySlip('987654', '800', 'f4.png');
+      await waitFor(() => $('dialogOverlay').classList.contains('show'), 3000);
+      check('fix: drugi poziv na broj pita pre nove ponavljajuće', twins().length === 1 && $('dialogOverlay').classList.contains('show') && /drugim pozivom na broj/.test($('dialogBody').textContent), twins().length + ' ' + $('dialogBody').textContent.slice(0, 120));
+      if ($('dialogOverlay').classList.contains('show')) $('dialogCancel').click();
+      await waitFor(() => entries().length > nE && !$('ipsOverlay').classList.contains('show'), 4000);
+      entries().slice(nE).forEach(e => made.push(e.id));
+      check('fix: „Samo rashod“ pravi rashod bez nove ponavljajuće', twins().length === 1 && entries().length === nE + 1, twins().length + ' / ' + (entries().length - nE));
+      window.__fakeSlipReading = prevFake;
+      // 10) valuta sa uplatnice
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(Object.assign({}, slip, { amount: 10, currency: 'EUR' })) });
+      setFile('expSlipInput', new File([blank], 'f3.png', { type: 'image/png' })); await slipReady();
+      check('fix: uplatnica u stranoj valuti -> upozorenje', /EUR/.test($('ipsProblems').textContent), $('ipsProblems').textContent);
+      $('ipsPrimary').click(); await sleep(120);
+      check('fix: iznos u EUR se ne nudi kao dinari', $('ipsAmount').value !== '10', $('ipsAmount').value);
+      $('ipsClose').click();
+      go('ponavljajuce'); await sleep(60);
+      setVal('recDesc', '');
+      window.__fillRecFromSlipText('K:PR|V:01|C:1|R:845000000040484987|N:Smoke Evro|I:EUR10,00|SF:189');
+      check('fix: nova ponavljajuća sa uplatnice dobija valutu uplatnice', $('recCurrency').value === 'EUR', $('recCurrency').value);
+      $('recCurrency').value = 'RSD'; $('recCurrency').dispatchEvent(new Event('change')); setVal('recDesc', ''); setVal('recAmount', '');
+      window.__fakeSlipReading = null;
+      window.__deleteEntriesById(made);
+      for (const r of recs().filter(r => r.desc === 'JKP Smoke Jednokratno')) await delRec(r.id);
+      for (const r of recs().filter(r => r.payee && r.payee.name === 'JKP Smoke Dva Stana')) await delRec(r.id);
+      // 12) 📎 za uplatnicu
+      window.__addEntriesRaw([{ id: 'smoke-slip-att', type: 'expense', desc: 'Smoke uplatnica', amount: 5, category: 'Stanovanje', date: monthKey(new Date()) + '-01', paid: true, tags: [], attachments: ['2026-10-01-uplatnica-smoke.png'] }]);
+      go('rashodi'); await sleep(80);
+      const ab = document.querySelector('.att-btn[data-id="smoke-slip-att"]');
+      check('fix: 📎 uplatnice kaže „Otvori uplatnicu“, bez „+ garancija“', !!ab && ab.title === 'Otvori uplatnicu' && !ab.closest('tr').querySelector('.warranty-btn'), ab && ab.title);
+      window.__deleteEntriesById(['smoke-slip-att']);
+    } else check('fix: hook __setBillState', false);
+
+    // Uvoz AI posle pregleda: delimican neuspeh se vidi, poruka bez "racuna", nema pravila za Ostalo,
+    // izmena kategorije ne vraca iskljucenu stiklicu, sukob kljucnih reci se prijavljuje, pregled prati izmenu
+    if ('__fakeImportCategorizing' in window && typeof window.__catRules === 'function') {
+      const m = monthKey(new Date());
+      const rules0 = window.__catRules().slice();
+      const catsI = window.__desktopBridge.getQuickAddData().expenseCats;
+      const fb = catsI.includes('Ostalo') ? 'Ostalo' : catsI[0];
+      const pickAi = d => /SMOKEDUPLA A/.test(d) ? { category: 'Hrana', keyword: 'SMOKEDUPLA' } : /SMOKEDUPLA B/.test(d) ? { category: 'Zabava', keyword: 'SMOKEDUPLA' }
+        : /SMOKEOSTALO/.test(d) ? { category: fb, keyword: 'SMOKEOSTALO' } : /SMOKEPREGLED/.test(d) ? { category: 'Prevoz', keyword: 'SMOKEPREGLED' }
+        : /SMOKESTIK/.test(d) ? { category: 'Zabava', keyword: 'SMOKESTIK' } : { category: '', keyword: '' };
+      let aiCalls = 0;
+      window.__fakeImportCategorizing = req => {
+        aiCalls++;
+        if (!/SMOKEPREGLED/.test(req.prompt)) return { ok: false, kind: 'toolarge' };
+        const items = req.prompt.split('\n').map(l => /^(\d+): (.*)$/.exec(l)).filter(Boolean).map(x => Object.assign({ i: +x[1] }, pickAi(x[2])));
+        return { ok: true, content: JSON.stringify({ items }) };
+      };
+      const letters = k => String.fromCharCode(65 + Math.floor(k / 26)) + String.fromCharCode(65 + k % 26);
+      let csvB = 'Datum;Opis;Iznos\n';
+      ['SMOKEDUPLA A', 'SMOKEDUPLA B', 'SMOKEOSTALO X', 'SMOKEPREGLED Y', 'SMOKESTIK Z'].forEach((d, k) => { csvB += m + '-01;' + d + ';-' + (4100 + k) + ',37\n'; });
+      for (let k = 0; k < 60; k++) csvB += m + '-' + String(2 + k % 20).padStart(2, '0') + ';SMOKEPUN ' + letters(k) + ';-' + (5100 + k) + ',37\n';
+      const pB = window.__runImportText([{ name: 'ai2.csv', text: csvB }]); await sleep(900);
+      const body = $('dialogBody');
+      const rowB = re => [...body.querySelectorAll('.import-ai-row')].find(r => re.test(r.textContent));
+      const errEl = body.querySelector('.import-ai-error');
+      check('uvoz AI: delimičan neuspeh se prikazuje', aiCalls === 2 && !!rowB(/SMOKEPREGLED/) && !!errEl && errEl.textContent.length > 0, aiCalls + ' ' + (errEl ? errEl.textContent : 'nema poruke'));
+      check('uvoz AI: poruka o grešci ne pominje račun', !!errEl && !/račun/i.test(errEl.textContent), errEl && errEl.textContent);
+      const osR = rowB(/SMOKEOSTALO/), osCb = osR && osR.querySelector('input[type=checkbox]');
+      check('uvoz AI: predlog za Ostalo nije štikliran', !!osCb && !osCb.checked);
+      if (osCb) { osCb.checked = true; osCb.dispatchEvent(new Event('change', { bubbles: true })); }
+      const stR = rowB(/SMOKESTIK/);
+      if (stR) {
+        const cb = stR.querySelector('input[type=checkbox]'); cb.checked = false; cb.dispatchEvent(new Event('change', { bubbles: true }));
+        const sl = stR.querySelector('select'); sl.value = 'Hrana'; sl.dispatchEvent(new Event('change', { bubbles: true }));
+        check('uvoz AI: promena kategorije ne vraća isključenu štiklicu', !cb.checked);
+      } else check('uvoz AI: red SMOKESTIK', false);
+      const prR = rowB(/SMOKEPREGLED/);
+      if (prR) { const sl = prR.querySelector('select'); sl.value = 'Zdravlje'; sl.dispatchEvent(new Event('change', { bubbles: true })); }
+      const prevRow = [...body.querySelectorAll('table tr')].find(tr => /SMOKEPREGLED/.test(tr.textContent));
+      check('uvoz AI: pregled prikazuje izmenjenu kategoriju', !!prevRow && prevRow.children[2].textContent === 'Zdravlje', prevRow && prevRow.textContent);
+      $('dialogOk').click(); await pB; await sleep(150);
+      const rulesB = window.__catRules();
+      check('uvoz AI: nema pravila za Ostalo', !rulesB.some(r => /SMOKEOSTALO/i.test(r.keyword)), JSON.stringify(rulesB.slice(-6)));
+      check('uvoz AI: isključeno pravilo nije napravljeno', !rulesB.some(r => /SMOKESTIK/i.test(r.keyword)) && (entries().find(e => /SMOKESTIK/.test(e.desc)) || {}).category === 'Hrana');
+      check('uvoz AI: sukob ključnih reči se prijavljuje', rulesB.filter(r => /SMOKEDUPLA/i.test(r.keyword)).length === 1 && /SMOKEDUPLA/.test($('csvImportStatus').textContent), $('csvImportStatus').textContent);
+      check('uvoz AI: izmenjena kategorija ide u stavku', (entries().find(e => /SMOKEPREGLED/.test(e.desc)) || {}).category === 'Zdravlje');
+      window.__undoTop(); await sleep(150);
+      window.__setCatRules(rules0);
+      window.__fakeImportCategorizing = null;
+    } else check('uvoz AI posle pregleda: hook', false);
 
     // Cuvanje u fajl
     await window.__desktopData.saveNow();

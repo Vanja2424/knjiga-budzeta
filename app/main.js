@@ -551,7 +551,7 @@ ipcMain.handle('pdf:write', async (_e, filePath) => {
 // ---------- Prozor, tema, bedz ----------
 let updatedFrom = null; // verzija pre upravo instaliranog azuriranja (za poruku "Azurirano na …")
 ipcMain.on('desktop:info', (e) => {
-  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom, lang: LANG, platform: process.platform };
+  e.returnValue = { mica: SUPPORTS_MICA, version: app.getVersion(), titlebarHeight: TITLEBAR_HEIGHT, updatedFrom, lang: LANG, platform: process.platform, test: !!process.env.KNJIGA_TEST };
 });
 ipcMain.on('desktop:theme', (_e, theme, explicit) => {
   appTheme = theme === 'dark' ? 'dark' : 'light';
