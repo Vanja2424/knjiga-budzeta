@@ -106,24 +106,41 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
       fs.mkdirSync(dir(), { recursive: true });
       const clean = safeName(name), ext = path.extname(clean), stem = clean.slice(0, clean.length - ext.length);
       if (!ALLOWED_EXT.test(clean)) return { ok: false, error: 'nedozvoljen tip fajla' };
+      // ime ne sme da postoji ni u smecu, inace bi vracanje obrisanog prepisalo novi fajl
+      const taken = n => fs.existsSync(path.join(dir(), n)) || fs.existsSync(path.join(trash(), n));
       let final = clean;
-      for (let i = 2; fs.existsSync(path.join(dir(), final)); i++) final = `${stem}-${i}${ext}`;
+      for (let i = 2; taken(final); i++) final = `${stem}-${i}${ext}`;
       fs.writeFileSync(path.join(dir(), final), Buffer.from(bytes));
       return { ok: true, name: final };
     } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
   }
-  function move(fromBase, toBase, name) {
-    const from = inside(fromBase, name), to = inside(toBase, name);
-    if (!from || !to || !fs.existsSync(from)) return { ok: false };
+  // Slobodno ime u folderu: ime, ime-2, ime-3...
+  function freeName(base, name) {
+    const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
+    let n = name;
+    for (let i = 2; fs.existsSync(path.join(base, n)); i++) n = `${stem}-${i}${ext}`;
+    return n;
+  }
+  // Premestanje nikad ne prepisuje postojeci fajl. Smece: poslednji obrisani zadrzava ime (za vracanje),
+  // raniji obrisani istog imena se pomera u slobodno ime. Vracanje: ako je ime zauzeto, fajl dobija novo ime (vraca se u name).
+  function move(fromBase, toBase, name, keepNameInTarget) {
+    const from = inside(fromBase, name);
+    if (!from || !inside(toBase, name) || !fs.existsSync(from)) return { ok: false };
     try {
       fs.mkdirSync(toBase, { recursive: true });
+      let finalName = name;
+      if (fs.existsSync(path.join(toBase, name))) {
+        if (keepNameInTarget) fs.renameSync(path.join(toBase, name), path.join(toBase, freeName(toBase, name)));
+        else finalName = freeName(toBase, name);
+      }
+      const to = path.join(toBase, finalName);
       fs.renameSync(from, to);
       const t = new Date(now()); fs.utimesSync(to, t, t);
-      return { ok: true };
+      return { ok: true, name: finalName };
     } catch (err) { return { ok: false, error: String(err && err.message || err) }; }
   }
-  const deleteFile = name => move(dir(), trash(), name);
-  const restoreFile = name => move(trash(), dir(), name);
+  const deleteFile = name => move(dir(), trash(), name, true);
+  const restoreFile = name => move(trash(), dir(), name, false);
   function purgeTrash(days = 30) {
     let n = 0;
     try {
