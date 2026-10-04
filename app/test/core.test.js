@@ -2038,3 +2038,8 @@ test('prognoza: stanje po danu, ponavljajuce (placeno/preskoceno/upisano), dospe
   const e0 = C.cashForecast({ today: '2026-10-04', startBalance: 0, recurring: [], entries: [], goals: [] });
   assert.equal(e0.payday, null); assert.equal(e0.daily, null); assert.equal(e0.firstNegative, null); assert.equal(e0.points.length, 61);
 });
+
+test('prognoza: rashod sa buducim datumom ulazi i kad je oznacen kao placen', () => {
+  const f = C.cashForecast({ today: '2026-10-04', startBalance: 1000, recurring: [], goals: [], entries: [{ id: 'a', type: 'expense', desc: 'Avans', amount: 300, date: '2026-10-20' }] });
+  assert.ok(f.events.some(e => e.date === '2026-10-20' && e.amount === -300));
+});

@@ -2116,7 +2116,7 @@
     });
     entries.forEach(e => {
       if(!e || e.type === 'transfer') return;
-      if(e.type === 'expense' && e.paid === false) add(e.date, e.desc, -e.amount, 'entry');
+      if(e.type === 'expense' && (e.paid === false || e.date > today)) add(e.date, e.desc, -e.amount, 'entry');
       else if(e.type === 'income' && e.date > today) add(e.date, e.desc, e.amount, 'entry');
     });
     (o.goals || []).forEach(g => {
