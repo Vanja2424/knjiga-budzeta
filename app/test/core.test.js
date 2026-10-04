@@ -1848,3 +1848,54 @@ test('cleanReceiptReading: redovi PDV rekapitulacije (stopa 10/20%, PDV, porez) 
   assert.deepEqual(r.items.map(i => i.name), ['Mleko 2.8%', 'Jogurt']);
   assert.match(C.receiptPrompt([]), /20\.00%/);
 });
+
+// Izmisljen racun u obliku stranice Poreske uprave (suf.purs.gov.rs) — pravi racuni korisnika ne idu u repozitorijum
+const SUF_HTML = [
+  '<script>viewModel = new ViewModel(); ko.applyBindings(viewModel);',
+  "viewModel.InvoiceNumber('ABCD1234-EFGH5678-100'); viewModel.Token('11111111-2222-3333-4444-555555555555');</script>",
+  '<span id="shopFullNameLabel">1234567-PRODAVNICA PRIMER</span>',
+  '<span id="addressLabel">&#x421;&#x420;&#x415;&#x40B;&#x41D;&#x410; 1</span>',
+  '<span id="tinLabel">100000001</span>',
+  '<span id="totalAmountLabel">\n   1.249,98\n</span>',
+  '<span id="invoiceNumberLabel">\n ABCD1234-EFGH5678-100\n</span>',
+  '<span id="sdcDateTimeLabel">\n 7.9.2026. 09:05:01\n</span>',
+  '<pre style="font-family:monospace">============ ФИСКАЛНИ РАЧУН ============',
+  'Артикли',
+  '========================================',
+  'Назив   Цена         Кол.         Укупно',
+  'MLEKO SVEZE 2.8% 1L (Е)/kom (Е)        ',
+  '       129,99          2          259,98',
+  'SIR GAUDA NAREZAK (Ђ)/kg  (Ђ)          ',
+  '     1.100,00      0,900          990,00',
+  '----------------------------------------',
+  'Укупан износ:                   1.249,98',
+  '</pre>'
+].join('\n');
+const SUF_SPEC = { success: true, items: [
+  { gtin: '', name: 'MLEKO SVEZE 2.8% 1L (\u0415)/kom', quantity: 2, total: 259.98, unitPrice: 129.99, label: '\u0415', labelRate: 10 },
+  { gtin: '', name: 'SIR GAUDA NAREZAK (\u0402)/kg ', quantity: 0.9, total: 990, unitPrice: 1100, label: '\u0402', labelRate: 20 }
+] };
+test('fiskalni racun: link iz teksta, stranica, stavke iz JSON-a i iz zurnala, citanje kao od AI-ja', () => {
+  const url = 'https://suf.purs.gov.rs/v/?vl=AzVIU1ZW%2BABC%3D';
+  assert.equal(C.fiscalUrlFrom('evo racuna ' + url + ' hvala'), url);
+  assert.equal(C.fiscalUrlFrom('http://suf.purs.gov.rs/v/?vl=X'), null);
+  assert.equal(C.fiscalUrlFrom('https://suf.purs.gov.rs.evil.com/v/?vl=X'), null);
+  assert.equal(C.fiscalUrlFrom('kafa 250'), null);
+  const page = C.parseSufPage(SUF_HTML);
+  assert.deepEqual({ store: page.store, date: page.date, total: page.total, invoiceNumber: page.invoiceNumber, token: page.token },
+    { store: 'Prodavnica primer', date: '2026-09-07', total: 1249.98, invoiceNumber: 'ABCD1234-EFGH5678-100', token: '11111111-2222-3333-4444-555555555555' });
+  const fromSpec = C.sufItems(SUF_SPEC);
+  assert.deepEqual(fromSpec.map(i => [i.name, i.qty, i.unit, i.price]), [['Mleko sveze 2.8% 1l', 2, 'kom', 259.98], ['Sir gauda narezak', 0.9, 'kg', 990]]);
+  const fromJournal = C.sufJournalItems(page.journal);
+  assert.deepEqual(fromJournal.map(i => [i.name, i.qty, i.unit, i.price]), fromSpec.map(i => [i.name, i.qty, i.unit, i.price]));
+  const r = C.sufReading(page, fromSpec);
+  assert.equal(r.store, 'Prodavnica primer'); assert.equal(r.total, 1249.98); assert.equal(r.items.length, 2);
+  assert.equal(r.items[0].category, ''); assert.deepEqual(r.low, []);
+  assert.equal(r.source, 'fiscal');
+  assert.equal(C.sufItems({ success: false }), null);
+  // kategorije: AI dobija samo nazive
+  const prompt = C.receiptCategoryPrompt(['Hrana', 'Higijena'], ['Mleko', 'Sapun']);
+  assert.match(prompt, /Mleko/); assert.doesNotMatch(prompt, /259/);
+  assert.deepEqual(C.cleanReceiptCategories('{"kategorije":["hrana","Nepostoji"]}', ['Hrana', 'Higijena'], 2), ['Hrana', '']);
+  assert.deepEqual(C.cleanReceiptCategories('nije json', ['Hrana'], 2), ['', '']);
+});
