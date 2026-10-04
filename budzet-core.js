@@ -1996,6 +1996,72 @@
     return { keep: valid.filter(p => p.created >= limit), expired: valid.filter(p => p.created < limit) };
   }
 
+  // ---------- Fiskalni racun (Srbija): QR -> stranica Poreske uprave (suf.purs.gov.rs) -> tacne stavke, bez citanja slike ----------
+  const FISCAL_URL_RE = /https:\/\/suf\.purs\.gov\.rs\/v\/\?vl=[A-Za-z0-9%+\/=_-]+/;
+  function fiscalUrlFrom(text){ const m = FISCAL_URL_RE.exec(String(text || '')); return m ? m[0] : null; }
+  const decodeEntities = t => String(t || '').replace(/&#x([0-9a-f]+);/gi, (m, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (m, d) => String.fromCodePoint(+d)).replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const capFirst = t => { t = String(t || '').trim().toLowerCase(); return t ? t[0].toUpperCase() + t.slice(1) : ''; };
+  function parseSufPage(html){
+    const h = String(html || '');
+    const label = id => { const m = new RegExp('id="' + id + '"[^>]*>([\\s\\S]*?)</span>').exec(h); return m ? decodeEntities(m[1]).replace(/\s+/g, ' ').trim() : ''; };
+    const vm = k => { const m = new RegExp('viewModel\\.' + k + "\\('([^']*)'\\)").exec(h); return m ? m[1] : ''; };
+    const dm = /(\d{1,2})\.(\d{1,2})\.(\d{4})/.exec(label('sdcDateTimeLabel'));
+    const total = parseAmount(label('totalAmountLabel'));
+    const pre = /<pre[^>]*>([\s\S]*?)<\/pre>/.exec(h);
+    return { store: capFirst(label('shopFullNameLabel').replace(/^\d+\s*-\s*/, '')), pib: label('tinLabel'),
+      date: dm ? dm[3] + '-' + pad2(+dm[2]) + '-' + pad2(+dm[1]) : '', total: Number.isFinite(total) && total > 0 ? round2(total) : null,
+      invoiceNumber: vm('InvoiceNumber') || label('invoiceNumberLabel'), token: vm('Token'), journal: pre ? decodeEntities(pre[1].replace(/<[^>]*>/g, '')) : '' };
+  }
+  // "MLEKO SVEZE 2.8% 1L (Е)/kom (Е)" -> { name: "Mleko sveze 2.8% 1l", unit: "kom" }
+  function sufName(raw){
+    const t = String(raw || '').trim();
+    const um = /\)\s*\/\s*([A-Za-zА-Яа-я.]+)/.exec(t);
+    const name = capFirst(t.replace(/\s*\([^)]*\)\s*\/.*$/, '').replace(/\s*\([^)]*\)\s*$/, ''));
+    return { name: name || capFirst(t), unit: normUnit(um && um[1]) || 'kom' };
+  }
+  const sufItem = (raw, qty, price) => { const n = sufName(raw); return { raw: String(raw || '').trim(), name: n.name, qty: qty > 0 ? qty : 1, unit: n.unit, price: round2(price), category: '', discount: price < 0 }; };
+  function sufItems(spec){
+    if(!spec || !spec.success || !Array.isArray(spec.items)) return null;
+    return spec.items.filter(i => i && Number.isFinite(+i.total)).map(i => sufItem(i.name, +i.quantity, +i.total));
+  }
+  // Rezervno: stavke iz teksta zurnala (naziv u jednom ili vise redova, pa red "cena  kolicina  ukupno")
+  function sufJournalItems(journal){
+    const lines = String(journal || '').split(/\r?\n/);
+    const start = lines.findIndex(l => /^\s*(Назив|Naziv)\s/.test(l));
+    if(start < 0) return [];
+    const out = []; let name = [];
+    for(const l of lines.slice(start + 1)){
+      if(/^\s*-{5,}/.test(l) || /^\s*={5,}/.test(l)) break;
+      const m = /^\s*(-?[\d.]+,\d{2})\s+(-?[\d.]*\d(?:,\d+)?)\s+(-?[\d.]+,\d{2})\s*$/.exec(l);
+      if(m){ if(name.length) out.push(sufItem(name.join(' '), parseQtyNum(m[2].replace(/\./g, '')), parseAmount(m[3]))); name = []; }
+      else if(l.trim()) name.push(l.trim());
+    }
+    return out;
+  }
+  function sufReading(page, items){
+    const low = [];
+    if(!page.date) low.push('date');
+    if(page.total == null) low.push('total');
+    if(!items.length) low.push('items');
+    return { store: page.store || '', date: page.date || '', total: page.total, items, low, source: 'fiscal', invoiceNumber: page.invoiceNumber || '' };
+  }
+  // Kategorije za stavke: AI dobija samo nazive (bez iznosa)
+  function receiptCategoryPrompt(categories, names){
+    return [
+      'Za svaki artikal iz prodavnice izaberi jednu kategoriju korisnika.',
+      'Kategorije: ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
+      'Artikli (redom): ' + JSON.stringify(names || []),
+      'Vrati SAMO JSON: {"kategorije":["...", ...]} — isti broj i redosled kao artikli; ako nijedna ne odgovara, "".'
+    ].join('\n');
+  }
+  function cleanReceiptCategories(raw, categories, n){
+    const o = extractJson(raw);
+    const list = o && Array.isArray(o.kategorije) ? o.kategorije : [];
+    const cats = categories || [];
+    return Array.from({ length: n }, (_, i) => cats.find(c => foldText(c) === foldText(list[i] || '')) || '');
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -2043,7 +2109,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });

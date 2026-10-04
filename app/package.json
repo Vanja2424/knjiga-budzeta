@@ -1,6 +1,6 @@
 {
   "name": "knjiga-budzeta",
-  "version": "1.29.3",
+  "version": "1.30.0",
   "description": "Knjiga budžeta — desktop aplikacija",
   "author": "Vanja Cernjakovski",
   "main": "main.js",

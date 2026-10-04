@@ -2053,6 +2053,39 @@
       window.__fakeReceiptReading = null;
     }
 
+    // Fiskalni racun: link botu -> tacni podaci Poreske uprave; neuspeh; slika sa QR kodom ide preko Poreske uprave (ne AI)
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const SUF_HTML = ["<script>viewModel.InvoiceNumber('SMK-1'); viewModel.Token('tok');</script>", '<span id="shopFullNameLabel">7654321-SMOKE FISKAL</span>',
+        '<span id="totalAmountLabel">1.249,98</span>', '<span id="sdcDateTimeLabel">7.9.2026. 09:05:01</span>', '<pre>Назив   Цена   Кол.   Укупно', 'X', '   1,00   1   1,00', '------</pre>'].join('\n');
+      const SUF_SPEC = { success: true, items: [{ name: 'MLEKO SVEZE 2.8% 1L (Е)/kom', quantity: 2, total: 259.98, unitPrice: 129.99 }, { name: 'SIR GAUDA NAREZAK (Ђ)/kg ', quantity: 0.9, total: 990, unitPrice: 1100 }] };
+      let fiscalCalls = 0, aiCalls = 0;
+      window.__fakeFiscal = url => { fiscalCalls++; return /vl=SMOKE/.test(url) ? { ok: true, html: SUF_HTML, spec: SUF_SPEC } : { ok: false, kind: 'network' }; };
+      window.__fakeFiscalCategories = () => ({ ok: true, content: JSON.stringify({ kategorije: ['Hrana', 'Hrana'] }) });
+      window.__fakeReceiptReading = () => { aiCalls++; return { ok: true, content: JSON.stringify({ store: 'AI pogresno', total: 318, items: [{ name: 'Porez', price: 318 }] }) }; };
+      const f1 = await B.handle({ update_id: 900501, kind: 'text', text: 'https://suf.purs.gov.rs/v/?vl=SMOKE%2B1%3D' });
+      const t1 = f1.replies[0].text || '';
+      check('fiskalni: link botu daje tačan sažetak sa svim stavkama', /Smoke fiskal/.test(t1) && /Mleko sveze 2\.8% 1l — 259,98/.test(t1) && /Sir gauda narezak — 990/.test(t1) && /Poreske uprave/.test(t1) && aiCalls === 0, t1);
+      const sb = (f1.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data));
+      if (sb) await B.handle({ update_id: 900502, kind: 'callback', data: sb.data, messageId: 1 });
+      const fe = ents().filter(e => e.desc === 'Smoke fiskal');
+      check('fiskalni: Sačuvaj upisuje tačan iznos i stavke', fe.length === 1 && fe[0].amount === 1249.98 && (fe[0].items || []).length === 2 && fe[0].category === 'Hrana', JSON.stringify(fe.map(e => [e.amount, e.category, e.items])));
+      const f2 = await B.handle({ update_id: 900503, kind: 'text', text: 'https://suf.purs.gov.rs/v/?vl=NEMA' });
+      check('fiskalni: neuspelo preuzimanje daje jasnu poruku', /Poreske uprave/.test(f2.replies[0].text) && /✕/.test(f2.replies[0].text), f2.replies[0].text);
+      // slika sa QR kodom fiskalnog racuna -> Poreska uprava, bez AI citanja slike
+      const qr = qrcode(0, 'L'); qr.addData('https://suf.purs.gov.rs/v/?vl=SMOKE%2B2%3D'); qr.make();
+      const qrUrl = qr.createDataURL(8, 16);
+      const b64 = qrUrl.split(',')[1];
+      aiCalls = 0;
+      const f3 = await B.handle({ update_id: 900504, kind: 'file', caption: 'maxi', progressMessageId: 81, file: { base64: b64, name: 'racun.gif', mime: 'image/gif' } });
+      const t3 = f3.replies[0].text || '';
+      check('fiskalni: QR na slici -> podaci Poreske uprave, AI ne čita sliku', /Smoke fiskal/.test(t3) && /Poreske uprave/.test(t3) && aiCalls === 0, t3 + ' ai=' + aiCalls);
+      const x3 = (f3.replies[0].buttons || []).flat().find(b => /^x:/.test(b.data)); if (x3) await B.handle({ update_id: 900505, kind: 'callback', data: x3.data, messageId: 81 });
+      window.__fakeFiscal = null; window.__fakeFiscalCategories = null; window.__fakeReceiptReading = null;
+      window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke fiskal').map(e => e.id));
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
