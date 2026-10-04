@@ -1,6 +1,6 @@
 {
   "name": "knjiga-budzeta",
-  "version": "1.28.0",
+  "version": "1.28.1",
   "description": "Knjiga budžeta — desktop aplikacija",
   "author": "Vanja Cernjakovski",
   "main": "main.js",
@@ -8,7 +8,7 @@
   "scripts": {
     "copy-web": "node scripts/copy-web.js",
     "start": "npm run copy-web && electron .",
-    "test": "node --test test/core.test.js test/bills.test.js test/telegram.test.js",
+    "test": "node --test test/core.test.js test/bills.test.js test/telegram.test.js test/build.test.js",
     "smoke": "npm run copy-web && node test/smoke.js",
     "dist": "npm test && npm run copy-web && electron-builder --win --publish never",
     "release": "npm run dist && node scripts/release.js",
@@ -44,7 +44,7 @@
       "xlsx.core.min.js",
       "qrcode-generator.js",
       "jsQR.js",
-      "bills.js",
+      "bills.js", "telegram.js",
       "pdf.min.mjs",
       "pdf.worker.min.mjs",
       "build/icon.png"
