@@ -643,7 +643,8 @@
     'Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.': 'A bill window is open on the computer — finish it, then tap again.',
     'Otvoreno u aplikaciji': 'Opened in the app',
     'Nije sačuvano.': 'Not saved.',
-    'Isteklo — nije sačuvano.': 'Expired — not saved.',    'Za {0} već postoji račun — otvori ga u aplikaciji.': 'A bill for {0} already exists — open it in the app.',
+    'Isteklo — nije sačuvano.': 'Expired — not saved.',    'Za {0} već postoji račun — otvori ga u aplikaciji.': 'A bill for {0} already exists — open it in the app.',    'Povezan sa grupom „{0}“ ({1}).': 'Connected to the group “{0}” ({1}).',
+    'Za zajedničku grupu (npr. ti i partner): kod @BotFather pošalji /setprivacy, izaberi bota i Disable, pa dodaj bota u grupu i pošalji kod u grupu. Svaki rashod iz grupe dobija oznaku sa imenom onog ko ga je poslao.': 'For a shared group (e.g. you and your partner): send /setprivacy to @BotFather, choose the bot and Disable, then add the bot to the group and send the code in the group. Every expense from the group gets a tag with the name of whoever sent it.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

@@ -2721,6 +2721,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       <div class="settings-group" id="tgSettings" style="display:none;">
         <h3>Telegram bot</h3>
         <div class="import-status" style="margin-top:0;">Šalji botu rashode („kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
+        <div class="import-status">Za zajedničku grupu (npr. ti i partner): kod @BotFather pošalji /setprivacy, izaberi bota i Disable, pa dodaj bota u grupu i pošalji kod u grupu. Svaki rashod iz grupe dobija oznaku sa imenom onog ko ga je poslao.</div>
         <div class="import-status"><label for="tgToken">Token bota</label></div>
         <div class="file-row"><input type="password" id="tgToken" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="tgTokenSave">Sačuvaj token</button><button class="btn-secondary" id="tgTokenClear">Obriši token</button></div>
         <div class="file-row"><button class="btn-secondary" id="tgPair">Poveži Telegram</button><button class="btn-secondary" id="tgUnlink">Prekini vezu</button></div>
@@ -5269,6 +5270,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     tgEl('tgUnlink').style.display = st.linked ? '' : 'none';
     const parts = [];
     if(st.pairCode) parts.push(t('Pošalji botu {0} kod: {1} (važi još {2} min).', st.botName ? '@' + st.botName : '', st.pairCode, Math.max(1, Math.ceil((st.pairUntil - Date.now()) / 60000))));
+    else if(st.linked && st.chatTitle) parts.push(t('Povezan sa grupom „{0}“ ({1}).', st.chatTitle, st.botName ? '@' + st.botName : t('botom')));
     else if(st.linked) parts.push(t('Povezan sa {0}.', st.botName ? '@' + st.botName : t('botom')));
     else if(st.set) parts.push(t('Nije povezan — klikni „Poveži Telegram“.'));
     if(TG_STATE[st.state] && (st.state !== 'running' || !st.linked)) parts.push(TG_STATE[st.state]());
@@ -5562,7 +5564,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     item.undone = true; tgSave(TG_LOG_KEY, log);
     return item;
   }
-  async function tgText(text){
+  // Grupa: oznaka sa imenom posiljaoca ("Ana" -> ana), da se vidi ko je sta potrosio
+  const tgSenderTag = p => p && p.group && p.from && p.from.name ? C.foldText(p.from.name).replace(/[^a-z0-9]+/g, '').slice(0, 20) : '';
+  const tgWho = p => p && p.group && p.from && p.from.name ? p.from.name + ': ' : '';
+  function tgTagEntries(ids, tag){
+    if(!tag) return;
+    entries.filter(e=> ids.includes(e.id)).forEach(e=>{ e.tags = [...new Set((e.tags || []).concat(tag))]; });
+    saveEntries();
+  }
+  async function tgText(text, p){
     const intent = C.telegramIntent(text);
     if(intent.kind === 'command' && intent.command === 'ponisti'){
       const it = await tgUndo(null);
@@ -5572,14 +5582,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
       rules: data.rules, history: data.history, expenseCats, incomeCats });
-    if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
+    if(d.error === 'noamount') return p && p.group ? { replies: [] } : tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.')); // u grupi: obicno caskanje
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
-    const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true });
+    const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true, tags: tgSenderTag(p) });
     if(!r || !r.ok) return tgReply('✕ ' + ((r && r.error) || t('Stavka nije dodata.')));
     const label = `${d.desc} · ${r.amountText}`;
     const logId = tgLog(r.ids, label);
-    return tgReply(`✓ ${d.type === 'income' ? t('Prihod') + ': ' : ''}${label} · ${r.category} · ${tgDayLabel(d.date)}`, { buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] });
+    return tgReply(`✓ ${tgWho(p)}${d.type === 'income' ? t('Prihod') + ': ' : ''}${label} · ${r.category} · ${tgDayLabel(d.date)}`, { buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] });
   }
   async function tgCallback(p){
     const cb = C.parseTelegramCallback(p.data);
@@ -5594,7 +5604,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const done = tgLoad(TG_DONE_KEY);
     if(!p || done.includes(p.update_id)) return { replies: [] };
     let out = { replies: [] };
-    if(p.kind === 'text') out = await tgText(p.text);
+    if(p.kind === 'text') out = await tgText(p.text, p);
     else if(p.kind === 'callback') out = await tgCallback(p);
     else if(p.kind === 'file') out = await tgFile(p); // Task 5
     tgSave(TG_DONE_KEY, tgLoad(TG_DONE_KEY).concat(p.update_id).slice(-500));
@@ -5620,7 +5630,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const edit = p.progressMessageId ? { editMessageId: p.progressMessageId } : null;
     if(p.fileError || !p.file) return tgReply('✕ ' + (TG_FILE_ERR[p.fileError] || TG_FILE_ERR.download)(), edit);
     const file = new File([b64ToBytes(p.file.base64)], p.file.name, { type: p.file.mime });
-    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null };
+    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p) };
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
     if(saveFile){
       const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
@@ -5722,6 +5732,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(pend.kind === 'receipt'){
         const r = await saveReceiptData(Object.assign({}, pend.state, { attachments: pend.file ? [pend.file] : [], confirmed: true }));
         if(!r.ok) return { callbackText: r.error || t('Nije sačuvano.'), replies: [] };
+        tgTagEntries(r.ids, pend.tag);
         ids = r.ids; label = `${pend.state.store || t('Prodavnica')} · ${t('{0} stavki', r.count)}`; undoExtra = { attachments: r.attachments, shopping: r.shoppingBefore };
       } else if(pend.kind === 'bill'){
         if(billReview) return { callbackText: t('Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.'), replies: [] };
@@ -5734,7 +5745,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         if(!ok){ const msg = billEl('billStatus').textContent; closeBillReview(false, true); return { callbackText: msg || t('Nije sačuvano.'), replies: [] }; }
       } else {
         const s = pend.state;
-        const r = window.__desktopBridge.addEntry({ type: 'expense', desc: s.name || s.purpose || t('Uplatnica'), amount: s.amount, currency: 'RSD', date: toISODateLocal(new Date()), category: '', paid: true });
+        const r = window.__desktopBridge.addEntry({ type: 'expense', desc: s.name || s.purpose || t('Uplatnica'), amount: s.amount, currency: 'RSD', date: toISODateLocal(new Date()), category: '', paid: true, tags: pend.tag || '' });
         if(!r.ok) return { callbackText: r.error, replies: [] };
         const e = entries.find(x=> x.id === r.ids[0]);
         if(e){ if(pend.file) e.attachments = [pend.file]; e.payee = C.cleanPayee({ name: s.name, account: s.account, model: s.model, reference: s.reference, purpose: s.purpose, code: s.code }); saveEntries(); }

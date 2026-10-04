@@ -11,6 +11,7 @@ const MAX_ATTEMPTS = 3;          // poruka koja i dalje pada (greska u obradi) s
 const MAX_PAIR_TRIES = 5;        // pogresni kodovi iz nepovezanih chatova pre nego sto se kod ponisti
 const HANDLE_TIMEOUT_MS = 180000;
 const DOWNLOAD_TIMEOUT_MS = 60000;
+const LINKABLE = ['private', 'group', 'supergroup']; // kanal se ne povezuje
 const MIME_EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, onStatus = () => {}, T = s => s,
@@ -39,7 +40,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   function status() {
     const tok = getToken();
     const pairing = !!pair && pair.until > now();
-    return { set: !!tok, last4: tok ? (s().telegramTokenLast4 || '') : '', botName: s().telegramBotName || '', linked: !!s().telegramChatId,
+    return { set: !!tok, last4: tok ? (s().telegramTokenLast4 || '') : '', botName: s().telegramBotName || '', linked: !!s().telegramChatId, chatTitle: s().telegramChatTitle || '',
       on: s().telegramOn !== false, state: tok ? state : 'notoken', pairCode: pairing ? pair.code : '', pairUntil: pairing ? pair.until : 0,
       encryption: encryption(), error: lastError };
   }
@@ -69,14 +70,14 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     token = String(token || '').trim();
     stop();
     if (!token) {
-      ['telegramTokenEnc', 'telegramTokenLast4', 'telegramBotName', 'telegramChatId', 'telegramUserId', 'telegramOffset'].forEach(k => delete s()[k]);
+      ['telegramTokenEnc', 'telegramTokenLast4', 'telegramBotName', 'telegramChatId', 'telegramUserId', 'telegramChatTitle', 'telegramOffset'].forEach(k => delete s()[k]);
       saveSettings(); setState('notoken'); return status();
     }
     if (!encryption()) return { ...status(), error: 'encryption' };
     const changed = getToken() !== token;
     s().telegramTokenEnc = safeStorage.encryptString(token).toString('base64');
     s().telegramTokenLast4 = token.slice(-4);
-    if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramOffset; delete s().telegramBotName; }
+    if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; delete s().telegramOffset; delete s().telegramBotName; }
     saveSettings();
     try { const me = await api('getMe'); s().telegramBotName = String(me && me.username || ''); saveSettings(); lastError = ''; state = 'off'; }
     catch (e) { lastError = scrub(e.message); setState(e.kind === 'badToken' ? 'badToken' : 'offline'); return status(); }
@@ -90,7 +91,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     onStatus(status());
     return status();
   }
-  function unlink() { delete s().telegramChatId; delete s().telegramUserId; saveSettings(); pair = null; onStatus(status()); return status(); }
+  function unlink() { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; saveSettings(); pair = null; onStatus(status()); return status(); }
   function setOn(on) { s().telegramOn = !!on; saveSettings(); if (on) start(); else { stop(); setState('off'); } return status(); }
 
   // Fajl iz poruke: najveca fotografija ili dokument (samo pdf/jpg/png/webp)
@@ -141,21 +142,30 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     const msg = u.message, cb = u.callback_query;
     const chatId = msg ? msg.chat && msg.chat.id : (cb && cb.message && cb.message.chat ? cb.message.chat.id : null);
     if (chatId == null) return;
-    const linked = s().telegramChatId;
+    let linked = s().telegramChatId;
+    // grupa je postala supergrupa: Telegram javlja novi id u staroj grupi — veza prelazi na novu
+    if (msg && msg.migrate_to_chat_id && linked && String(linked) === String(chatId)) { s().telegramChatId = msg.migrate_to_chat_id; saveSettings(); return; }
     const fromId = msg ? msg.from && msg.from.id : cb.from && cb.from.id;
     const userOk = !s().telegramUserId || String(s().telegramUserId) === String(fromId);
     if (!linked || String(linked) !== String(chatId) || !userOk) {
       const text = msg ? String(msg.text || '').trim() : '';
-      const privateChat = msg && msg.chat && msg.chat.type === 'private';
-      if (privateChat && pair && pair.until > now() && /^\d{4,8}$/.test(text) && text !== pair.code && ++pair.tries >= MAX_PAIR_TRIES) { pair = null; onStatus(status()); }
-      if (privateChat && pair && pair.until > now() && text === pair.code) {
-        s().telegramChatId = chatId; s().telegramUserId = fromId; saveSettings(); pair = null;
+      const linkable = !!msg && !!msg.chat && LINKABLE.includes(msg.chat.type);
+      if (linkable && pair && pair.until > now() && /^\d{4,8}$/.test(text) && text !== pair.code && ++pair.tries >= MAX_PAIR_TRIES) { pair = null; onStatus(status()); }
+      if (linkable && pair && pair.until > now() && text === pair.code) {
+        s().telegramChatId = chatId;
+        // privatni chat: samo ta osoba; grupa: svi clanovi (korisnik bira ko je u grupi)
+        if (msg.chat.type === 'private') { s().telegramUserId = fromId; delete s().telegramChatTitle; }
+        else { delete s().telegramUserId; s().telegramChatTitle = String(msg.chat.title || '').slice(0, 80); }
+        saveSettings(); pair = null;
         await deliver([{ text: T('✓ Povezano sa Knjigom budžeta. Pošalji npr. „kafa 250“ ili sliku računa. /pomoc za uputstvo.') }], chatId);
         onStatus(status());
       }
       return; // tudji chat: bez odgovora
     }
-    const p = { update_id: u.update_id };
+    const chat = msg ? msg.chat : cb.message.chat;
+    const from = msg ? msg.from : cb.from;
+    const p = { update_id: u.update_id, group: !!chat && chat.type !== 'private',
+      from: { id: from && from.id, name: String((from && (from.first_name || from.username)) || '').slice(0, 40) } };
     if (cb) Object.assign(p, { kind: 'callback', data: String(cb.data || ''), messageId: cb.message.message_id });
     else if (msg) {
       const f = pickFile(msg);
@@ -167,7 +177,8 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
           p.progressMessageId = prog && prog.message_id;
           try { p.file = await downloadFile(f); } catch (e) { p.fileError = e.kind === 'size' ? 'size' : 'download'; }
         }
-      } else Object.assign(p, { kind: 'text', text: String(msg.text || '') });
+      } else if (typeof msg.text === 'string') Object.assign(p, { kind: 'text', text: msg.text });
+      else return; // sistemske poruke (novi clan, promena imena...) — bez odgovora
     } else return;
     const out = await withTimeout(handle(p), handleTimeoutMs); // baca -> offset ostaje, poruka dolazi ponovo
     if (cb) await safe(() => api('answerCallbackQuery', { callback_query_id: cb.id, text: (out && out.callbackText) || undefined }));

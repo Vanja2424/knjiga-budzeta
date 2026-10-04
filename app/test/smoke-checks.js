@@ -2005,6 +2005,33 @@
       window.__fakeReceiptReading = null; window.__fakeBillReading = null;
     }
 
+    // Telegram grupa: oznaka posiljaoca, ime u odgovoru, caskanje bez broja se ignorise, racun iz grupe, uputstvo u podesavanjima
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const ana = { id: 5, name: 'Ana' };
+      const g1 = await B.handle({ update_id: 900301, kind: 'text', text: 'Smoke grupa kafa 180', group: true, from: ana });
+      const ge = ents().find(e => e.desc === 'Smoke grupa kafa');
+      check('telegram grupa: rashod dobija oznaku pošiljaoca', !!ge && (ge.tags || []).includes('ana'), JSON.stringify(ge && ge.tags));
+      check('telegram grupa: odgovor kaže ko je poslao', /^✓ Ana: /.test(g1.replies[0].text), g1.replies[0].text);
+      const n0 = ents().length;
+      const g2 = await B.handle({ update_id: 900302, kind: 'text', text: 'idemo večeras u bioskop?', group: true, from: ana });
+      check('telegram grupa: ćaskanje bez iznosa se ignoriše', g2.replies.length === 0 && ents().length === n0, JSON.stringify(g2));
+      const g3 = await B.handle({ update_id: 900303, kind: 'text', text: 'idemo večeras u bioskop?', group: false, from: ana });
+      check('telegram privatno: bez iznosa i dalje objašnjava', /iznos/i.test((g3.replies[0] || {}).text || ''));
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke grupa Maxi', date: '2026-09-26', total: 90, items: [{ name: 'Smoke grupa jaja', price: 90, category: 'Hrana' }] }) });
+      const r1 = await B.handle({ update_id: 900304, kind: 'file', caption: 'maxi', progressMessageId: 61, group: true, from: { id: 6, name: 'Vanja' }, file: { base64: btoa(String.fromCharCode(...png)), name: 'telegram.png', mime: 'image/png' } });
+      const sb = (r1.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data));
+      if (sb) await B.handle({ update_id: 900305, kind: 'callback', data: sb.data, messageId: 61, group: true, from: ana });
+      const re = ents().find(e => e.desc === 'Smoke grupa Maxi');
+      check('telegram grupa: račun iz grupe dobija oznaku onog ko ga je poslao', !!re && (re.tags || []).includes('vanja') && (re.tags || []).includes('nabavka'), JSON.stringify(re && re.tags));
+      window.__fakeReceiptReading = null;
+      window.__deleteEntriesById(ents().filter(e => /^Smoke grupa/.test(e.desc)).map(e => e.id));
+      go('podesavanja'); await sleep(120);
+      check('telegram grupa: podešavanja objašnjavaju /setprivacy', /setprivacy/.test($('tgSettings').textContent));
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
