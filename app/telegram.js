@@ -98,7 +98,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   function pickFile(msg) {
     if (Array.isArray(msg.photo) && msg.photo.length) {
       const big = msg.photo.slice().sort((a, b) => ((b.file_size || 0) - (a.file_size || 0)) || ((b.width * b.height) - (a.width * a.height)))[0];
-      return { file_id: big.file_id, file_size: big.file_size || 0, name: 'telegram.jpg', mime: 'image/jpeg' };
+      return { file_id: big.file_id, file_size: big.file_size || 0, name: 'telegram.jpg', mime: 'image/jpeg', compressed: true }; // Telegram smanjuje fotografije (do 1280 px)
     }
     if (msg.document) {
       const d = msg.document, mime = String(d.mime_type || '').toLowerCase();
@@ -121,7 +121,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     } catch (e) { throw err('download'); }
     finally { clearTimeout(timer); }
     if (buf.length > MAX_FILE) throw err('size');
-    return { base64: buf.toString('base64'), name: f.name, mime: f.mime };
+    return { base64: buf.toString('base64'), name: f.name, mime: f.mime, compressed: !!f.compressed };
   }
 
   const markup = buttons => ({ inline_keyboard: (buttons || []).map(row => row.map(b => ({ text: String(b.text).slice(0, 60), callback_data: String(b.data).slice(0, 64) }))) });
