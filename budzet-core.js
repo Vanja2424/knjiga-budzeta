@@ -1293,7 +1293,8 @@
       '- price = UKUPNA cena reda (količina × jedinična cena) kao JSON broj sa tačkom. Popust u posebnom redu = stavka sa negativnom cenom i "discount":1.',
       '- category: jedna od ovih kategorija korisnika ili "": ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
       '- total = UKUPNO za plaćanje: red "Ukupan iznos", "Ukupno" ili "Za uplatu" (NIKAD "Ukupan iznos poreza", PDV ni iznos poreza po stopi). Ako se na ovom delu ne vidi, stavi null. store i date samo ako se vide.',
-      '- Ne izmišljaj redove ni cene; nečitljivo = null. Ne vraćaj PDV rekapitulaciju, načine plaćanja ni kusur kao stavke.'
+      '- Ne izmišljaj redove ni cene; nečitljivo = null. Ne vraćaj PDV rekapitulaciju, načine plaćanja ni kusur kao stavke.',
+      '- Poreska rekapitulacija na dnu računa NIJE stavka: redovi kao "Ђ 10.00% 272,73 27,27", "Е 20.00% 1455,23 291,05", "Oznaka Ime Stopa Porez", "Ukupan iznos poreza".'
     ].join('\n');
   }
   // "SAPUN DOVE 100G" -> "Sapun dove" (bez brojeva, jedinica i znakova)
@@ -1301,6 +1302,11 @@
     const s = String(raw || '').replace(/\d+([.,]\d+)?\s*(%|kg|gr?|l|ml|kom|x)?(?![\p{L}])/giu, ' ').replace(/[^\p{L}\s-]/gu, ' ').replace(/\s+/g, ' ').trim().toLowerCase();
     return s ? s[0].toUpperCase() + s.slice(1) : '';
   };
+  // Red poreske rekapitulacije (stopa sa dve decimale "20.00%", PDV, porez, osnovica) — nije artikal
+  function isTaxRecapLine(i){
+    const f = foldText(String(i.raw || '') + ' ' + String(i.name || ''));
+    return /(^|[^a-z])(pdv|porez|poreza|stopa|osnovica)([^a-z]|$)/.test(f) || /(^|[^0-9])(0|10|20)[.,]00\s*%/.test(f);
+  }
   function cleanReceiptReading(raw, ctx){
     const o = extractJson(raw);
     if(!o) return null;
@@ -1315,7 +1321,7 @@
       // popust je uvek negativan, i kad ga AI procita kao pozitivan iznos ("POPUST 15,00")
       return { raw: rawText, name, qty: Number.isFinite(qty) && qty > 0 ? qty : 1, unit: normUnit(i.unit) || String(i.unit || '').trim().slice(0, 8),
         price: Number.isFinite(price) ? round2(discount ? -Math.abs(price) : price) : null, category: catFor(i.category), discount };
-    }).filter(i => i.name || i.price != null);
+    }).filter(i => (i.name || i.price != null) && !isTaxRecapLine(i));
     const total = parseAmount(o.total);
     const out = { store: String(o.store || '').trim().slice(0, 60), date: readDate(o.date), total: Number.isFinite(total) && total > 0 ? round2(total) : null, items, low: [] };
     if(!out.date) out.low.push('date');

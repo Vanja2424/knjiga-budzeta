@@ -1836,3 +1836,15 @@ test('cleanReceiptReading: ukupno manje od pola zbira stavki (procitan PDV) -> z
   // uputstvo AI-ju: ukupno nije iznos poreza
   assert.match(C.receiptPrompt(['Hrana']), /poreza/);
 });
+
+test('cleanReceiptReading: redovi PDV rekapitulacije (stopa 10/20%, PDV, porez) nisu stavke', () => {
+  const r = C.cleanReceiptReading(JSON.stringify({ store: 'Borjak', total: 318.32, items: [
+    { raw: 'Ђ 10.00% 272.73 27.27', name: 'Porez', price: 27.27 },
+    { raw: 'Е 20.00% 1455.23 291.05', name: 'Porez', price: 291.05 },
+    { raw: 'PDV ukupno', name: 'PDV', price: 318.32 },
+    { raw: 'MLEKO 2.8% 1L', name: 'Mleko 2.8%', price: 139.99 },
+    { raw: 'JOGURT 20% MM', name: 'Jogurt', price: 99.99 }
+  ] }), { categories: [] });
+  assert.deepEqual(r.items.map(i => i.name), ['Mleko 2.8%', 'Jogurt']);
+  assert.match(C.receiptPrompt([]), /20\.00%/);
+});

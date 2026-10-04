@@ -92,7 +92,7 @@ test('telegram: fotografija -> najveca velicina, poruka "Citam", base64 u payloa
   await api.pollOnce();
   assert.equal(handled[0].kind, 'file'); assert.equal(handled[0].caption, 'maxi');
   assert.equal(handled[0].file.base64, Buffer.from([1, 2, 3]).toString('base64'));
-  assert.equal(handled[0].file.mime, 'image/jpeg');
+  assert.equal(handled[0].file.mime, 'image/jpeg'); assert.equal(handled[0].file.compressed, true);
   assert.ok(handled[0].progressMessageId > 0);
   assert.equal(handled[1].fileError, 'type');
   assert.equal(handled[2].fileError, 'size');

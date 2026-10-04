@@ -5630,7 +5630,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const edit = p.progressMessageId ? { editMessageId: p.progressMessageId } : null;
     if(p.fileError || !p.file) return tgReply('✕ ' + (TG_FILE_ERR[p.fileError] || TG_FILE_ERR.download)(), edit);
     const file = new File([b64ToBytes(p.file.base64)], p.file.name, { type: p.file.mime });
-    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p) };
+    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p), compressed: !!p.file.compressed };
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
     if(saveFile){
       const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
@@ -5656,7 +5656,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(part.error) return fail(part.error);
       pend.state = mergedReceiptState([part]);
       tgPendingPut(pend);
-      return tgReply(tgReceiptSummary(pend.state), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) }));
+      return tgReply(tgReceiptSummary(pend.state, pend), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) }));
     }
     if(pend.kind === 'bill'){
       ensureBillDefaults();
@@ -5674,12 +5674,22 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     tgPendingPut(pend);
     return tgReply(tgSlipSummary(pend.state), Object.assign({}, edit, { buttons: tgButtons(pend, pend.state.amount > 0 && pend.state.currency === 'RSD' ? [{ text: '✓ ' + t('Plaćeno'), data: 's:' + pend.id }] : null) }));
   }
-  function tgReceiptSummary(st){
-    const rows = C.receiptToExpenses(st.items.filter(i=> i.price != null), st.total > 0 ? st.total : null);
-    const total = st.total > 0 ? st.total : rows.reduce((s, r)=> s + r.amount, 0);
+  function tgReceiptSummary(st, pend){
+    const named = st.items.filter(i=> (i.name || '').trim() || i.price != null);
+    const rows = C.receiptToExpenses(named.filter(i=> i.price != null), st.total > 0 ? st.total : null);
+    const sum = Math.round(named.reduce((s, i)=> s + (i.price > 0 || i.price < 0 ? i.price : 0), 0) * 100) / 100;
+    const total = st.total > 0 ? st.total : sum;
     const dup = st.date && total > 0 ? C.findReceiptDuplicate(entries, st.date, total) : null;
-    return `🧾 ${st.store || t('Prodavnica')} · ${tgDayLabel(st.date)} · ${fmt(total)}\n` + rows.map(r=> `${r.category} ${fmt(r.amount)}`).join(', ')
-      + ` · ${t('{0} stavki', st.items.filter(i=> (i.name || '').trim()).length)}` + (dup ? '\n⚠ ' + t('Ovaj račun je možda već unet ({0}).', st.date) : '');
+    // puna lista stavki (do 80 redova), da se citanje proveri pre cuvanja
+    const list = named.slice(0, 80).map(i=> `• ${(i.name || i.raw || '?').trim()} — ${i.price != null ? fmtNum(i.price, 2) : '?'}`);
+    if(named.length > 80) list.push(t('… i još {0}', named.length - 80));
+    const lines = [`🧾 ${st.store || t('Prodavnica')} · ${tgDayLabel(st.date)} · ${fmt(total)}`,
+      rows.map(r=> `${r.category} ${fmt(r.amount)}`).join(', ') + ` · ${t('{0} stavki', named.length)}`];
+    if(dup) lines.push('⚠ ' + t('Ovaj račun je možda već unet ({0}).', st.date));
+    if(list.length) lines.push('', ...list);
+    if(st.total > 0 && Math.abs(st.total - sum) >= 1) lines.push('', '⚠ ' + t('Zbir stavki je {0}, a ukupno sa računa {1} — proveri listu ili otvori u aplikaciji.', fmtNum(sum, 2), fmtNum(st.total, 2)));
+    if(pend && pend.compressed) lines.push('', '💡 ' + t('Telegram smanjuje fotografije. Za tačnije čitanje pošalji sliku kao fajl (📎 → Fajl), bez kompresije.'));
+    return lines.join('\n');
   }
   function tgBillSummary(r){
     const type = billTypeById(r.billTypeId), loc = locationById(r.locationId || (type && type.locationId));

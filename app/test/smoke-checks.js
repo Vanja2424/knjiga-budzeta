@@ -2032,6 +2032,27 @@
       check('telegram grupa: podešavanja objašnjavaju /setprivacy', /setprivacy/.test($('tgSettings').textContent));
     }
 
+    // Telegram: puna lista stavki u sazetku, zbir != ukupno, predlog za slanje kao fajl
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      const b64 = btoa(String.fromCharCode(...png));
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke lista', date: '2026-09-25', total: 500, items: [{ name: 'Smoke jabuke', price: 120.5, category: 'Hrana' }, { name: 'Smoke sapun', price: 80, category: 'Hrana' }] }) });
+      const L1 = await B.handle({ update_id: 900401, kind: 'file', caption: 'maxi', progressMessageId: 71, file: { base64: b64, name: 'telegram.jpg', mime: 'image/png', compressed: true } });
+      const txt = L1.replies[0].text;
+      check('telegram: sažetak ima punu listu stavki sa cenama', /Smoke jabuke — 120,50/.test(txt) && /Smoke sapun — 80/.test(txt), txt);
+      check('telegram: sažetak javlja kad se zbir stavki ne slaže sa ukupnim', /Zbir stavki/.test(txt), txt);
+      check('telegram: za kompresovanu fotografiju predlaže slanje kao fajl', /kao fajl/.test(txt), txt);
+      const x = (L1.replies[0].buttons || []).flat().find(b => /^x:/.test(b.data));
+      if (x) await B.handle({ update_id: 900402, kind: 'callback', data: x.data, messageId: 71 });
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke lista 2', date: '2026-09-25', total: 200.5, items: [{ name: 'Smoke jabuke', price: 120.5, category: 'Hrana' }, { name: 'Smoke sapun', price: 80, category: 'Hrana' }] }) });
+      const L2 = await B.handle({ update_id: 900403, kind: 'file', caption: 'maxi', progressMessageId: 72, file: { base64: b64, name: 'racun.png', mime: 'image/png' } });
+      check('telegram: bez upozorenja kad se zbir slaže i slika je fajl', !/Zbir stavki/.test(L2.replies[0].text) && !/kao fajl/.test(L2.replies[0].text), L2.replies[0].text);
+      const x2 = (L2.replies[0].buttons || []).flat().find(b => /^x:/.test(b.data));
+      if (x2) await B.handle({ update_id: 900404, kind: 'callback', data: x2.data, messageId: 72 });
+      window.__fakeReceiptReading = null;
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
