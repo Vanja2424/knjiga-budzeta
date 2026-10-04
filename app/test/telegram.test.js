@@ -4,7 +4,8 @@ const assert = require('node:assert/strict');
 const { createTelegram } = require('../telegram.js');
 
 const TOKEN = '123456:ABC-secret_token';
-function setup({ handle, tick, settings: init } = {}){
+let lastOpts = null;
+function setup({ handle, tick, settings: init, extra } = {}){
   const settings = Object.assign({}, init || {});
   const safeStorage = { isEncryptionAvailable: () => true, encryptString: s => Buffer.from('X' + s), decryptString: b => b.toString().slice(1) };
   const calls = [], queue = {};
@@ -13,7 +14,7 @@ function setup({ handle, tick, settings: init } = {}){
     const m = /\/bot[^/]+\/(\w+)$/.exec(url) || /\/file\/bot[^/]+\/(.+)$/.exec(url);
     const method = url.includes('/file/bot') ? 'FILE' : m[1];
     const body = opts && opts.body ? JSON.parse(opts.body) : null;
-    calls.push({ url, method, body });
+    calls.push({ url, method, body }); lastOpts = opts;
     const q = queue[method];
     if (q && q.length) { const r = q.shift(); return typeof r === 'function' ? r(body) : r; }
     if (method === 'getMe') return reply(method, { username: 'knjiga_test_bot' });
@@ -26,11 +27,11 @@ function setup({ handle, tick, settings: init } = {}){
     fetch, safeStorage, getSettings: () => settings, saveSettings: () => {},
     handle: handle || (async p => { handled.push(p); return { replies: [{ text: 'ok ' + p.kind }] }; }),
     tick: tick || (async () => ({ replies: [] })),
-    T: s => s, now: () => 1000000, sleep: async () => {}, random: () => 0.4821, autoStart: false
+    T: s => s, now: () => 1000000, sleep: async () => {}, random: () => 0.4821, autoStart: false, ...(extra || {})
   });
   return { api, settings, calls, queue, handled, reply };
 }
-const upd = (id, msg) => ({ update_id: id, message: Object.assign({ message_id: id, chat: { id: 77 }, from: { id: 77 } }, msg) });
+const upd = (id, msg) => ({ update_id: id, message: Object.assign({ message_id: id, chat: { id: 77, type: 'private' }, from: { id: 77 } }, msg) });
 
 test('telegram: token sifrovan, stranica vidi samo poslednja 4 znaka, getMe daje ime bota', async () => {
   const { api, settings } = setup();
@@ -46,8 +47,8 @@ test('telegram: povezivanje kodom, istekao kod i tudji chat se ignorisu', async 
   const { api, settings, queue, calls, reply, handled } = setup();
   await api.setToken(TOKEN);
   const { pairCode } = api.startPairing();
-  assert.equal(pairCode, '4821');
-  queue.getUpdates = [reply('getUpdates', [upd(1, { text: '1111' }), upd(2, { text: ' 4821 ' }), { update_id: 3, message: { message_id: 3, chat: { id: 55 }, text: 'kafa 250' } }])];
+  assert.equal(pairCode, '482100');
+  queue.getUpdates = [reply('getUpdates', [upd(1, { text: '1111' }), upd(2, { text: ' 482100 ' }), { update_id: 3, message: { message_id: 3, chat: { id: 55, type: 'private' }, from: { id: 55 }, text: 'kafa 250' } }])];
   await api.pollOnce();
   assert.equal(settings.telegramChatId, 77);
   assert.equal(settings.telegramOffset, 4);
@@ -101,7 +102,7 @@ test('telegram: fotografija -> najveca velicina, poruka "Citam", base64 u payloa
 test('telegram: dugme -> answerCallbackQuery i izmena poruke; 429 i 401; token nije u gresci', async () => {
   const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async p => ({ callbackText: 'Sačuvano', replies: [{ editMessageId: p.messageId, text: '✓ Sačuvano' }] }) });
   await api.setToken(TOKEN); settings.telegramChatId = 77;
-  queue.getUpdates = [reply('getUpdates', [{ update_id: 30, callback_query: { id: 'cb1', data: 's:abc', message: { message_id: 5, chat: { id: 77 } } } }])];
+  queue.getUpdates = [reply('getUpdates', [{ update_id: 30, callback_query: { id: 'cb1', from: { id: 77 }, data: 's:abc', message: { message_id: 5, chat: { id: 77 } } } }])];
   await api.pollOnce();
   const ans = calls.find(c => c.method === 'answerCallbackQuery');
   assert.equal(ans.body.callback_query_id, 'cb1'); assert.equal(ans.body.text, 'Sačuvano');
@@ -125,4 +126,68 @@ test('telegram: dugmad -> inline tastatura, tekst se skracuje na 4096', async ()
   const m = calls.find(c => c.method === 'sendMessage');
   assert.equal(m.body.text.length, 4096);
   assert.deepEqual(m.body.reply_markup.inline_keyboard, [[{ text: '✓ Sačuvaj', callback_data: 's:1' }], [{ text: '✕', callback_data: 'x:1' }, { text: 'Otvori', callback_data: 'o:1' }]]);
+});
+
+const tick0 = () => new Promise(r => setImmediate(r));
+test('telegram: stop pa odmah start ne ostavlja bota mrtvog (petlja nastavlja, stanje nije offline)', async () => {
+  let polls = 0;
+  const { api, settings, queue } = setup({ settings: { telegramChatId: 77 }, extra: { autoStart: true } });
+  settings.telegramTokenEnc = Buffer.from('X' + TOKEN).toString('base64');
+  const blocking = (body, opts) => { polls++; return new Promise((res, rej) => { opts.signal.addEventListener('abort', () => rej(new Error('aborted'))); }); };
+  queue.getUpdates = [ (b) => blocking(b, lastOpts), (b) => blocking(b, lastOpts), (b) => blocking(b, lastOpts) ];
+  api.start(); await tick0(); await tick0();
+  assert.equal(polls, 1);
+  api.stop(); api.start();
+  for (let i = 0; i < 6; i++) await tick0();
+  assert.equal(polls, 2);
+  assert.notEqual(api.status().state, 'offline');
+  api.stop(); for (let i = 0; i < 4; i++) await tick0();
+});
+
+test('telegram: poruka koja stalno pada se posle 3 pokusaja preskace uz poruku; nespremna stranica se ne preskace', async () => {
+  let notReady = true;
+  const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async p => {
+    if (p.update_id === 60 && notReady) throw Object.assign(new Error('stranica nije spremna'), { notReady: true });
+    if (p.update_id === 61) throw new Error('bug u citacu');
+    return { replies: [] };
+  } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  for (let i = 0; i < 5; i++) { queue.getUpdates = [reply('getUpdates', [upd(60, { text: 'a 1' })])]; await api.pollOnce(); }
+  assert.equal(settings.telegramOffset || 0, 0);
+  notReady = false;
+  queue.getUpdates = [reply('getUpdates', [upd(60, { text: 'a 1' })])]; await api.pollOnce();
+  assert.equal(settings.telegramOffset, 61);
+  for (let i = 0; i < 2; i++) { queue.getUpdates = [reply('getUpdates', [upd(61, { text: 'b 2' })])]; assert.equal(await api.pollOnce(), 30); assert.equal(settings.telegramOffset, 61); }
+  queue.getUpdates = [reply('getUpdates', [upd(61, { text: 'b 2' })])];
+  await api.pollOnce();
+  assert.equal(settings.telegramOffset, 62);
+  assert.ok(calls.some(c => c.method === 'sendMessage' && /nije mogla da se obradi/.test(c.body.text)));
+});
+
+test('telegram: obrada koja ne zavrsi na vreme ne pomera offset', async () => {
+  const { api, settings, queue, reply } = setup({ settings: { telegramChatId: 77 }, handle: () => new Promise(() => {}), extra: { handleTimeoutMs: 20 } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.getUpdates = [reply('getUpdates', [upd(70, { text: 'a 1' })])];
+  assert.equal(await api.pollOnce(), 30);
+  assert.equal(settings.telegramOffset || 0, 0);
+});
+
+test('telegram: povezivanje samo iz privatnog chata, kod pada posle 5 pogresnih, dugme od drugog korisnika se ignorise', async () => {
+  const { api, settings, queue, reply, handled } = setup();
+  await api.setToken(TOKEN);
+  api.startPairing();
+  const grp = { update_id: 80, message: { message_id: 80, chat: { id: -100, type: 'group' }, from: { id: 9 }, text: '482100' } };
+  queue.getUpdates = [reply('getUpdates', [grp])]; await api.pollOnce();
+  assert.equal(settings.telegramChatId, undefined);
+  const wrong = [81, 82, 83, 84, 85].map(id => ({ update_id: id, message: { message_id: id, chat: { id: 55, type: 'private' }, from: { id: 55 }, text: String(100000 + id) } }));
+  queue.getUpdates = [reply('getUpdates', wrong)]; await api.pollOnce();
+  assert.equal(api.status().pairCode, '');
+  queue.getUpdates = [reply('getUpdates', [upd(86, { text: '482100' })])]; await api.pollOnce();
+  assert.equal(settings.telegramChatId, undefined);
+  api.startPairing();
+  queue.getUpdates = [reply('getUpdates', [upd(87, { text: '482100' })])]; await api.pollOnce();
+  assert.equal(settings.telegramChatId, 77); assert.equal(settings.telegramUserId, 77);
+  queue.getUpdates = [reply('getUpdates', [{ update_id: 88, callback_query: { id: 'c', from: { id: 999 }, data: 's:x', message: { message_id: 1, chat: { id: 77 } } } }])];
+  await api.pollOnce();
+  assert.equal(handled.length, 0);
 });

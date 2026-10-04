@@ -30,6 +30,7 @@ let LANG = readLangEarly();
 app.commandLine.appendSwitch('lang', LANG === 'en' ? 'en-GB' : 'sr-Latn-RS');
 app.commandLine.appendSwitch('accept-lang', LANG === 'en' ? 'en-GB,en' : 'sr-Latn-RS,sr');
 const EN = {
+  '✕ Ova poruka nije mogla da se obradi ({0}). Pošalji je ponovo ili je unesi u aplikaciji.': '✕ This message couldn’t be processed ({0}). Send it again or enter it in the app.',
   '✓ Povezano sa Knjigom budžeta. Pošalji npr. „kafa 250“ ili sliku računa. /pomoc za uputstvo.': '✓ Connected to Budget Book. Send e.g. “coffee 250” or a receipt photo. /pomoc for help.', '⏳ Čitam…': '⏳ Reading…',
   'Ažuriranja': 'Updates', 'Ažuriranja rade samo u instaliranoj verziji aplikacije.': 'Updates only work in the installed version of the app.',
   'Imaš najnoviju verziju ({0}).': 'You have the latest version ({0}).', 'Provera ažuriranja nije uspela.': 'The update check failed.',
@@ -980,7 +981,7 @@ function init() {
   // Telegram: poruku obradjuje stranica (__telegramBridge); dok stranica nije spremna, poruka se ne potvrdjuje Telegramu
   const runTelegramBridge = async (fn, arg) => {
     const r = await runInMain(`window.__telegramBridge ? window.__telegramBridge.${fn}(${arg === undefined ? '' : JSON.stringify(arg)}) : '__notready'`);
-    if (r === '__notready') throw new Error('stranica nije spremna');
+    if (r === '__notready') throw Object.assign(new Error('stranica nije spremna'), { notReady: true });
     return r;
   };
   telegramApi = createTelegram({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, T,
