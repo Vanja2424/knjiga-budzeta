@@ -138,6 +138,12 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     }
   }
 
+  // "@ime_bota 482100" / "kafa 250 @ime_bota" -> bez pominjanja bota (u grupi se botu tako pise; "/komanda@bot" ostaje)
+  function stripMention(text) {
+    const name = String(s().telegramBotName || '').replace(/[^A-Za-z0-9_]/g, '');
+    const re = name ? new RegExp('(^|\\s)@' + name + '(?=\\s|$)', 'gi') : /(^|\s)@[A-Za-z0-9_]{3,}bot(?=\s|$)/gi;
+    return String(text || '').replace(re, ' ').replace(/\s+/g, ' ').trim();
+  }
   async function processUpdate(u) {
     const msg = u.message, cb = u.callback_query;
     const chatId = msg ? msg.chat && msg.chat.id : (cb && cb.message && cb.message.chat ? cb.message.chat.id : null);
@@ -148,7 +154,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     const fromId = msg ? msg.from && msg.from.id : cb.from && cb.from.id;
     const userOk = !s().telegramUserId || String(s().telegramUserId) === String(fromId);
     if (!linked || String(linked) !== String(chatId) || !userOk) {
-      const text = msg ? String(msg.text || '').trim() : '';
+      const text = msg ? stripMention(msg.text) : '';
       const linkable = !!msg && !!msg.chat && LINKABLE.includes(msg.chat.type);
       if (linkable && pair && pair.until > now() && /^\d{4,8}$/.test(text) && text !== pair.code && ++pair.tries >= MAX_PAIR_TRIES) { pair = null; onStatus(status()); }
       if (linkable && pair && pair.until > now() && text === pair.code) {
@@ -170,14 +176,14 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     else if (msg) {
       const f = pickFile(msg);
       if (f) {
-        p.kind = 'file'; p.caption = String(msg.caption || '');
+        p.kind = 'file'; p.caption = stripMention(msg.caption);
         if (f.unsupported) p.fileError = f.unsupported;
         else {
           const prog = await safe(() => api('sendMessage', { chat_id: chatId, text: T('⏳ Čitam…') }));
           p.progressMessageId = prog && prog.message_id;
           try { p.file = await downloadFile(f); } catch (e) { p.fileError = e.kind === 'size' ? 'size' : 'download'; }
         }
-      } else if (typeof msg.text === 'string') Object.assign(p, { kind: 'text', text: msg.text });
+      } else if (typeof msg.text === 'string') Object.assign(p, { kind: 'text', text: stripMention(msg.text) });
       else return; // sistemske poruke (novi clan, promena imena...) — bez odgovora
     } else return;
     const out = await withTimeout(handle(p), handleTimeoutMs); // baca -> offset ostaje, poruka dolazi ponovo

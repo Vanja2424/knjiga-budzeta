@@ -225,3 +225,17 @@ test('telegram: privatni chat — payload nije grupni', async () => {
   await api.pollOnce();
   assert.equal(handled[0].group, false);
 });
+
+test('telegram: ime bota ispred koda i poruke (@bot 482100, @bot kafa 250) se prihvata', async () => {
+  const { api, settings, queue, reply, handled } = setup();
+  await api.setToken(TOKEN);
+  api.startPairing();
+  const kuca = { id: -400, type: 'supergroup', title: 'Kuća' };
+  const g = (id, text) => ({ update_id: id, message: { message_id: id, chat: kuca, from: { id: 6, first_name: 'Vanja' }, text } });
+  queue.getUpdates = [reply('getUpdates', [g(100, '@knjiga_test_bot 482100')])];
+  await api.pollOnce();
+  assert.equal(settings.telegramChatId, -400);
+  queue.getUpdates = [reply('getUpdates', [g(101, '@Knjiga_Test_Bot kafa 250'), g(102, 'kafa 300 @knjiga_test_bot'), g(103, '/ponisti@knjiga_test_bot')])];
+  await api.pollOnce();
+  assert.deepEqual(handled.map(p => p.text), ['kafa 250', 'kafa 300', '/ponisti@knjiga_test_bot']);
+});
