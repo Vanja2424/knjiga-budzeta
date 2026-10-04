@@ -1292,7 +1292,7 @@
       '- items: svaki red sa artiklom, redom kako stoje na računu. raw = tekst reda; name = kratko ime stvari na srpskom (npr. "Mleko", "Hleb", "Deterdžent").',
       '- price = UKUPNA cena reda (količina × jedinična cena) kao JSON broj sa tačkom. Popust u posebnom redu = stavka sa negativnom cenom i "discount":1.',
       '- category: jedna od ovih kategorija korisnika ili "": ' + (categories || []).map(c => '"' + c + '"').join(', ') + '.',
-      '- total = UKUPNO za plaćanje (ako se na ovom delu ne vidi, stavi null). store i date samo ako se vide.',
+      '- total = UKUPNO za plaćanje: red "Ukupan iznos", "Ukupno" ili "Za uplatu" (NIKAD "Ukupan iznos poreza", PDV ni iznos poreza po stopi). Ako se na ovom delu ne vidi, stavi null. store i date samo ako se vide.',
       '- Ne izmišljaj redove ni cene; nečitljivo = null. Ne vraćaj PDV rekapitulaciju, načine plaćanja ni kusur kao stavke.'
     ].join('\n');
   }
@@ -1319,6 +1319,9 @@
     const total = parseAmount(o.total);
     const out = { store: String(o.store || '').trim().slice(0, 60), date: readDate(o.date), total: Number.isFinite(total) && total > 0 ? round2(total) : null, items, low: [] };
     if(!out.date) out.low.push('date');
+    // ukupno manje od pola zbira stavki = procitan iznos poreza/PDV, a ne ukupan iznos -> zbir stavki, za proveru
+    const itemSum = round2(items.reduce((sum, i) => sum + (Number.isFinite(i.price) ? i.price : 0), 0));
+    if(out.total != null && itemSum > 0 && out.total < itemSum * 0.5){ out.total = itemSum; out.low.push('total'); }
     if(out.total == null) out.low.push('total');
     if(!items.length) out.low.push('items');
     return out;

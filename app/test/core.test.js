@@ -1821,3 +1821,18 @@ test('telegram: namera, nacrt unosa (prihod, pravila, istorija), vrsta slike, du
   assert.deepEqual(r.keep.map(p => p.id), ['b']);
   assert.deepEqual(r.expired.map(p => p.id), ['a']);
 });
+
+test('cleanReceiptReading: ukupno manje od pola zbira stavki (procitan PDV) -> zbir stavki, oznaceno za proveru', () => {
+  const items = [{ name: 'Kafa', price: 149.99 }, { name: 'Kafa', price: 149.99 }, { name: 'Kesa', price: 10 }, { name: 'Piletina', price: 271.8 }, { name: 'Sir', price: 1464.5 }];
+  const r = C.cleanReceiptReading(JSON.stringify({ store: 'Borjak', date: '2026-10-03', total: 318.32, items }), { categories: ['Hrana'] });
+  assert.equal(r.total, 2046.28);
+  assert.ok(r.low.includes('total'));
+  // popust od 30% ostaje: ukupno nije manje od pola zbira
+  const d = C.cleanReceiptReading(JSON.stringify({ total: 700, items: [{ name: 'Jakna', price: 1000 }] }), { categories: [] });
+  assert.equal(d.total, 700);
+  assert.ok(!d.low.includes('total'));
+  // deo dugackog racuna bez ukupnog ostaje bez ukupnog
+  assert.equal(C.cleanReceiptReading(JSON.stringify({ total: null, items }), { categories: [] }).total, null);
+  // uputstvo AI-ju: ukupno nije iznos poreza
+  assert.match(C.receiptPrompt(['Hrana']), /poreza/);
+});
