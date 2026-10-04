@@ -1915,7 +1915,7 @@
       const saved = ents().filter(e => e.desc === 'Smoke TG Maxi');
       check('telegram: Sačuvaj upisuje račun sa prilogom', saved.length === 1 && saved[0].amount === 300 && (saved[0].attachments || []).length === 1 && /✓/.test(a3.replies[0].text), JSON.stringify(saved));
       const a4 = await B.handle({ update_id: 900105, kind: 'callback', data: sData, messageId: 41 });
-      check('telegram: dupli klik Sačuvaj ne upisuje dvaput', ents().filter(e => e.desc === 'Smoke TG Maxi').length === 1 && /više nije na čekanju/.test((a4.replies[0] || {}).text || ''), JSON.stringify(a4));
+      check('telegram: dupli klik Sačuvaj ne upisuje dvaput', ents().filter(e => e.desc === 'Smoke TG Maxi').length === 1 && /više nije na čekanju/.test(a4.callbackText || '') && a4.replies.length === 0, JSON.stringify(a4));
       // opis "struja" -> kucni racun; Odbaci; cekanje ostaje posle ponovnog citanja iz localStorage
       const stT = window.__bills().billTypes.find(x => /struja/i.test(x.name));
       window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT && stT.locationId, billTypeId: stT && stT.id, month: '2026-09', amount: 4321, dueDate: '2026-10-15' }) });
@@ -1948,6 +1948,61 @@
       check('telegram: nepodržan fajl dobija objašnjenje', /PDF|JPG/i.test(f1.replies[0].text), f1.replies[0].text);
       window.__fakeReceiptReading = null; window.__fakeBillReading = null;
       window.__deleteEntriesById(ents().filter(e => /^Smoke TG/.test(e.desc)).map(e => e.id));
+    }
+
+    // Telegram posle pregleda: kucni racun ne menja postojeci, Otvori po vrsti, Ponisti vraca sliku i listu, ekstenzija iz vrste fajla
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      const file = { base64: btoa(String.fromCharCode(...png)), name: 'telegram.png', mime: 'image/png' };
+      const btn = (out, re) => (out.replies[0].buttons || []).flat().find(b => re.test(b.data));
+      const stT = window.__bills().billTypes.find(x => /struja/i.test(x.name));
+      // 4) isti mesec vec ima racun -> Sacuvaj iz Telegrama ne menja postojeci
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT.locationId, billTypeId: stT.id, month: '2024-03', amount: 1111 }) });
+      const g1 = await B.handle({ update_id: 900201, kind: 'file', caption: 'struja', progressMessageId: 51, file });
+      await B.handle({ update_id: 900202, kind: 'callback', data: btn(g1, /^s:.+:n$/).data, messageId: 51 });
+      const first = window.__bills().bills.find(b => b.month === '2024-03' && b.billTypeId === stT.id);
+      check('telegram pregled: kućni račun sačuvan', !!first && first.amount === 1111, JSON.stringify(first));
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT.locationId, billTypeId: stT.id, month: '2024-03', amount: 2222 }) });
+      const g2 = await B.handle({ update_id: 900203, kind: 'file', caption: 'struja', progressMessageId: 52, file });
+      const r2 = await B.handle({ update_id: 900204, kind: 'callback', data: btn(g2, /^s:.+:n$/).data, messageId: 52 });
+      const now2 = window.__bills().bills.filter(b => b.month === '2024-03' && b.billTypeId === stT.id);
+      check('telegram pregled: postojeći račun za isti mesec se ne zamenjuje', now2.length === 1 && now2[0].amount === 1111 && /već postoji/.test(r2.callbackText || ''), JSON.stringify({ n: now2.map(b => b.amount), cb: r2.callbackText }));
+      const x2 = btn(g2, /^x:/); if (x2) await B.handle({ update_id: 900205, kind: 'callback', data: x2.data, messageId: 52 });
+      if (first && window.__deleteBill) window.__deleteBill(first.id);
+      // 5) kucni racun koji AI nije procitao -> Otvori otvara prozor za kucni racun (ne racun iz prodavnice)
+      window.__fakeBillReading = () => ({ ok: false, kind: 'http', status: 500 });
+      const h1 = await B.handle({ update_id: 900206, kind: 'file', caption: 'struja', progressMessageId: 53, file });
+      const o1 = btn(h1, /^o:/);
+      if (o1) { await B.handle({ update_id: 900207, kind: 'callback', data: o1.data, messageId: 53 }); await sleep(300); }
+      check('telegram pregled: Otvori nepročitanog kućnog računa otvara prozor za kućni račun', !!o1 && $('billOverlay').classList.contains('show') && !$('receiptOverlay').classList.contains('show'));
+      if ($('billOverlay').classList.contains('show')) $('billCancel').click();
+      if ($('receiptOverlay').classList.contains('show')) $('receiptCancel').click();
+      await sleep(80);
+      // 6) Ponisti racun iz Telegrama: rashodi, slika i lista za kupovinu se vracaju
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-tg-li', name: 'Smoke TG mleko', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke TG Undo', date: '2026-09-27', total: 120, items: [{ name: 'Smoke TG mleko', price: 120, category: 'Hrana' }] }) });
+      const u1 = await B.handle({ update_id: 900208, kind: 'file', caption: 'maxi', progressMessageId: 54, file });
+      const u2 = await B.handle({ update_id: 900209, kind: 'callback', data: btn(u1, /^s:/).data, messageId: 54 });
+      const ue = ents().find(e => e.desc === 'Smoke TG Undo');
+      const att = ue && (ue.attachments || [])[0];
+      const liAfterSave = window.__shopping().items.find(i => i.id === 'smoke-tg-li');
+      check('telegram pregled: račun skida stavku sa liste', !!ue && !!att && liAfterSave && liAfterSave.needed === false, JSON.stringify({ ue: !!ue, att, li: liAfterSave }));
+      await B.handle({ update_id: 900210, kind: 'callback', data: u2.replies[0].buttons[0][0].data, messageId: 54 });
+      const back = att ? await window.desktop.bills.readFile(att) : { ok: true };
+      const liAfterUndo = window.__shopping().items.find(i => i.id === 'smoke-tg-li');
+      check('telegram pregled: Poništi briše rashod, sliku i vraća listu', !ents().some(e => e.desc === 'Smoke TG Undo') && back.ok === false && liAfterUndo && liAfterUndo.needed === true, JSON.stringify({ back: back.ok, li: liAfterUndo }));
+      window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-tg-li'); window.__saveShopping();
+      // ekstenzija priloga iz vrste fajla (PDF bez ekstenzije u imenu)
+      const p1 = await B.handle({ update_id: 900211, kind: 'file', caption: '', progressMessageId: 55, file: { base64: file.base64, name: 'dokument', mime: 'application/pdf' } });
+      const pp = pend().find(p => p.messageId === 55);
+      check('telegram pregled: PDF bez ekstenzije se čuva kao .pdf', !!pp && /\.pdf$/.test(pp.file || ''), pp && pp.file);
+      const x3 = btn(p1, /^x:/); if (x3) await B.handle({ update_id: 900212, kind: 'callback', data: x3.data, messageId: 55 });
+      window.__fakeReceiptReading = null; window.__fakeBillReading = null;
     }
 
     // Cuvanje u fajl

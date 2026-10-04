@@ -5507,7 +5507,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
       saveEntries(); saveShopping(); renderAll();
     });
-    return { ok: true, ids: made.map(e=> e.id), count: items.length };
+    return { ok: true, ids: made.map(e=> e.id), count: items.length, attachments: attachments.slice(),
+      shoppingBefore: before.map(b=> ({ id: b.s.id, needed: b.needed, checked: b.checked, price: b.price })) };
   }
   async function saveReceipt(){
     if(!receipt || receipt.busy) return;
@@ -5541,24 +5542,30 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const res = await Promise.race([Promise.resolve(call).catch(()=> null), new Promise(r=> setTimeout(()=> r(null), 3000))]);
     return res && res.ok ? C.cleanQuickCategory(res.content, expenseCats) : null;
   }
-  function tgLog(ids, label){
+  function tgLog(ids, label, extra){
     const id = newId();
-    tgSave(TG_LOG_KEY, tgLoad(TG_LOG_KEY).concat({ id, ids, label, at: Date.now() }).slice(-50));
+    tgSave(TG_LOG_KEY, tgLoad(TG_LOG_KEY).concat(Object.assign({ id, ids, label, at: Date.now() }, extra || {})).slice(-50));
     return id;
   }
-  function tgUndo(logId){
+  async function tgUndo(logId){
     const log = tgLoad(TG_LOG_KEY), item = logId ? log.find(l=> l.id === logId) : log.filter(l=> !l.undone && Date.now() - l.at < 864e5).pop();
     if(!item || item.undone) return null;
     const set = new Set(item.ids), gone = entries.filter(e=> set.has(e.id));
     gone.forEach(e=>{ if(e.type === 'expense') unapplyRoundUpSaving(e.amount); });
-    if(gone.length){ entries = entries.filter(e=> !set.has(e.id)); saveEntries(); renderAll(); }
+    if(gone.length){ entries = entries.filter(e=> !set.has(e.id)); saveEntries(); }
+    (item.shopping || []).forEach(b=>{ const it = shopping.items.find(x=> x.id === b.id); if(it){ it.needed = b.needed; it.checked = b.checked; it.price = b.price; } });
+    if((item.shopping || []).length) saveShopping();
+    if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
+      if(!entries.some(e=> (e.attachments || []).includes(name))) await window.desktop.bills.deleteFile(name);
+    }
+    renderAll();
     item.undone = true; tgSave(TG_LOG_KEY, log);
     return item;
   }
   async function tgText(text){
     const intent = C.telegramIntent(text);
     if(intent.kind === 'command' && intent.command === 'ponisti'){
-      const it = tgUndo(null);
+      const it = await tgUndo(null);
       return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
     }
     if(intent.kind !== 'entry') return tgReply(TG_HELP());
@@ -5578,7 +5585,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const cb = C.parseTelegramCallback(p.data);
     if(!cb) return { replies: [] };
     if(cb.action === 'u'){
-      const it = tgUndo(cb.id);
+      const it = await tgUndo(cb.id);
       return { callbackText: it ? t('Poništeno') : t('Već poništeno'), replies: it ? [{ editMessageId: p.messageId, text: t('↩ Poništeno: {0}', it.label) }] : [] };
     }
     return tgFileCallback(p, cb); // Task 5
@@ -5591,6 +5598,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     else if(p.kind === 'callback') out = await tgCallback(p);
     else if(p.kind === 'file') out = await tgFile(p); // Task 5
     tgSave(TG_DONE_KEY, tgLoad(TG_DONE_KEY).concat(p.update_id).slice(-500));
+    if(window.__desktopBridge && window.__desktopBridge.flush){ try{ await window.__desktopBridge.flush(); } catch(e){ /* sledece cuvanje */ } }
     return out;
   }
   async function tgTick(){ return tgFileTick(); } // Task 5
@@ -5615,7 +5623,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null };
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
     if(saveFile){
-      const ext = (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
+      const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
       try{ const r = await saveFile(new Uint8Array(await file.arrayBuffer()), `${toISODateLocal(new Date())}-telegram-${pend.id}.${ext}`); if(r && r.ok) pend.file = r.name; } catch(e){ /* ostaje u memoriji */ }
     }
     tgMem.set(pend.id, file);
@@ -5675,7 +5683,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   async function tgFileCallback(p, cb){
     const pend = tgPending().find(x=> x.id === cb.id);
-    if(!pend) return { callbackText: t('Ovo više nije na čekanju.'), replies: [{ editMessageId: p.messageId, text: t('Ovo više nije na čekanju.') }] };
+    if(!pend) return { callbackText: t('Ovo više nije na čekanju.'), replies: [] };
     pend.messageId = p.messageId;
     if(cb.action === 'x'){
       tgPendingDrop(pend.id); tgMem.delete(pend.id);
@@ -5691,30 +5699,37 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       return tgRead(pend, file);
     }
     if(cb.action === 'o'){
+      const dropFile = ()=>{ if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); };
       tgPendingDrop(pend.id); tgMem.delete(pend.id);
       if(window.desktop && window.desktop.showWindow) window.desktop.showWindow();
-      if(!file) return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId });
+      if(!file){ dropFile(); return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId }); }
       if(pend.kind === 'receipt' && pend.state){
         const prep = await prepareBillFile(file, receiptPrepOpts);
         receipt = Object.assign({ parts: [{ prep, savedName: pend.file }], page: 0, edited: true }, pend.state);
         rEl('receiptOverlay').classList.add('show'); renderReceipt();
-      } else if(pend.kind === 'bill' && pend.state){
-        openBillReview({ prepared: await prepareBillFile(file), reading: pend.state.reading, message: pend.state.message, source: pend.state.source, savedFile: pend.file });
+      } else if(pend.kind === 'bill'){
+        ensureBillDefaults();
+        const st = pend.state || {};
+        openBillReview({ prepared: await prepareBillFile(file), reading: st.reading, message: st.message, source: st.source || 'manual', savedFile: pend.file });
       } else if(pend.kind === 'slip'){
-        if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); // IPS prozor cuva svoju kopiju
+        dropFile(); // IPS prozor cuva svoju kopiju
         openIpsOneOff(file);
-      } else addReceiptFiles([file]);
+      } else { dropFile(); addReceiptFiles([file]); } // prozor za racun cuva svoju kopiju
       return { callbackText: t('Otvoreno u aplikaciji'), replies: [{ editMessageId: p.messageId, text: '↗ ' + t('Otvoreno u aplikaciji') }] };
     }
     if(cb.action === 's' && pend.state){
-      let ids = [], label = '';
+      let ids = [], label = '', undoExtra = null;
       if(pend.kind === 'receipt'){
         const r = await saveReceiptData(Object.assign({}, pend.state, { attachments: pend.file ? [pend.file] : [], confirmed: true }));
         if(!r.ok) return { callbackText: r.error || t('Nije sačuvano.'), replies: [] };
-        ids = r.ids; label = `${pend.state.store || t('Prodavnica')} · ${t('{0} stavki', r.count)}`;
+        ids = r.ids; label = `${pend.state.store || t('Prodavnica')} · ${t('{0} stavki', r.count)}`; undoExtra = { attachments: r.attachments, shopping: r.shoppingBefore };
       } else if(pend.kind === 'bill'){
         if(billReview) return { callbackText: t('Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.'), replies: [] };
+        const rd = pend.state.reading || {};
+        if(rd.billTypeId && rd.month && C.findBillDuplicate(bills, rd.billTypeId, rd.month))
+          return { callbackText: t('Za {0} već postoji račun — otvori ga u aplikaciji.', monthYearLabelSr(rd.month)), replies: [] };
         openBillReview({ reading: pend.state.reading, source: pend.state.source, savedFile: pend.file, headless: true });
+        if(billEl('billLinkRec')) billEl('billLinkRec').checked = true;
         const ok = await saveBillFromReview(cb.arg === 'p');
         if(!ok){ const msg = billEl('billStatus').textContent; closeBillReview(false, true); return { callbackText: msg || t('Nije sačuvano.'), replies: [] }; }
       } else {
@@ -5723,10 +5738,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         if(!r.ok) return { callbackText: r.error, replies: [] };
         const e = entries.find(x=> x.id === r.ids[0]);
         if(e){ if(pend.file) e.attachments = [pend.file]; e.payee = C.cleanPayee({ name: s.name, account: s.account, model: s.model, reference: s.reference, purpose: s.purpose, code: s.code }); saveEntries(); }
-        ids = r.ids; label = `${s.name || t('Uplatnica')} · ${r.amountText}`;
+        ids = r.ids; label = `${s.name || t('Uplatnica')} · ${r.amountText}`; undoExtra = { attachments: pend.file ? [pend.file] : [] };
       }
       tgPendingDrop(pend.id); tgMem.delete(pend.id);
-      const logId = ids.length ? tgLog(ids, label) : null;
+      const logId = ids.length ? tgLog(ids, label, undoExtra) : null;
       return { callbackText: t('Sačuvano'), replies: [{ editMessageId: p.messageId, text: '✓ ' + t('Sačuvano') + (label ? ': ' + label : ''), buttons: logId ? [[{ text: t('Poništi'), data: 'u:' + logId }]] : undefined }] };
     }
     return { replies: [] };

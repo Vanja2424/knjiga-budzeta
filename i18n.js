@@ -643,7 +643,7 @@
     'Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.': 'A bill window is open on the computer — finish it, then tap again.',
     'Otvoreno u aplikaciji': 'Opened in the app',
     'Nije sačuvano.': 'Not saved.',
-    'Isteklo — nije sačuvano.': 'Expired — not saved.',
+    'Isteklo — nije sačuvano.': 'Expired — not saved.',    'Za {0} već postoji račun — otvori ga u aplikaciji.': 'A bill for {0} already exists — open it in the app.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
