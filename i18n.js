@@ -599,7 +599,7 @@
     'Bot je isključen.': 'The bot is turned off.',
     'Radi.': 'Running.',
     'Nema veze sa Telegramom — pokušavam ponovo.': 'No connection to Telegram — retrying.',
-    'Isti bot radi na drugom mestu (drugi računar ili webhook).': 'The same bot is running elsewhere (another computer or a webhook).',
+    'Isti bot radi na drugom računaru — ugasi ga tamo (isključi bota u Podešavanjima ili zatvori aplikaciju), pa ovde nastavlja sam. Dok rade oba, poruke se dele između računara.': 'The same bot is running on another computer — turn it off there (switch the bot off in Settings or close the app), and it will continue here on its own. While both run, messages are split between the computers.',
     'Token ne važi — proveri ga u @BotFather.': 'The token is not valid — check it in @BotFather.',
     'Pošalji botu {0} kod: {1} (važi još {2} min).': 'Send the bot {0} this code: {1} (valid for {2} more min).',
     'Povezan sa {0}.': 'Connected to {0}.',

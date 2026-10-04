@@ -4611,7 +4611,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     let res;
     try{ res = fakeSlipReading ? await fakeSlipReading(req) : await window.desktop.bills.read(req); }
     catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
-    if(!res || !res.ok){ say((BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {})); return prep ? { failed: true, prep } : null; }
+    if(!res || !res.ok){ say((BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {})); return prep ? { failed: true, prep, kind: (res && res.kind) || 'http' } : null; } // kind 'limit' = AI zauzet (Telegram pokusava ponovo)
     const got = C.cleanSlipReading(res.content);
     if(!got){ say(t('Uplatnica nije pročitana — popuni podatke ručno.')); return prep ? { failed: true, prep } : null; }
     p = Object.assign(got, { source: 'ai', prep });
@@ -5260,7 +5260,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---------- Telegram bot: podesavanja (token i petlja su u glavnom procesu) ----------
   const tgEl = id => document.getElementById(id);
   const TG_STATE = { notoken: ()=> t('Token nije upisan.'), off: ()=> t('Bot je isključen.'), running: ()=> t('Radi.'), offline: ()=> t('Nema veze sa Telegramom — pokušavam ponovo.'),
-    conflict: ()=> t('Isti bot radi na drugom mestu (drugi računar ili webhook).'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
+    conflict: ()=> t('Isti bot radi na drugom računaru — ugasi ga tamo (isključi bota u Podešavanjima ili zatvori aplikaciju), pa ovde nastavlja sam. Dok rade oba, poruke se dele između računara.'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
   let tgPairTimer = null;
   function renderTgStatus(st){
     if(!st) return;
@@ -5646,8 +5646,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(intent.kind !== 'entry') return tgReply(TG_HELP());
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
-      rules: data.rules, history: data.history, expenseCats, incomeCats });
-    if(d.error === 'noamount') return p && p.group ? { replies: [] } : tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.')); // u grupi: obicno caskanje
+      rules: data.rules, history: data.history, expenseCats, incomeCats, group: !!(p && p.group) });
+    if(d.error && p && p.group) return { replies: [] }; // u grupi: obicno caskanje ("vidimo se u 8") — bez odgovora
+    if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
     const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true, tags: tgSenderTag(p) });
@@ -5695,9 +5696,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const edit = p.progressMessageId ? { editMessageId: p.progressMessageId } : null;
     if(p.fileError || !p.file) return tgReply('✕ ' + (TG_FILE_ERR[p.fileError] || TG_FILE_ERR.download)(), edit);
     const file = new File([b64ToBytes(p.file.base64)], p.file.name, { type: p.file.mime });
-    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p), compressed: !!p.file.compressed };
+    // Isti update stigne ponovo (aplikacija ugasena usred citanja, Telegram ga salje opet): isto cekanje i isti prilog, cita se ponovo
+    const prev = p.update_id != null ? tgPending().find(x=> x.update_id === p.update_id) : null;
+    const pend = prev || { id: newId(), update_id: p.update_id, created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p), compressed: !!p.file.compressed };
+    if(prev && p.progressMessageId) pend.messageId = p.progressMessageId;
+    tgPendingPut(pend); // pre cuvanja priloga: posle izlaska usred citanja zna se da prilog vec postoji
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
-    if(saveFile){
+    if(saveFile && !pend.file){
       const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
       try{ const r = await saveFile(new Uint8Array(await file.arrayBuffer()), `${toISODateLocal(new Date())}-telegram-${pend.id}.${ext}`); if(r && r.ok) pend.file = r.name; } catch(e){ /* ostaje u memoriji */ }
     }
@@ -5743,6 +5748,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const status = { textContent: '' };
     const s = await readSlip(file, status, null);
+    if(s && s.failed && s.kind === 'limit') return busyRetry();
     if(!s || s.failed) return fail(status.textContent || t('Uplatnica nije pročitana — popuni podatke ručno.'));
     pend.state = { name: s.name || '', account: s.account || '', model: s.model || '', reference: s.reference || '', purpose: s.purpose || '', code: s.code || '', amount: s.amount || 0, currency: s.currency || 'RSD' };
     tgPendingPut(pend);

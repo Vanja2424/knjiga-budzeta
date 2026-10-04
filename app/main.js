@@ -950,10 +950,12 @@ async function quitApp() {
         buttons: [T('Pokušaj ponovo'), T('Izađi bez čuvanja'), T('Otkaži')], defaultId: 0, cancelId: 2, noLink: true
       });
       if (response === 0) { saved = await flushRenderer(); continue; }
-      if (response === 2) { isQuitting = false; relaunchAfterQuit = null; return; }
+      if (response === 2) { isQuitting = false; relaunchAfterQuit = null; return; } // otkazano: bot i dalje radi
       break;
     }
   }
+  // izlazak stvarno ide — tek sad se gasi Telegram bot (otkazan izlazak ga ne sme ugasiti)
+  if (telegramApi) telegramApi.stop();
   if (relaunchAfterQuit) { app.relaunch(relaunchAfterQuit); relaunchAfterQuit = null; }
   // Preuzeta nova verzija se tiho instalira pri izlasku (bez ponovnog pokretanja).
   if (updateState.status === 'ready' && autoUpdater) { autoUpdater.quitAndInstall(true, false); return; }
@@ -1059,8 +1061,9 @@ function init() {
 }
 
 app.on('before-quit', (e) => {
-  if (telegramApi) telegramApi.stop();
-  if (!isQuitting) { e.preventDefault(); quitApp(); }
+  // quitApp odlucuje (dijalog neuspelog cuvanja moze da otkaze izlazak) i sam gasi bota kad izlazak ide
+  if (!isQuitting) { e.preventDefault(); quitApp(); return; }
+  if (telegramApi) telegramApi.stop(); // izlazak je vec odlucen (quitApp, instalacija azuriranja)
 });
 app.on('will-quit', () => globalShortcut.unregisterAll());
 if (process.env.KNJIGA_TEST) global.__kbTest = { openQuickAdd, main: () => mainWindow, quick: () => quickAddWindow, quitApp };
