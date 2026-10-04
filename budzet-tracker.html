@@ -5348,7 +5348,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   async function fiscalFromPrepared(prep){
     let txt = null;
-    if(prep.bytes && prep.ext !== 'pdf'){ try{ txt = await decodeFiscalQr(new Blob([prep.bytes])); } catch(e){ txt = null; } }
+    if(prep.bytes && prep.ext !== 'pdf' && window.desktop && window.desktop.bills && window.desktop.bills.decodeQr){
+      try{ txt = await window.desktop.bills.decodeQr(prep.bytes); } catch(e){ txt = null; }
+      if(!C.fiscalUrlFrom(txt)) txt = null;
+    }
+    if(!txt && prep.bytes && prep.ext !== 'pdf'){ try{ txt = await decodeFiscalQr(new Blob([prep.bytes])); } catch(e){ txt = null; } }
     for(const cv of (txt ? [] : prep.canvases || [])){ try{ txt = await decodeQrImage(cv); } catch(e){ txt = null; } if(txt) break; }
     const url = C.fiscalUrlFrom(txt);
     return url ? readFiscal(url) : null;
@@ -5699,6 +5703,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     tgMem.set(pend.id, file);
     tgPendingPut(pend);
+    if(p.fiscalUrl){
+      const f = await readFiscal(p.fiscalUrl);
+      if(f.reading){
+        Object.assign(pend, { kind: 'receipt', fiscal: true, state: mergedReceiptState([{ reading: f.reading }]) });
+        tgPendingPut(pend);
+        return tgReply(tgReceiptSummary(pend.state, pend), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) }));
+      }
+    }
     if(!pend.kind) return tgReply(t('Šta je ovo?'), Object.assign({}, edit, { buttons: [
       [{ text: t('Račun iz prodavnice'), data: `k:${pend.id}:receipt` }], [{ text: t('Kućni račun'), data: `k:${pend.id}:bill` }],
       [{ text: t('Uplatnica'), data: `k:${pend.id}:slip` }, { text: '✕ ' + t('Odbaci'), data: 'x:' + pend.id }]] }));

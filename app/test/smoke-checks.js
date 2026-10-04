@@ -2086,6 +2086,41 @@
       window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke fiskal').map(e => e.id));
     }
 
+    // QR (ZXing u glavnom procesu): slika iz Telegrama sa procitanim QR-om -> Poreska uprava; citac radi kroz IPC
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const SUF_HTML = ["<script>viewModel.InvoiceNumber('SMK-2'); viewModel.Token('tok');</script>", '<span id="shopFullNameLabel">7654321-SMOKE QR</span>',
+        '<span id="totalAmountLabel">259,98</span>', '<span id="sdcDateTimeLabel">8.9.2026. 10:00:00</span>'].join('\n');
+      let aiCalls = 0;
+      window.__fakeFiscal = () => ({ ok: true, html: SUF_HTML, spec: { success: true, items: [{ name: 'MLEKO (Е)/kom', quantity: 2, total: 259.98 }] } });
+      window.__fakeFiscalCategories = () => ({ ok: true, content: '{"kategorije":["Hrana"]}' });
+      window.__fakeReceiptReading = () => { aiCalls++; return { ok: true, content: '{"store":"AI","total":1,"items":[{"name":"x","price":1}]}' }; };
+      const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40);
+      const b64 = c.toDataURL('image/png').split(',')[1];
+      const q1 = await B.handle({ update_id: 900601, kind: 'file', caption: '', progressMessageId: 91, fiscalUrl: 'https://suf.purs.gov.rs/v/?vl=SMOKE%2B3%3D', file: { base64: b64, name: 'telegram.jpg', mime: 'image/png', compressed: true } });
+      const t1 = q1.replies[0].text || '';
+      check('QR iz bota: slika sa pročitanim QR-om daje podatke Poreske uprave (bez pitanja i bez AI)', /Smoke qr/.test(t1) && /Poreske uprave/.test(t1) && aiCalls === 0 && q1.replies[0].editMessageId === 91, t1);
+      const sb = (q1.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data));
+      if (sb) await B.handle({ update_id: 900602, kind: 'callback', data: sb.data, messageId: 91 });
+      const qe = ents().find(e => e.desc === 'Smoke qr');
+      check('QR iz bota: sačuvan račun ima i sliku', !!qe && qe.amount === 259.98 && (qe.attachments || []).length === 1, JSON.stringify(qe));
+      window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke qr').map(e => e.id));
+      window.__fakeFiscal = null; window.__fakeFiscalCategories = null; window.__fakeReceiptReading = null;
+    }
+    if (window.desktop && window.desktop.bills && window.desktop.bills.decodeQr) {
+      const url = 'https://suf.purs.gov.rs/v/?vl=' + 'Q'.repeat(500) + '%3D';
+      const q = qrcode(0, 'L'); q.addData(url); q.make();
+      const n = q.getModuleCount(), px = 3, m = 4, size = (n + 2 * m) * px;
+      const cv = document.createElement('canvas'); cv.width = size; cv.height = size;
+      const g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, size, size); g.fillStyle = '#000';
+      for (let r = 0; r < n; r++) for (let k = 0; k < n; k++) if (q.isDark(r, k)) g.fillRect((m + k) * px, (m + r) * px, px, px);
+      const bytes = new Uint8Array(await (await new Promise(res => cv.toBlob(res, 'image/png'))).arrayBuffer());
+      const got = await window.desktop.bills.decodeQr(bytes);
+      check('QR: ZXing u glavnom procesu čita gust QR (PNG)', got === url, String(got).slice(0, 60));
+      check('QR: neispravna slika daje null', (await window.desktop.bills.decodeQr(new Uint8Array([1, 2, 3]))) === null);
+    } else check('QR: desktop.bills.decodeQr postoji', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

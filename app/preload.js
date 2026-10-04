@@ -79,7 +79,8 @@ contextBridge.exposeInMainWorld('desktop', {
     deleteFile: (name) => ipcRenderer.invoke('bills:delete-file', name),
     restoreFile: (name) => ipcRenderer.invoke('bills:restore-file', name),
     readFile: (name) => ipcRenderer.invoke('bills:read-file', name),
-    fiscal: (url) => ipcRenderer.invoke('bills:fiscal', url)
+    fiscal: (url) => ipcRenderer.invoke('bills:fiscal', url),
+    decodeQr: (bytes) => ipcRenderer.invoke('bills:decode-qr', bytes)
   },
 
   // Telegram bot: token i petlja su u glavnom procesu; stranica vidi samo status
