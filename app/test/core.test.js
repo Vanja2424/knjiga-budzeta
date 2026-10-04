@@ -1822,6 +1822,49 @@ test('telegram: namera, nacrt unosa (prihod, pravila, istorija), vrsta slike, du
   assert.deepEqual(r.expired.map(p => p.id), ['a']);
 });
 
+test('telegram: rec prihoda je prihod samo kad je opis ceo prihod (plata za majstora = rashod)', () => {
+  const ctx = { today: '2026-10-01', accounts: [], currencies: ['EUR'], expenseCats: ['Hrana', 'Ostalo'], incomeCats: ['Plata', 'Ostali prihodi'] };
+  const ty = s => C.telegramEntryDraft(s, ctx).type;
+  assert.equal(ty('plata 120000'), 'income');
+  assert.equal(ty('plata za majstora 5000'), 'expense');
+  assert.equal(ty('+honorar 300'), 'income');
+  assert.equal(ty('+plata za majstora 300'), 'income');             // + uvek znaci prihod
+  assert.equal(ty('plata septembar 120000'), 'income');
+  assert.equal(ty('plata za septembar 120000'), 'income');
+  assert.equal(ty('Plata za oktobar 120000'), 'income');
+  assert.equal(ty('honorar Marko 30000'), 'income');
+  assert.equal(ty('honorar za račun 2000'), 'expense');
+  assert.equal(ty('bonus za popravku 3000'), 'expense');
+  assert.equal(ty('plata majstoru 4000'), 'expense');
+  assert.equal(ty('kafa 250'), 'expense');
+});
+
+test('telegram: grupa — unos samo uz iznos od 2+ cifre i opis; obicno caskanje nije unos', () => {
+  const ctx = { today: '2026-10-01', accounts: [], currencies: ['EUR'], expenseCats: ['Hrana'], incomeCats: ['Plata'] };
+  const g = s => C.telegramEntryDraft(s, Object.assign({}, ctx, { group: true }));
+  assert.equal(g('vidimo se u 8').error, 'chat');
+  assert.equal(g('kafa 8').error, 'chat');
+  assert.equal(g('? 50').error, 'chat');
+  assert.ok(g('250').error);
+  assert.deepEqual([g('kafa 250').type, g('kafa 250').amount], ['expense', 250]);
+  assert.deepEqual([g('hleb 80').desc, g('hleb 80').amount], ['hleb', 80]);
+  // privatni chat: kao ranije
+  assert.equal(C.telegramEntryDraft('vidimo se u 8', ctx).amount, 8);
+  assert.equal(C.telegramEntryDraft('kafa 8', ctx).amount, 8);
+});
+
+test('telegram: podesavanja jasno objasnjavaju 409 (isti bot na drugom racunaru), sa prevodom', () => {
+  const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '../../budzet-tracker.html'), 'utf8');
+  const m = /conflict: \(\)=> t\('([^']+)'\)/.exec(html);
+  assert.ok(m, 'TG_STATE.conflict nije nadjen');
+  assert.match(m[1], /^Isti bot radi na drugom računaru — ugasi ga tamo/);
+  const ctx = { localStorage: { getItem: () => 'en' } };
+  ctx.self = ctx;
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../i18n.js'), 'utf8'), ctx);
+  assert.notEqual(ctx.I18N.t(m[1]), m[1]);
+});
+
 test('cleanReceiptReading: ukupno manje od pola zbira stavki (procitan PDV) -> zbir stavki, oznaceno za proveru', () => {
   const items = [{ name: 'Kafa', price: 149.99 }, { name: 'Kafa', price: 149.99 }, { name: 'Kesa', price: 10 }, { name: 'Piletina', price: 271.8 }, { name: 'Sir', price: 1464.5 }];
   const r = C.cleanReceiptReading(JSON.stringify({ store: 'Borjak', date: '2026-10-03', total: 318.32, items }), { categories: ['Hrana'] });

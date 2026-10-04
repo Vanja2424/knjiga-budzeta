@@ -2121,6 +2121,52 @@
       check('QR: neispravna slika daje null', (await window.desktop.bills.decodeQr(new Uint8Array([1, 2, 3]))) === null);
     } else check('QR: desktop.bills.decodeQr postoji', false);
 
+    // Telegram popravke: grupno caskanje sa brojem, ponovljen update posle izlaska usred citanja, AI zauzet za uplatnicu
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
+      const ana = { id: 5, name: 'Ana' };
+      const n0 = ents().length;
+      const k1 = await B.handle({ update_id: 900701, kind: 'text', text: 'vidimo se u 8', group: true, from: ana });
+      check('telegram fix: u grupi „vidimo se u 8“ nije rashod i bot ćuti', k1.replies.length === 0 && ents().length === n0, JSON.stringify(k1));
+      const k2 = await B.handle({ update_id: 900702, kind: 'text', text: '250', group: true, from: ana });
+      check('telegram fix: u grupi samo broj bez opisa — bot ćuti', k2.replies.length === 0 && ents().length === n0, JSON.stringify(k2));
+      const k3 = await B.handle({ update_id: 900703, kind: 'text', text: 'Smoke fix sok 8', group: false, from: ana });
+      check('telegram fix: privatno „sok 8“ je i dalje rashod', ents().some(e => e.desc === 'Smoke fix sok' && e.amount === 8), JSON.stringify(k3));
+      const k4 = await B.handle({ update_id: 900704, kind: 'text', text: 'plata za majstora smokefix 5000' });
+      check('telegram fix: „plata za majstora“ je rashod', ents().some(e => e.desc === 'plata za majstora smokefix' && e.type === 'expense'), JSON.stringify(k4.replies[0] && k4.replies[0].text));
+      window.__deleteEntriesById(ents().filter(e => /^Smoke fix|smokefix$/.test(e.desc)).map(e => e.id));
+      // isti update stigne ponovo (aplikacija ugasena usred citanja) -> isto cekanje, bez drugog priloga
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      const file = { base64: btoa(String.fromCharCode(...png)), name: 'telegram.png', mime: 'image/png' };
+      const saved = [];
+      window.__fakeSaveFile = async (bytes, name) => { const r = await window.desktop.bills.saveFile(bytes, name); if (r && r.ok) saved.push(r.name); return r; };
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke fix Maxi', date: '2026-09-28', total: 40, items: [{ name: 'Smoke fix hleb', price: 40, category: 'Hrana' }] }) });
+      const d1 = await B.handle({ update_id: 900705, kind: 'file', caption: 'maxi', progressMessageId: 101, file });
+      const doneKey = 'budzet-telegram-obradjeno-v1';
+      localStorage.setItem(doneKey, JSON.stringify(JSON.parse(localStorage.getItem(doneKey) || '[]').filter(id => id !== 900705)));
+      const d2 = await B.handle({ update_id: 900705, kind: 'file', caption: 'maxi', progressMessageId: 102, file });
+      const same = pend().filter(p => p.update_id === 900705);
+      check('telegram fix: ponovljen update posle izlaska ne pravi drugo čekanje ni drugi prilog', same.length === 1 && saved.length === 1 && same[0].file === saved[0] && d2.replies[0].editMessageId === 102 && /Smoke fix Maxi/.test(d2.replies[0].text), JSON.stringify({ n: same.length, saved, d2: d2.replies[0] }));
+      const xd = (d2.replies[0].buttons || []).flat().find(b => /^x:/.test(b.data)); if (xd) await B.handle({ update_id: 900706, kind: 'callback', data: xd.data, messageId: 102 });
+      for (const n of saved) await window.desktop.bills.deleteFile(n);
+      window.__fakeSaveFile = null; window.__fakeReceiptReading = null;
+      // uplatnica: AI zauzet (429) -> ponovni pokusaj u tick, kao racun
+      const slip = { name: 'Smoke fix JKP', account: '840-0000000012345-67', model: '97', reference: '1234', purpose: 'Smoke fix voda', code: '189', amount: 777, currency: 'RSD' };
+      window.__fakeSlipReading = () => ({ ok: false, kind: 'limit', retryAfter: 30 });
+      const s1 = await B.handle({ update_id: 900707, kind: 'file', caption: 'uplatnica', progressMessageId: 103, file });
+      const sp = pend().find(p => p.messageId === 103);
+      check('telegram fix: uplatnica — AI zauzet -> poruka i ponovni pokušaj', /zauzet/.test(s1.replies[0].text) && !!sp && !!sp.retryAt, JSON.stringify({ r: s1.replies[0], sp }));
+      const pl = pend(); pl.forEach(p => { if (p.messageId === 103 && p.retryAt) p.retryAt = Date.now() - 1; }); localStorage.setItem('budzet-telegram-cekanje-v1', JSON.stringify(pl));
+      window.__fakeSlipReading = () => ({ ok: true, content: JSON.stringify(slip) });
+      const t1 = await B.tick();
+      const tr = t1.replies.find(r => r.editMessageId === 103);
+      check('telegram fix: uplatnica — tick ponovo čita i šalje sažetak', !!tr && /Smoke fix JKP/.test(tr.text), JSON.stringify(t1));
+      const sx = tr && (tr.buttons || []).flat().find(b => /^x:/.test(b.data)); if (sx) await B.handle({ update_id: 900708, kind: 'callback', data: sx.data, messageId: 103 });
+      window.__fakeSlipReading = null;
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

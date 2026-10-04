@@ -1941,6 +1941,18 @@
   // ---------- Telegram bot: poruka -> namera / nacrt unosa / vrsta slike ----------
   const TELEGRAM_PENDING_DAYS = 7;
   const TG_INCOME_WORDS = ['plata', 'prihod', 'honorar', 'penzija', 'zarada', 'bonus', 'dnevnica'];
+  // Rec prihoda na pocetku ("plata", "honorar"...) je prihod samo kad je to ceo opis ili je prate samo mesec/ime:
+  // "plata", "plata septembar", "plata za oktobar", "honorar Marko" = prihod. Rashod je kad ostatak pominje trosak
+  // (majstor, racun, popravka... — "plata majstoru", "honorar za račun") ili "za <nesto sto nije mesec>" ("plata za majstora").
+  // "+" na pocetku uvek znaci prihod.
+  const TG_EXPENSE_HINTS = ['majstor', 'racun', 'popravk', 'kupovin', 'servis', 'radnik', 'radnic', 'kirij', 'stanarin', 'dadilj'];
+  const TG_PERIOD_RE = /^(januar|februar|mart|april|maj|jun|jul|avgust|septemb|oktob|novemb|decemb|mesec)(a|ar|ra|u|om)?$|^\d{1,4}\.?$/;
+  function tgIncomeRest(words){
+    if(words.some(w => TG_EXPENSE_HINTS.some(h => w.startsWith(h)))) return false;
+    return words.every((w, i) => w !== 'za' || TG_PERIOD_RE.test(words[i + 1] || ''));
+  }
+  // Grupa: obicno caskanje ("vidimo se u 8") nije unos — trazi se iznos od bar 2 cifre i rec u opisu
+  const tgGroupEntry = (desc, amount) => amount >= 10 && /\p{L}{2,}/u.test(desc);
   const TG_KIND_WORDS = [
     ['slip', ['uplatnica', 'uplatnicu', 'nalog za uplatu']],
     ['bill', ['struja', 'struju', 'eps', 'infostan', 'voda', 'vodu', 'vodovod', 'grejanje', 'toplana', 'gas', 'internet', 'telefon', 'kablovska', 'sbb', 'telekom', 'mts', 'yettel', 'komunalije', 'racun za']],
@@ -1955,7 +1967,8 @@
     }
     return { kind: 'entry' };
   }
-  // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...) = prihod; kategorija iz pravila, pa iz istorije
+  // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...; vidi tgIncomeRest) = prihod; kategorija iz pravila, pa iz istorije.
+  // ctx.group: u grupi samo iznos >= 10 uz opis je unos, inace { error: 'chat' }
   function telegramEntryDraft(text, ctx){
     const c = ctx || {};
     let raw = String(text || '').trim(), type = 'expense';
@@ -1964,8 +1977,10 @@
     const desc = String(p.desc || '').trim();
     if(!(p.amount > 0)) return { error: desc || !raw ? 'noamount' : 'nodesc' };
     if(!desc) return { error: 'nodesc' };
-    const first = foldText(desc.split(/\s+/)[0]);
-    if(type === 'expense' && (TG_INCOME_WORDS.includes(first) || (c.incomeCats || []).some(x => foldText(x) === first))) type = 'income';
+    if(c.group && !tgGroupEntry(desc, p.amount)) return { error: 'chat' };
+    const words = foldText(desc).replace(/[^a-z0-9.]+/g, ' ').trim().split(' ').filter(Boolean);
+    const first = words[0] || '';
+    if(type === 'expense' && (TG_INCOME_WORDS.includes(first) || (c.incomeCats || []).some(x => foldText(x) === first)) && tgIncomeRest(words.slice(1))) type = 'income';
     const cats = (type === 'expense' ? c.expenseCats : c.incomeCats) || [];
     const low = desc.toLowerCase();
     let category = null;

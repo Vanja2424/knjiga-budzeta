@@ -3,6 +3,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createTelegram } = require('../telegram.js');
 
+const fs = require('node:fs'), path = require('node:path');
+
 const TOKEN = '123456:ABC-secret_token';
 let lastOpts = null;
 function setup({ handle, tick, settings: init, extra } = {}){
@@ -238,6 +240,59 @@ test('telegram: ime bota ispred koda i poruke (@bot 482100, @bot kafa 250) se pr
   queue.getUpdates = [reply('getUpdates', [g(101, '@Knjiga_Test_Bot kafa 250'), g(102, 'kafa 300 @knjiga_test_bot'), g(103, '/ponisti@knjiga_test_bot')])];
   await api.pollOnce();
   assert.deepEqual(handled.map(p => p.text), ['kafa 250', 'kafa 300', '/ponisti@knjiga_test_bot']);
+});
+
+test('telegram: provera tokena bez mreze (ne 401) -> petlja ipak krece i pokusava ponovo; los token ne krece', async () => {
+  let polls = 0;
+  const { api, queue } = setup({ extra: { autoStart: true } });
+  queue.getMe = [async () => { throw new Error('getaddrinfo ENOTFOUND api.telegram.org'); }];
+  queue.getUpdates = [b => { polls++; const o = lastOpts; return new Promise((res, rej) => { o.signal.addEventListener('abort', () => rej(new Error('aborted'))); }); }];
+  const st = await api.setToken(TOKEN);
+  assert.equal(st.state, 'offline');
+  for (let i = 0; i < 4; i++) await tick0();
+  assert.equal(polls, 1);
+  api.stop(); for (let i = 0; i < 4; i++) await tick0();
+  const bad = setup({ extra: { autoStart: true } });
+  let badPolls = 0;
+  bad.queue.getMe = [{ ok: false, status: 401, json: async () => ({ ok: false }) }];
+  bad.queue.getUpdates = [() => { badPolls++; return bad.reply('getUpdates', []); }];
+  assert.equal((await bad.api.setToken(TOKEN)).state, 'badToken');
+  for (let i = 0; i < 4; i++) await tick0();
+  assert.equal(badPolls, 0);
+});
+
+test('telegram: ime bota se dopuni kad mreza proradi (getMe nije uspeo pri upisu tokena)', async () => {
+  const { api, settings, queue, reply } = setup();
+  queue.getMe = [async () => { throw new Error('offline'); }];
+  await api.setToken(TOKEN);
+  assert.equal(api.status().botName, '');
+  queue.getUpdates = [reply('getUpdates', [])];
+  await api.pollOnce();
+  assert.equal(settings.telegramBotName, 'knjiga_test_bot');
+});
+
+test('telegram: 409 (isti bot na drugom racunaru) -> stanje conflict, ceka najmanje 30 s i sve duze', async () => {
+  const { api, queue } = setup({ settings: { telegramChatId: 77 } });
+  await api.setToken(TOKEN);
+  const c409 = () => ({ ok: false, status: 409, json: async () => ({ ok: false, description: 'Conflict: terminated by other getUpdates request' }) });
+  queue.getUpdates = [c409(), c409(), c409(), c409(), c409()];
+  const waits = [];
+  for (let i = 0; i < 5; i++) waits.push(await api.pollOnce());
+  assert.equal(api.status().state, 'conflict');
+  assert.ok(waits.every(w => w >= 30), JSON.stringify(waits));
+  waits.slice(1).forEach((w, i) => assert.ok(w >= waits[i], JSON.stringify(waits)));
+  assert.equal(waits[4], 60);
+});
+
+test('telegram: otkazan izlazak ne gasi bota — stop tek kad izlazak stvarno ide (main.js)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'main.js'), 'utf8');
+  const bq = /app\.on\('before-quit'[\s\S]*?\n\}\);/.exec(src)[0];
+  const guard = bq.indexOf('if (!isQuitting)'), stopAt = bq.indexOf('telegramApi.stop()');
+  assert.ok(guard >= 0, bq);
+  assert.ok(stopAt < 0 || (stopAt > guard && /return;\s*\}/.test(bq.slice(guard, stopAt))), 'before-quit gasi bota pre nego sto quitApp odluci: ' + bq);
+  const qa = /async function quitApp\(\) \{[\s\S]*?\n\}/.exec(src)[0];
+  const cancel = qa.indexOf('response === 2'), stop = qa.indexOf('telegramApi.stop()');
+  assert.ok(cancel > 0 && stop > cancel, 'quitApp treba da gasi bota tek posle dijaloga (otkazivanje ga ostavlja)');
 });
 
 test('telegram: QR na slici (glavni proces) -> link Poreske uprave u payload; drugi QR i PDF se ne citaju kao fiskalni', async () => {
