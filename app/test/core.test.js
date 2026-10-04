@@ -1786,3 +1786,38 @@ test('findRecurringByPayee: postojeca ponavljajuca za istog primaoca (racun + na
   assert.equal(C.findRecurringByPayee(recurring, null), null);
   assert.equal(C.findRecurringByPayee(recurring, { account: '', name: 'JP EPS' }), null);
 });
+
+test('telegram: namera, nacrt unosa (prihod, pravila, istorija), vrsta slike, dugme, cekanje', () => {
+  assert.deepEqual(C.telegramIntent('/pomoc'), { kind: 'command', command: 'pomoc' });
+  assert.deepEqual(C.telegramIntent('/start'), { kind: 'command', command: 'pomoc' });
+  assert.deepEqual(C.telegramIntent('/ponisti@knjiga_bot'), { kind: 'command', command: 'ponisti' });
+  assert.deepEqual(C.telegramIntent('/xyz'), { kind: 'command', command: 'nepoznata' });
+  assert.deepEqual(C.telegramIntent('   '), { kind: 'empty' });
+  assert.deepEqual(C.telegramIntent('kafa 250'), { kind: 'entry' });
+  const ctx = { today: '2026-10-01', accounts: [{ id: 'a1', name: 'Visa', type: 'tekuci' }], currencies: ['EUR'],
+    rules: [{ keyword: 'gorivo', category: 'Auto' }, { keyword: 'gor', category: 'Ostalo' }],
+    history: [{ type: 'expense', desc: 'kafa', category: 'Kafići' }], expenseCats: ['Hrana', 'Auto', 'Kafići', 'Ostalo'], incomeCats: ['Plata', 'Ostali prihodi'] };
+  assert.deepEqual(C.telegramEntryDraft('kafa 250', ctx), { type: 'expense', desc: 'kafa', amount: 250, currency: null, date: '2026-10-01', accountId: null, category: 'Kafići' });
+  const g = C.telegramEntryDraft('gorivo 6000 juče', ctx);
+  assert.deepEqual([g.category, g.date, g.amount], ['Auto', '2026-09-30', 6000]);
+  assert.equal(C.telegramEntryDraft('plata 120000', ctx).type, 'income');
+  assert.equal(C.telegramEntryDraft('+ honorar 30000', ctx).type, 'income');
+  assert.equal(C.telegramEntryDraft('hleb 80', ctx).category, null);
+  assert.deepEqual(C.telegramEntryDraft('kafa', ctx), { error: 'noamount' });
+  assert.deepEqual(C.telegramEntryDraft('250', ctx), { error: 'nodesc' });
+  assert.equal(C.photoKindFromCaption('Struja septembar'), 'bill');
+  assert.equal(C.photoKindFromCaption('račun za infostan'), 'bill');
+  assert.equal(C.photoKindFromCaption('uplatnica vrtić'), 'slip');
+  assert.equal(C.photoKindFromCaption('MAXI'), 'receipt');
+  assert.equal(C.photoKindFromCaption('Idea'), 'receipt');
+  assert.equal(C.photoKindFromCaption('ideja za poklon'), null);
+  assert.equal(C.photoKindFromCaption(''), null);
+  assert.deepEqual(C.parseTelegramCallback('k:abc123:receipt'), { action: 'k', id: 'abc123', arg: 'receipt' });
+  assert.deepEqual(C.parseTelegramCallback('s:abc123'), { action: 's', id: 'abc123', arg: '' });
+  assert.equal(C.parseTelegramCallback('z:abc'), null);
+  assert.equal(C.parseTelegramCallback('s:../x'), null);
+  const day = 864e5, now = 30 * day;
+  const r = C.cleanTelegramPending([{ id: 'a', created: now - 8 * day, kind: 'receipt' }, { id: 'b', created: now - day, kind: 'bill' }, null, { id: 'c' }], now);
+  assert.deepEqual(r.keep.map(p => p.id), ['b']);
+  assert.deepEqual(r.expired.map(p => p.id), ['a']);
+});

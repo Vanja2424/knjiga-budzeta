@@ -2718,6 +2718,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="import-status" id="aiStatus" aria-live="polite"></div>
         <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi (za najveće troškove i ponavljajuće stavke to su i njihovi opisi). Ostali podaci ostaju samo na ovom računaru.</div>
       </div>
+      <div class="settings-group" id="tgSettings" style="display:none;">
+        <h3>Telegram bot</h3>
+        <div class="import-status" style="margin-top:0;">Šalji botu rashode („kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
+        <div class="import-status"><label for="tgToken">Token bota</label></div>
+        <div class="file-row"><input type="password" id="tgToken" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="tgTokenSave">Sačuvaj token</button><button class="btn-secondary" id="tgTokenClear">Obriši token</button></div>
+        <div class="file-row"><button class="btn-secondary" id="tgPair">Poveži Telegram</button><button class="btn-secondary" id="tgUnlink">Prekini vezu</button></div>
+        <label class="paid-checkbox-label"><input type="checkbox" id="tgOn"> Bot uključen</label>
+        <div class="import-status" id="tgStatus" aria-live="polite"></div>
+        <div class="import-status">Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).</div>
+      </div>
 
       <div id="desktopSettings" style="display:none;">
         <div class="settings-group">
@@ -3897,7 +3907,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     kursevi: ()=> renderRatesScreen(),
     nabavka: ()=> renderShopping(),
     dokumenti: ()=> renderDocuments(),
-    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); }
+    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); renderTgSettings(); }
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
   function invalidate(){
@@ -4142,7 +4152,15 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(roundup <= 0) return;
     g.current += roundup;
     saveGoals();
+  }  function unapplyRoundUpSaving(amount){
+    if(!roundUpGoalId) return;
+    const g = goals.find(x=>x.id === roundUpGoalId);
+    const roundup = Math.ceil(amount/100)*100 - amount;
+    if(!g || roundup <= 0) return;
+    g.current = Math.max(0, Math.round((g.current - roundup) * 100) / 100);
+    saveGoals();
   }
+
   function renderRoundUpSelect(){
     const sel = document.getElementById('roundUpGoalSelect');
     const prev = roundUpGoalId;
@@ -4751,11 +4769,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const ctx = { locations, billTypes, currencies: CURRENCIES };
     const qr = await findQrInPrepared(prep);
     if(isCurrent && !isCurrent()) return null;   // prozor zatvoren — ne salje se ni AI-ju
-    let reading = null, message = prep.error || '';
+    let reading = null, message = prep.error || '', res = null;
     const canAi = !!fakeBillReading || !!(window.desktop && window.desktop.bills);
     if(!prep.error && canAi && (prep.images.length || prep.text)){
       const req = { images: prep.images, text: prep.text, prompt: C.billsPrompt(locations, billTypes) };
-      let res;
       try{ res = fakeBillReading ? await fakeBillReading(req) : await window.desktop.bills.read(req); }
       catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
       if(res && res.ok){ reading = C.cleanBillReading(res.content, ctx); if(!reading) message = t('AI odgovor nije mogao da se pročita. Popuni podatke ručno.'); }
@@ -4763,7 +4780,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const merged = C.mergeBillQr(reading, qr);
     if(!merged.locationId) merged.locationId = locations[0] ? locations[0].id : '';
-    return { reading: merged, message, source: reading ? 'ai' : (qr ? 'qr' : 'manual') };
+    return { reading: merged, message, source: reading ? 'ai' : (qr ? 'qr' : 'manual'), kind: res && !res.ok ? res.kind : undefined };
   }
   // Svako zatvaranje prozora menja broj citanja: kasni rezultat zatvorenog "Citam racun..." se odbacuje (i ostali fajlovi iz istog izbora)
   let billReadGen = 0;
@@ -4845,7 +4862,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function openBillReview(opts){
     const b = opts.bill || null;
     const r = opts.reading || C.mergeBillQr(null, null);
-    billReview = { prepared: opts.prepared || null, bill: b, source: opts.source || (b ? b.source : 'manual'), payee: (b ? b.payee : r.payee) || null, page: 0, reading: b ? null : r };
+    billReview = { savedFile: opts.savedFile || null, prepared: opts.prepared || null, bill: b, source: opts.source || (b ? b.source : 'manual'), payee: (b ? b.payee : r.payee) || null, page: 0, reading: b ? null : r };
     const src = b ? Object.assign({}, b, { locationId: (billTypeById(b.billTypeId) || {}).locationId, low: [] }) : r;
     const locId = src.locationId || (opts.typeId && (billTypeById(opts.typeId) || {}).locationId) || (locations[0] && locations[0].id) || '';
     billEl('billTitle').textContent = b ? t('Izmeni kućni račun') : t('Kućni račun');
@@ -4868,12 +4885,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     renderBillPreview(billReview.prepared, 0);
     refreshBillLinks();
     setBillButtons(true);
-    billEl('billOverlay').classList.add('show');
+    if(!opts.headless) billEl('billOverlay').classList.add('show');
     return new Promise(res=>{ billReview.resolve = res; });
   }
-  function closeBillReview(saved){
+  function closeBillReview(saved, keepFile){
     billReadGen++;
     billEl('billOverlay').classList.remove('show');
+    // prilog otvoren iz Telegrama (vec sacuvan) ide u smece kad se odustane
+    if(!saved && !keepFile && billReview && billReview.savedFile && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(billReview.savedFile);
     const res = billReview && billReview.resolve; billReview = null;
     if(res) res(!!saved);
   }
@@ -4899,26 +4918,26 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   const billSlug = s => C.foldText(s).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'racun';
   async function saveBillFromReview(paid){
-    if(!billReview) return;
+    if(!billReview) return false;
     const f = billFormValues(), type = billTypeById(f.billTypeId), loc = locationById(f.locationId);
     const status = billEl('billStatus');
-    if(!type || !loc){ status.textContent = t('Izaberi lokaciju i vrstu računa.'); return; }
-    if(!/^\d{4}-\d{2}$/.test(f.month)){ status.textContent = t('Upiši obračunski mesec.'); return; }
-    if(!(f.amount > 0) && !Object.keys(f.values).length){ status.textContent = t('Upiši iznos ili bar jedno merenje.'); return; }
-    if(!/^\d{4}-\d{2}$/.test(f.expenseMonth)){ status.textContent = t('Izaberi mesec u koji ide rashod.'); return; }
+    if(!type || !loc){ status.textContent = t('Izaberi lokaciju i vrstu računa.'); return false; }
+    if(!/^\d{4}-\d{2}$/.test(f.month)){ status.textContent = t('Upiši obračunski mesec.'); return false; }
+    if(!(f.amount > 0) && !Object.keys(f.values).length){ status.textContent = t('Upiši iznos ili bar jedno merenje.'); return false; }
+    if(!/^\d{4}-\d{2}$/.test(f.expenseMonth)){ status.textContent = t('Izaberi mesec u koji ide rashod.'); return false; }
     const draft = { billTypeId: type.id, month: f.month, expenseMonth: f.expenseMonth, amount: f.amount > 0 ? Math.round(f.amount * 100) / 100 : 0, currency: f.currency, values: f.values };
     const rsd = draft.amount > 0 ? billAmountRsd(draft) : { amount: 0, rate: 1 };
-    if(!rsd){ status.textContent = t('Kurs za {0} nije dostupan. Otvori Kursevi i osveži kursnu listu.', f.currency); return; }
+    if(!rsd){ status.textContent = t('Kurs za {0} nije dostupan. Otvori Kursevi i osveži kursnu listu.', f.currency); return false; }
     const edit = billReview.bill;
     const dup = !edit ? C.findBillDuplicate(bills, type.id, f.month) : null;
     const replace = !!dup && (document.querySelector('input[name="billDup"]:checked') || {}).value === 'replace';
     setBillButtons(false);
     // 1) prilog — ako ne uspe, nista se ne cuva
-    let file = edit ? edit.file : undefined;
+    let file = edit ? edit.file : (billReview.savedFile || undefined);
     const prep = billReview.prepared;
-    if(!edit && prep && prep.bytes && window.desktop && window.desktop.bills){
+    if(!edit && !billReview.savedFile && prep && prep.bytes && window.desktop && window.desktop.bills){
       const res = await window.desktop.bills.saveFile(prep.bytes, `${f.month}-${billSlug(type.name)}-${billSlug(loc.name)}.${prep.ext}`);
-      if(!res || !res.ok){ status.textContent = t('Prilog nije sačuvan ({0}). Račun nije upisan.', (res && res.error) || '?'); setBillButtons(true); return; }
+      if(!res || !res.ok){ status.textContent = t('Prilog nije sačuvan ({0}). Račun nije upisan.', (res && res.error) || '?'); setBillButtons(true); return false; }
       file = res.name;
     }
     const base = edit || (replace ? dup : {});
@@ -4966,6 +4985,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveBillsState(); saveEntries(); saveApplied();
     closeBillReview(true);
     renderAll();
+    return true;
   }
   function deleteBill(id, opts){
     const b = bills.find(x=> x.id === id);
@@ -5236,6 +5256,42 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     aiStatus(r.ok ? t('Ključ radi ✓') : (BILL_ERR[r.kind] || BILL_ERR.http)(r));
   });
   document.getElementById('aiKeysLink').addEventListener('click', ()=> window.open('https://console.groq.com/keys'));
+  // ---------- Telegram bot: podesavanja (token i petlja su u glavnom procesu) ----------
+  const tgEl = id => document.getElementById(id);
+  const TG_STATE = { notoken: ()=> t('Token nije upisan.'), off: ()=> t('Bot je isključen.'), running: ()=> t('Radi.'), offline: ()=> t('Nema veze sa Telegramom — pokušavam ponovo.'),
+    conflict: ()=> t('Isti bot radi na drugom mestu (drugi računar ili webhook).'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
+  let tgPairTimer = null;
+  function renderTgStatus(st){
+    if(!st) return;
+    tgEl('tgToken').value = ''; tgEl('tgToken').placeholder = st.set ? t('upisan (…{0})', st.last4) : t('nije upisan');
+    tgEl('tgOn').checked = st.on;
+    ['tgPair', 'tgOn'].forEach(id=> { tgEl(id).disabled = !st.set; });
+    tgEl('tgUnlink').style.display = st.linked ? '' : 'none';
+    const parts = [];
+    if(st.pairCode) parts.push(t('Pošalji botu {0} kod: {1} (važi još {2} min).', st.botName ? '@' + st.botName : '', st.pairCode, Math.max(1, Math.ceil((st.pairUntil - Date.now()) / 60000))));
+    else if(st.linked) parts.push(t('Povezan sa {0}.', st.botName ? '@' + st.botName : t('botom')));
+    else if(st.set) parts.push(t('Nije povezan — klikni „Poveži Telegram“.'));
+    if(TG_STATE[st.state] && (st.state !== 'running' || !st.linked)) parts.push(TG_STATE[st.state]());
+    if(st.set && !(document.getElementById('deskCloseToTray') || {}).checked) parts.push(t('Zatvaranje prozora gasi aplikaciju, pa i bota — uključi „Zatvaranje prozora ostavlja aplikaciju u system tray-u“.'));
+    if(st.encryption === false) parts.push(t('Šifrovanje ključa nije dostupno na ovom računaru, pa ključ ne može da se sačuva.'));
+    tgEl('tgStatus').textContent = parts.join(' ');
+    clearTimeout(tgPairTimer);
+    if(st.pairCode) tgPairTimer = setTimeout(async ()=> renderTgStatus(await window.desktop.telegram.status()), 30000);
+  }
+  async function renderTgSettings(){
+    const box = tgEl('tgSettings');
+    if(!(window.desktop && window.desktop.telegram)){ box.style.display = 'none'; return; }
+    box.style.display = '';
+    renderTgStatus(await window.desktop.telegram.status());
+  }
+  if(window.desktop && window.desktop.telegram){
+    window.desktop.telegram.onStatus(st=> renderTgStatus(st));
+    tgEl('tgTokenSave').addEventListener('click', async ()=>{ const v = tgEl('tgToken').value.trim(); if(!v) return; tgEl('tgStatus').textContent = t('Proveravam…'); renderTgStatus(await window.desktop.telegram.setToken(v)); });
+    tgEl('tgTokenClear').addEventListener('click', async ()=> renderTgStatus(await window.desktop.telegram.setToken('')));
+    tgEl('tgPair').addEventListener('click', async ()=> renderTgStatus(await window.desktop.telegram.pair()));
+    tgEl('tgUnlink').addEventListener('click', async ()=>{ if(await appConfirm(t('Prekinuti vezu sa Telegramom? Bot više neće primati tvoje poruke dok ga ponovo ne povežeš.'))) renderTgStatus(await window.desktop.telegram.unlink()); });
+    tgEl('tgOn').addEventListener('change', async e=> renderTgStatus(await window.desktop.telegram.setOn(e.target.checked)));
+  }
 
   // ---------- Fiskalni racun iz prodavnice: slike (delovi) -> Groq po delu -> spajanje -> stavke/kategorije/lista -> rashodi ----------
   const RECEIPT_MAX_SIDE = 2000;
@@ -5249,6 +5305,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const emptyReceiptItem = () => ({ raw: '', name: '', qty: 1, unit: '', price: null, category: defaultShopCat(), discount: false });
   async function readReceiptPart(part, idx){
     part.error = part.prep.error || '';
+    delete part.errorKind;
     part.reading = part.error ? null : part.reading;
     if(part.error) return;
     const canAi = !!fakeReceiptReading || !!(window.desktop && window.desktop.bills);
@@ -5260,7 +5317,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(res && res.ok){
       part.reading = C.cleanReceiptReading(res.content, { categories: expenseCats });
       if(!part.reading) part.error = t('AI odgovor nije mogao da se pročita. Popuni podatke ručno.');
-    } else { part.reading = null; part.error = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); }
+    } else { part.reading = null; part.errorKind = res && res.kind; part.error = (BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {}); }
   }
   // stavke posle popusta, sa kategorijom trazene stavke sa liste (i po pocetku imena: "Sapun" ~ "Sapun Dove 100g"),
   // pa iz memorije (lista/istorija), pa predlog AI-ja, pa Ostalo
@@ -5279,13 +5336,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!receipt.storeTouched && !receipt.store) receipt.store = part.reading.store;
     if(!receipt.totalTouched && part.reading.total != null) receipt.total = part.reading.total;
   }
+  // Spojeni delovi -> stavke (sa kategorijama), prodavnica, datum, ukupno (i za Telegram, bez prozora)
+  function mergedReceiptState(parts){
+    const merged = C.mergeReceiptParts(parts.map(p=> p.reading)) || { store: '', date: '', total: null, items: [] };
+    const items = receiptItemsWithCategories(merged.items);
+    return { items: items.length ? items : [emptyReceiptItem()], store: merged.store || '', date: merged.date || toISODateLocal(new Date()), total: merged.total };
+  }
   function rebuildReceiptItems(){
-    const merged = C.mergeReceiptParts(receipt.parts.map(p=> p.reading)) || { store: '', date: '', total: null, items: [], low: [] };
-    receipt.items = receiptItemsWithCategories(merged.items);
-    if(!receipt.items.length) receipt.items = [emptyReceiptItem()];
-    if(!receipt.storeTouched) receipt.store = merged.store;
-    if(!receipt.dateTouched) receipt.date = merged.date || toISODateLocal(new Date());
-    if(!receipt.totalTouched) receipt.total = merged.total;
+    const st = mergedReceiptState(receipt.parts);
+    receipt.items = st.items;
+    if(!receipt.storeTouched) receipt.store = st.store;
+    if(!receipt.dateTouched) receipt.date = st.date;
+    if(!receipt.totalTouched) receipt.total = st.total;
   }
   function renderReceipt(){
     const p = receipt.parts[receipt.page];
@@ -5348,7 +5410,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   window.__addReceiptFiles = addReceiptFiles;
   window.__receiptState = ()=> receipt;
-  function closeReceipt(saved){ rEl('receiptOverlay').classList.remove('show'); const res = receipt && receipt.resolve; receipt = null; if(res) res(!!saved); }
+  function closeReceipt(saved){
+    rEl('receiptOverlay').classList.remove('show');
+    if(!saved && receipt && window.desktop && window.desktop.bills) receipt.parts.forEach(p=>{ if(p.savedName) window.desktop.bills.deleteFile(p.savedName); });
+    const res = receipt && receipt.resolve; receipt = null; if(res) res(!!saved);
+  }
   rEl('receiptItems').addEventListener('input', e=>{
     const row = e.target.closest('.receipt-row'); if(!row || !receipt) return;
     const it = receipt.items[+row.dataset.i]; const f = e.target.dataset.f;
@@ -5390,22 +5456,21 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   });
   rEl('receiptCancel').addEventListener('click', ()=> closeReceipt(false));
   rEl('receiptOverlay').addEventListener('click', e=>{ if(e.target.id === 'receiptOverlay') closeReceipt(false); });
-  async function saveReceipt(){
-    if(!receipt || receipt.busy) return;
-    const items = receipt.items.filter(i=> (i.name || '').trim() || i.price > 0);
-    const total = parseFloat(rEl('receiptTotal').value);
-    if(!items.some(i=> i.price > 0) && !(total > 0)){ rEl('receiptStatus').textContent = t('Upiši bar jednu stavku sa cenom ili ukupan iznos.'); return; }
-    if(receipt.duplicate && !(await appConfirm(t('Ovaj račun je možda već unet ({0}). Ipak dodati?', receipt.date)))) return;
-    rEl('receiptSave').disabled = true;
-    const r = receipt;
-    const store = (rEl('receiptStore').value || '').trim(), date = rEl('receiptDate').value || toISODateLocal(new Date());
+  // Cuvanje racuna iz prodavnice iz stanja (prozor ili Telegram): d = { items, store, date, total, parts?, attachments?, confirmed? }
+  async function saveReceiptData(d){
+    const items = (d.items || []).filter(i=> (i.name || '').trim() || i.price > 0);
+    const total = parseFloat(d.total);
+    if(!items.some(i=> i.price > 0) && !(total > 0)) return { ok: false, error: t('Upiši bar jednu stavku sa cenom ili ukupan iznos.') };
+    const store = String(d.store || '').trim(), date = d.date || toISODateLocal(new Date());
+    if(!d.confirmed && total > 0 && C.findReceiptDuplicate(entries, date, total) && !(await appConfirm(t('Ovaj račun je možda već unet ({0}). Ipak dodati?', date)))) return { ok: false, cancelled: true };
+    const r = { parts: d.parts || [] };
     // prilozi: sve slike delova; neuspeh priloga ne blokira rashode
-    const attachments = [];
+    const attachments = (d.attachments || []).filter(Boolean).concat(r.parts.filter(p=> p.savedName).map(p=> p.savedName));
     let photoFailed = 0, photoTotal = 0;
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
     if(saveFile){
       for(let i = 0; i < r.parts.length; i++){
-        const pr = r.parts[i].prep; if(!pr.bytes) continue;
+        const pr = r.parts[i].prep; if(r.parts[i].savedName || !pr || !pr.bytes) continue;
         photoTotal++;
         let res;
         try{ res = await saveFile(pr.bytes, `${date}-racun-${billSlug(store || 'prodavnica')}-${i + 1}.${pr.ext}`); } catch(e){ res = null; }
@@ -5433,7 +5498,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const before = matches.map(m=>{ const s = shopping.items.find(x=> x.id === m.shoppingId); return { s, needed: s.needed, checked: s.checked, price: s.price }; });
     matches.forEach(m=>{ const s = shopping.items.find(x=> x.id === m.shoppingId); const it = items[m.receiptIndex]; s.needed = false; s.checked = false; if(it.price > 0) s.price = it.price; });
     saveEntries(); saveShopping();
-    closeReceipt(true); renderAll();
+    renderAll();
     if(photoFailed) appAlert(t('Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.', photoFailed, photoTotal));
     showUndoToast(t('Račun iz prodavnice dodat ({0} stavki)', items.length), ()=>{
       const ids = new Set(made.map(e=> e.id)); entries = entries.filter(e=> !ids.has(e.id));
@@ -5442,11 +5507,258 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
       saveEntries(); saveShopping(); renderAll();
     });
+    return { ok: true, ids: made.map(e=> e.id), count: items.length, attachments: attachments.slice(),
+      shoppingBefore: before.map(b=> ({ id: b.s.id, needed: b.needed, checked: b.checked, price: b.price })) };
+  }
+  async function saveReceipt(){
+    if(!receipt || receipt.busy) return;
+    const r = receipt;
+    rEl('receiptSave').disabled = true;
+    const res = await saveReceiptData({ items: r.items, store: rEl('receiptStore').value, date: rEl('receiptDate').value, total: rEl('receiptTotal').value, parts: r.parts });
+    if(receipt !== r) return;
+    if(!res.ok){ rEl('receiptSave').disabled = false; if(res.error) rEl('receiptStatus').textContent = res.error; return; }
+    closeReceipt(true);
   }
   rEl('receiptSave').addEventListener('click', saveReceipt);
   window.__saveReceipt = saveReceipt;
   rEl('shopReceiptBtn').addEventListener('click', ()=> rEl('shopReceiptInput').click());
   rEl('shopReceiptInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addReceiptFiles(f); });
+
+  // ---------- Telegram bot: obrada poruka (glavni proces prosledi poruku, ovde se upisuje i vrati odgovor) ----------
+  const TG_DONE_KEY = 'budzet-telegram-obradjeno-v1', TG_PENDING_KEY = 'budzet-telegram-cekanje-v1', TG_LOG_KEY = 'budzet-telegram-unosi-v1';
+  const tgLoad = k => { try{ const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; } };
+  const tgSave = (k, v) => localStorage.setItem(k, JSON.stringify(v));
+  let fakeTgCategory = null; // test: req -> { ok, content }
+  Object.defineProperty(window, '__fakeTgCategory', { get: ()=> fakeTgCategory, set: v=>{ fakeTgCategory = v; }, configurable: true });
+  const tgReply = (text, extra) => ({ replies: [Object.assign({ text }, extra || {})] });
+  const tgDayLabel = iso => { const today = toISODateLocal(new Date()); const y = new Date(); y.setDate(y.getDate() - 1);
+    return iso === today ? t('danas') : iso === toISODateLocal(y) ? t('juče') : fmtDocDate(iso); };
+  const TG_HELP = () => t('Pošalji rashod kao „kafa 250“, „gorivo 6000 juče visa“ ili prihod sa + („+honorar 30000“). Pošalji sliku ili PDF računa iz prodavnice, kućnog računa ili uplatnice — pokazaću šta sam pročitao pa ti potvrdiš. /ponisti poništava poslednji unos.');
+  async function tgAiCategory(desc){
+    if(String(desc).replace(/[^\p{L}]/gu, '').length < 4) return null;
+    const req = { images: [], text: '', prompt: C.quickCategoryPrompt(expenseCats, desc) };
+    const call = fakeTgCategory ? fakeTgCategory(req) : (window.desktop && window.desktop.bills ? window.desktop.bills.read(req) : null);
+    if(!call) return null;
+    const res = await Promise.race([Promise.resolve(call).catch(()=> null), new Promise(r=> setTimeout(()=> r(null), 3000))]);
+    return res && res.ok ? C.cleanQuickCategory(res.content, expenseCats) : null;
+  }
+  function tgLog(ids, label, extra){
+    const id = newId();
+    tgSave(TG_LOG_KEY, tgLoad(TG_LOG_KEY).concat(Object.assign({ id, ids, label, at: Date.now() }, extra || {})).slice(-50));
+    return id;
+  }
+  async function tgUndo(logId){
+    const log = tgLoad(TG_LOG_KEY), item = logId ? log.find(l=> l.id === logId) : log.filter(l=> !l.undone && Date.now() - l.at < 864e5).pop();
+    if(!item || item.undone) return null;
+    const set = new Set(item.ids), gone = entries.filter(e=> set.has(e.id));
+    gone.forEach(e=>{ if(e.type === 'expense') unapplyRoundUpSaving(e.amount); });
+    if(gone.length){ entries = entries.filter(e=> !set.has(e.id)); saveEntries(); }
+    (item.shopping || []).forEach(b=>{ const it = shopping.items.find(x=> x.id === b.id); if(it){ it.needed = b.needed; it.checked = b.checked; it.price = b.price; } });
+    if((item.shopping || []).length) saveShopping();
+    if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
+      if(!entries.some(e=> (e.attachments || []).includes(name))) await window.desktop.bills.deleteFile(name);
+    }
+    renderAll();
+    item.undone = true; tgSave(TG_LOG_KEY, log);
+    return item;
+  }
+  async function tgText(text){
+    const intent = C.telegramIntent(text);
+    if(intent.kind === 'command' && intent.command === 'ponisti'){
+      const it = await tgUndo(null);
+      return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
+    }
+    if(intent.kind !== 'entry') return tgReply(TG_HELP());
+    const data = window.__desktopBridge.getQuickAddData();
+    const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
+      rules: data.rules, history: data.history, expenseCats, incomeCats });
+    if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
+    if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
+    const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
+    const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true });
+    if(!r || !r.ok) return tgReply('✕ ' + ((r && r.error) || t('Stavka nije dodata.')));
+    const label = `${d.desc} · ${r.amountText}`;
+    const logId = tgLog(r.ids, label);
+    return tgReply(`✓ ${d.type === 'income' ? t('Prihod') + ': ' : ''}${label} · ${r.category} · ${tgDayLabel(d.date)}`, { buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] });
+  }
+  async function tgCallback(p){
+    const cb = C.parseTelegramCallback(p.data);
+    if(!cb) return { replies: [] };
+    if(cb.action === 'u'){
+      const it = await tgUndo(cb.id);
+      return { callbackText: it ? t('Poništeno') : t('Već poništeno'), replies: it ? [{ editMessageId: p.messageId, text: t('↩ Poništeno: {0}', it.label) }] : [] };
+    }
+    return tgFileCallback(p, cb); // Task 5
+  }
+  async function tgHandle(p){
+    const done = tgLoad(TG_DONE_KEY);
+    if(!p || done.includes(p.update_id)) return { replies: [] };
+    let out = { replies: [] };
+    if(p.kind === 'text') out = await tgText(p.text);
+    else if(p.kind === 'callback') out = await tgCallback(p);
+    else if(p.kind === 'file') out = await tgFile(p); // Task 5
+    tgSave(TG_DONE_KEY, tgLoad(TG_DONE_KEY).concat(p.update_id).slice(-500));
+    if(window.__desktopBridge && window.__desktopBridge.flush){ try{ await window.__desktopBridge.flush(); } catch(e){ /* sledece cuvanje */ } }
+    return out;
+  }
+  async function tgTick(){ return tgFileTick(); } // Task 5
+  const tgPending = () => tgLoad(TG_PENDING_KEY);
+  const tgPendingPut = p => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== p.id).concat(p));
+  const tgPendingDrop = id => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== id));
+  const tgMem = new Map(); // id -> File (dok se ne sacuva na disk ili za isti rad)
+  const b64ToBytes = b64 => { const s = atob(b64), a = new Uint8Array(s.length); for(let i = 0; i < s.length; i++) a[i] = s.charCodeAt(i); return a; };
+  const TG_FILE_ERR = { type: ()=> t('Primam samo PDF, JPG, PNG ili WEBP.'), size: ()=> t('Fajl je veći od 10 MB.'), download: ()=> t('Fajl nije preuzet iz Telegrama — pošalji ga ponovo.') };
+  const tgBusy = () => ['billOverlay', 'receiptOverlay', 'ipsOverlay'].some(id=> document.getElementById(id).classList.contains('show'));
+  const tgButtons = (p, saveRow) => [saveRow, [{ text: '✕ ' + t('Odbaci'), data: 'x:' + p.id }, { text: t('Otvori u aplikaciji'), data: 'o:' + p.id }]].filter(Boolean);
+  async function tgPendingFile(p){
+    if(tgMem.has(p.id)) return tgMem.get(p.id);
+    if(!p.file || !(window.desktop && window.desktop.bills && window.desktop.bills.readFile)) return null;
+    const r = await window.desktop.bills.readFile(p.file);
+    return r && r.ok ? new File([r.bytes], p.fileName || r.name, { type: p.mime || '' }) : null;
+  }
+  async function tgFile(p){
+    const edit = p.progressMessageId ? { editMessageId: p.progressMessageId } : null;
+    if(p.fileError || !p.file) return tgReply('✕ ' + (TG_FILE_ERR[p.fileError] || TG_FILE_ERR.download)(), edit);
+    const file = new File([b64ToBytes(p.file.base64)], p.file.name, { type: p.file.mime });
+    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null };
+    const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
+    if(saveFile){
+      const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
+      try{ const r = await saveFile(new Uint8Array(await file.arrayBuffer()), `${toISODateLocal(new Date())}-telegram-${pend.id}.${ext}`); if(r && r.ok) pend.file = r.name; } catch(e){ /* ostaje u memoriji */ }
+    }
+    tgMem.set(pend.id, file);
+    tgPendingPut(pend);
+    if(!pend.kind) return tgReply(t('Šta je ovo?'), Object.assign({}, edit, { buttons: [
+      [{ text: t('Račun iz prodavnice'), data: `k:${pend.id}:receipt` }], [{ text: t('Kućni račun'), data: `k:${pend.id}:bill` }],
+      [{ text: t('Uplatnica'), data: `k:${pend.id}:slip` }, { text: '✕ ' + t('Odbaci'), data: 'x:' + pend.id }]] }));
+    return tgRead(pend, file);
+  }
+  // Citanje po vrsti -> stanje na cekanju + sazetak sa dugmadima (ili poruka o gresci / ponovni pokusaj)
+  async function tgRead(pend, file){
+    const edit = pend.messageId ? { editMessageId: pend.messageId } : {};
+    const fail = msg => { tgPendingPut(pend); return tgReply('✕ ' + msg, Object.assign({}, edit, { buttons: tgButtons(pend, null) })); };
+    const busyRetry = () => { pend.retryAt = Date.now() + 60000; tgPendingPut(pend); return tgReply(t('AI je zauzet — pokušavam ponovo za minut.'), edit); };
+    delete pend.retryAt;
+    if(pend.kind === 'receipt'){
+      const part = { prep: await prepareBillFile(file, receiptPrepOpts) };
+      await readReceiptPart(part, 0);
+      if(part.errorKind === 'limit') return busyRetry();
+      if(part.error) return fail(part.error);
+      pend.state = mergedReceiptState([part]);
+      tgPendingPut(pend);
+      return tgReply(tgReceiptSummary(pend.state), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) }));
+    }
+    if(pend.kind === 'bill'){
+      ensureBillDefaults();
+      const r = await readBill(await prepareBillFile(file));
+      if(r && r.kind === 'limit') return busyRetry();
+      if(!r || !r.reading || !r.reading.billTypeId) return fail((r && r.message) || t('Vrsta računa nije prepoznata — otvori ga u aplikaciji.'));
+      pend.state = { reading: r.reading, source: r.source, message: r.message };
+      tgPendingPut(pend);
+      return tgReply(tgBillSummary(r.reading), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Plaćen'), data: `s:${pend.id}:p` }, { text: '✓ ' + t('Za plaćanje'), data: `s:${pend.id}:n` }]) }));
+    }
+    const status = { textContent: '' };
+    const s = await readSlip(file, status, null);
+    if(!s || s.failed) return fail(status.textContent || t('Uplatnica nije pročitana — popuni podatke ručno.'));
+    pend.state = { name: s.name || '', account: s.account || '', model: s.model || '', reference: s.reference || '', purpose: s.purpose || '', code: s.code || '', amount: s.amount || 0, currency: s.currency || 'RSD' };
+    tgPendingPut(pend);
+    return tgReply(tgSlipSummary(pend.state), Object.assign({}, edit, { buttons: tgButtons(pend, pend.state.amount > 0 && pend.state.currency === 'RSD' ? [{ text: '✓ ' + t('Plaćeno'), data: 's:' + pend.id }] : null) }));
+  }
+  function tgReceiptSummary(st){
+    const rows = C.receiptToExpenses(st.items.filter(i=> i.price != null), st.total > 0 ? st.total : null);
+    const total = st.total > 0 ? st.total : rows.reduce((s, r)=> s + r.amount, 0);
+    const dup = st.date && total > 0 ? C.findReceiptDuplicate(entries, st.date, total) : null;
+    return `🧾 ${st.store || t('Prodavnica')} · ${tgDayLabel(st.date)} · ${fmt(total)}\n` + rows.map(r=> `${r.category} ${fmt(r.amount)}`).join(', ')
+      + ` · ${t('{0} stavki', st.items.filter(i=> (i.name || '').trim()).length)}` + (dup ? '\n⚠ ' + t('Ovaj račun je možda već unet ({0}).', st.date) : '');
+  }
+  function tgBillSummary(r){
+    const type = billTypeById(r.billTypeId), loc = locationById(r.locationId || (type && type.locationId));
+    const dup = type && r.month ? C.findBillDuplicate(bills, type.id, r.month) : null;
+    return `🏠 ${type ? type.name : '?'}${locations.length > 1 && loc ? ' · ' + loc.name : ''} · ${r.month ? monthYearLabelSr(r.month) : '?'} · ${r.amount > 0 ? fmtOrig(r.amount, loc ? loc.currency : 'RSD') : '?'}`
+      + (r.dueDate ? ' · ' + t('rok {0}', fmtDocDate(r.dueDate)) : '') + (dup ? '\n⚠ ' + t('Za {0} već postoji račun ({1}).', monthYearLabelSr(r.month), fmtOrig(dup.amount, dup.currency)) : '');
+  }
+  function tgSlipSummary(s){
+    return `🧾 ${s.name || C.formatAccount(s.account)} · ${s.amount > 0 ? fmtOrig(s.amount, s.currency) : '?'}` + (s.purpose ? '\n' + s.purpose : '') + (s.account ? '\n' + C.formatAccount(s.account) : '')
+      + (s.currency !== 'RSD' ? '\n⚠ ' + t('Uplatnica nije u dinarima — otvori je u aplikaciji.') : '');
+  }
+  async function tgFileCallback(p, cb){
+    const pend = tgPending().find(x=> x.id === cb.id);
+    if(!pend) return { callbackText: t('Ovo više nije na čekanju.'), replies: [] };
+    pend.messageId = p.messageId;
+    if(cb.action === 'x'){
+      tgPendingDrop(pend.id); tgMem.delete(pend.id);
+      if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file);
+      return { callbackText: t('Odbačeno'), replies: [{ editMessageId: p.messageId, text: '✕ ' + t('Odbačeno') }] };
+    }
+    if(tgBusy()) return { callbackText: t('Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.'), replies: [] };
+    const file = await tgPendingFile(pend);
+    if(cb.action === 'k'){
+      if(!['receipt', 'bill', 'slip'].includes(cb.arg)) return { replies: [] };
+      if(!file) return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId });
+      pend.kind = cb.arg; tgPendingPut(pend);
+      return tgRead(pend, file);
+    }
+    if(cb.action === 'o'){
+      const dropFile = ()=>{ if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); };
+      tgPendingDrop(pend.id); tgMem.delete(pend.id);
+      if(window.desktop && window.desktop.showWindow) window.desktop.showWindow();
+      if(!file){ dropFile(); return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId }); }
+      if(pend.kind === 'receipt' && pend.state){
+        const prep = await prepareBillFile(file, receiptPrepOpts);
+        receipt = Object.assign({ parts: [{ prep, savedName: pend.file }], page: 0, edited: true }, pend.state);
+        rEl('receiptOverlay').classList.add('show'); renderReceipt();
+      } else if(pend.kind === 'bill'){
+        ensureBillDefaults();
+        const st = pend.state || {};
+        openBillReview({ prepared: await prepareBillFile(file), reading: st.reading, message: st.message, source: st.source || 'manual', savedFile: pend.file });
+      } else if(pend.kind === 'slip'){
+        dropFile(); // IPS prozor cuva svoju kopiju
+        openIpsOneOff(file);
+      } else { dropFile(); addReceiptFiles([file]); } // prozor za racun cuva svoju kopiju
+      return { callbackText: t('Otvoreno u aplikaciji'), replies: [{ editMessageId: p.messageId, text: '↗ ' + t('Otvoreno u aplikaciji') }] };
+    }
+    if(cb.action === 's' && pend.state){
+      let ids = [], label = '', undoExtra = null;
+      if(pend.kind === 'receipt'){
+        const r = await saveReceiptData(Object.assign({}, pend.state, { attachments: pend.file ? [pend.file] : [], confirmed: true }));
+        if(!r.ok) return { callbackText: r.error || t('Nije sačuvano.'), replies: [] };
+        ids = r.ids; label = `${pend.state.store || t('Prodavnica')} · ${t('{0} stavki', r.count)}`; undoExtra = { attachments: r.attachments, shopping: r.shoppingBefore };
+      } else if(pend.kind === 'bill'){
+        if(billReview) return { callbackText: t('Na računaru je otvoren prozor za račun — završi ga pa pritisni ponovo.'), replies: [] };
+        const rd = pend.state.reading || {};
+        if(rd.billTypeId && rd.month && C.findBillDuplicate(bills, rd.billTypeId, rd.month))
+          return { callbackText: t('Za {0} već postoji račun — otvori ga u aplikaciji.', monthYearLabelSr(rd.month)), replies: [] };
+        openBillReview({ reading: pend.state.reading, source: pend.state.source, savedFile: pend.file, headless: true });
+        if(billEl('billLinkRec')) billEl('billLinkRec').checked = true;
+        const ok = await saveBillFromReview(cb.arg === 'p');
+        if(!ok){ const msg = billEl('billStatus').textContent; closeBillReview(false, true); return { callbackText: msg || t('Nije sačuvano.'), replies: [] }; }
+      } else {
+        const s = pend.state;
+        const r = window.__desktopBridge.addEntry({ type: 'expense', desc: s.name || s.purpose || t('Uplatnica'), amount: s.amount, currency: 'RSD', date: toISODateLocal(new Date()), category: '', paid: true });
+        if(!r.ok) return { callbackText: r.error, replies: [] };
+        const e = entries.find(x=> x.id === r.ids[0]);
+        if(e){ if(pend.file) e.attachments = [pend.file]; e.payee = C.cleanPayee({ name: s.name, account: s.account, model: s.model, reference: s.reference, purpose: s.purpose, code: s.code }); saveEntries(); }
+        ids = r.ids; label = `${s.name || t('Uplatnica')} · ${r.amountText}`; undoExtra = { attachments: pend.file ? [pend.file] : [] };
+      }
+      tgPendingDrop(pend.id); tgMem.delete(pend.id);
+      const logId = ids.length ? tgLog(ids, label, undoExtra) : null;
+      return { callbackText: t('Sačuvano'), replies: [{ editMessageId: p.messageId, text: '✓ ' + t('Sačuvano') + (label ? ': ' + label : ''), buttons: logId ? [[{ text: t('Poništi'), data: 'u:' + logId }]] : undefined }] };
+    }
+    return { replies: [] };
+  }
+  async function tgFileTick(){
+    const { keep, expired } = C.cleanTelegramPending(tgPending(), Date.now());
+    tgSave(TG_PENDING_KEY, keep);
+    const replies = [];
+    expired.forEach(p=>{ tgMem.delete(p.id); if(p.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(p.file); if(p.messageId) replies.push({ editMessageId: p.messageId, text: t('Isteklo — nije sačuvano.') }); });
+    for(const p of keep.filter(x=> x.retryAt && x.retryAt <= Date.now())){
+      const file = await tgPendingFile(p);
+      if(!file) continue;
+      const out = await tgRead(p, file);
+      replies.push(...out.replies);
+    }
+    return { replies };
+  }
 
   // ---------- Dokumenti: garancije i dokumenti sa rokom (prilozi, AI citanje, podsetnici, obnova) ----------
   const dEl = id => document.getElementById(id);
@@ -11309,6 +11621,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           parts = [{ category: pickCat(input.category), orig: parsed.amount }];
         }
         let total = 0, lastId = null;
+        const made = [];
         parts.forEach(p=>{
           const id = newId();
           const entry = { id, type, desc: parsed.desc, amount: toRsd(p.orig), category: p.category, date, tags };
@@ -11318,17 +11631,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           if(spreadMonths > 1){ entry.spreadMonths = spreadMonths; if(spreadStart) entry.spreadStart = spreadStart; }
           entries.push(entry);
           if(type === 'expense') applyRoundUpSaving(entry.amount);
-          total += entry.amount; lastId = id;
+          total += entry.amount; lastId = id; made.push(id);
         });
         newEntryId = lastId;
         saveEntries(); renderAll();
-        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : '') };
+        return { ok:true, amountText: fmt(total) + (parts.length > 1 ? t(' ({0} kategorije)', parts.length) : ''), ids: made, category: parts[0].category, type };
       },
       async flush(){
         const ok = dataStore.flushSync();
         return { ok: ok !== false, error: ok === false ? (dataStore.status && dataStore.status.error) || 'save failed' : null };
       }
     };
+    // Telegram bot: glavni proces prosledjuje poruke ovde (vidi app/telegram.js)
+    window.__telegramBridge = { handle: tgHandle, tick: tgTick };
   }
 })();
 </script>

@@ -182,3 +182,15 @@ test('prilozi: brisanje i vracanje nikad ne prepisuju fajl istog imena', () => {
   // bez sudara ime ostaje isto
   assert.equal(api.restoreFile('b.pdf').name, 'b.pdf');
 });
+
+test('prilozi: readFile vraca bajtove samo za ime iz Priloga (bez putanje), ne iz smeca', () => {
+  const { api } = setup(() => okResponse('{}'));
+  const saved = api.saveFile(new Uint8Array([7, 8, 9]), 'racun.png');
+  assert.ok(saved.ok);
+  const r = api.readFile(saved.name);
+  assert.equal(r.ok, true); assert.deepEqual([...r.bytes], [7, 8, 9]);
+  assert.equal(api.readFile('../podaci.json').ok, false);
+  assert.equal(api.readFile('nema.png').ok, false);
+  api.deleteFile(saved.name);
+  assert.equal(api.readFile(saved.name).ok, false);
+});

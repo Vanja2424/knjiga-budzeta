@@ -1858,6 +1858,153 @@
       window.__fakeImportCategorizing = null;
     } else check('uvoz AI posle pregleda: hook', false);
 
+    // Telegram: tekst -> rashod, dupli update, ponisti, komande, bez iznosa, podesavanja
+    {
+      check('telegram: most postoji', !!window.__telegramBridge && typeof window.__telegramBridge.handle === 'function');
+      if (window.__telegramBridge) {
+        const B = window.__telegramBridge;
+        const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+        window.__fakeTgCategory = async () => ({ ok: true, content: JSON.stringify({ kategorija: 'Ostalo' }) });
+        const n0 = ents().length;
+        const r1 = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        const e1 = ents().find(e => e.desc === 'Smoke tg kafa');
+        check('telegram: tekst postaje rashod', !!e1 && e1.amount === 250 && e1.type === 'expense', JSON.stringify(e1));
+        check('telegram: odgovor sa iznosom i dugmetom Poništi', /✓/.test(r1.replies[0].text) && /250/.test(r1.replies[0].text) && /^u:/.test(r1.replies[0].buttons[0][0].data), JSON.stringify(r1));
+        const r1b = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        check('telegram: isti update se ne upisuje dvaput', ents().length === n0 + 1 && r1b.replies.length === 0);
+        const r2 = await B.handle({ update_id: 900002, kind: 'callback', data: r1.replies[0].buttons[0][0].data, messageId: 5 });
+        check('telegram: Poništi briše rashod i menja poruku', !ents().some(e => e.desc === 'Smoke tg kafa') && r2.replies[0].editMessageId === 5, JSON.stringify(r2));
+        const r3 = await B.handle({ update_id: 900003, kind: 'text', text: 'Smoke tg kafa' });
+        check('telegram: bez iznosa ne upisuje', ents().length === n0 && /iznos/i.test(r3.replies[0].text), r3.replies[0] && r3.replies[0].text);
+        const r4 = await B.handle({ update_id: 900004, kind: 'text', text: '/pomoc' });
+        check('telegram: /pomoc daje uputstvo', /kafa 250/.test(r4.replies[0].text));
+        await B.handle({ update_id: 900005, kind: 'text', text: '+Smoke tg honorar 3000' });
+        check('telegram: + znači prihod', ents().some(e => e.desc === 'Smoke tg honorar' && e.type === 'income' && e.amount === 3000));
+        const r6 = await B.handle({ update_id: 900006, kind: 'text', text: '/ponisti' });
+        check('telegram: /ponisti poništava poslednji unos', !ents().some(e => e.desc === 'Smoke tg honorar') && /Poništeno/.test(r6.replies[0].text), r6.replies[0] && r6.replies[0].text);
+        window.__fakeTgCategory = null;
+      }
+      go('podesavanja'); await sleep(150);
+      check('telegram: podešavanja imaju odeljak', !!$('tgSettings') && $('tgSettings').style.display !== 'none' && !!$('tgToken') && !!$('tgPair'));
+    }
+
+    // Telegram: slika -> vrsta -> sazetak -> Sacuvaj/Odbaci/Otvori; cekanje posle osvezavanja; zauzet prozor; dupli klik
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      const b64 = btoa(String.fromCharCode(...png));
+      const file = { base64: b64, name: 'telegram.png', mime: 'image/png' };
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke TG Maxi', date: '2026-09-28', total: 300, items: [{ name: 'Smoke TG hleb', qty: 1, unit: 'kom', price: 100, category: 'Hrana' }, { name: 'Smoke TG sapun', qty: 1, unit: 'kom', price: 200, category: 'Hrana' }] }) });
+      // bez opisa -> pitanje o vrsti
+      const a1 = await B.handle({ update_id: 900101, kind: 'file', caption: '', progressMessageId: 41, file });
+      const ask = a1.replies[0];
+      check('telegram: slika bez opisa pita za vrstu', ask.editMessageId === 41 && ask.buttons.flat().some(b => /^k:.+:receipt$/.test(b.data)), JSON.stringify(a1));
+      const kData = ask.buttons.flat().find(b => /:receipt$/.test(b.data)).data;
+      const a2 = await B.handle({ update_id: 900102, kind: 'callback', data: kData, messageId: 41 });
+      const sum = a2.replies[0];
+      check('telegram: sažetak računa sa dugmadima', /Smoke TG Maxi/.test(sum.text) && /300/.test(sum.text) && sum.buttons.flat().some(b => /^s:/.test(b.data)), sum.text);
+      const sData = sum.buttons.flat().find(b => /^s:/.test(b.data)).data;
+      // zauzet prozor: korisnik ima otvoren prozor za racun -> nista se ne dira
+      $('receiptOverlay').classList.add('show');
+      const busy = await B.handle({ update_id: 900103, kind: 'callback', data: sData, messageId: 41 });
+      check('telegram: Sačuvaj dok je prozor otvoren ne dira prozor', !ents().some(e => e.desc === 'Smoke TG Maxi') && !!busy.callbackText && $('receiptOverlay').classList.contains('show'), JSON.stringify(busy));
+      $('receiptOverlay').classList.remove('show');
+      const a3 = await B.handle({ update_id: 900104, kind: 'callback', data: sData, messageId: 41 });
+      const saved = ents().filter(e => e.desc === 'Smoke TG Maxi');
+      check('telegram: Sačuvaj upisuje račun sa prilogom', saved.length === 1 && saved[0].amount === 300 && (saved[0].attachments || []).length === 1 && /✓/.test(a3.replies[0].text), JSON.stringify(saved));
+      const a4 = await B.handle({ update_id: 900105, kind: 'callback', data: sData, messageId: 41 });
+      check('telegram: dupli klik Sačuvaj ne upisuje dvaput', ents().filter(e => e.desc === 'Smoke TG Maxi').length === 1 && /više nije na čekanju/.test(a4.callbackText || '') && a4.replies.length === 0, JSON.stringify(a4));
+      // opis "struja" -> kucni racun; Odbaci; cekanje ostaje posle ponovnog citanja iz localStorage
+      const stT = window.__bills().billTypes.find(x => /struja/i.test(x.name));
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT && stT.locationId, billTypeId: stT && stT.id, month: '2026-09', amount: 4321, dueDate: '2026-10-15' }) });
+      const b1 = await B.handle({ update_id: 900106, kind: 'file', caption: 'struja', progressMessageId: 42, file });
+      check('telegram: opis „struja“ odmah čita kućni račun', /4[.,]?321/.test(b1.replies[0].text) && b1.replies[0].buttons.flat().some(b => /^s:.+:n$/.test(b.data)), b1.replies[0].text);
+      check('telegram: na čekanju je sačuvano', pend().some(p => p.kind === 'bill'));
+      const xData = b1.replies[0].buttons.flat().find(b => /^x:/.test(b.data)).data;
+      const b2 = await B.handle({ update_id: 900107, kind: 'callback', data: xData, messageId: 42 });
+      check('telegram: Odbaci ne pravi ništa', !pend().some(p => p.kind === 'bill') && /Odbačeno/.test(b2.replies[0].text) && !window.__bills().bills.some(b => b.amount === 4321), b2.replies[0].text);
+      // Otvori u aplikaciji -> prozor za racun iz prodavnice sa procitanim stavkama
+      const c1 = await B.handle({ update_id: 900108, kind: 'file', caption: 'maxi', progressMessageId: 43, file });
+      const oData = c1.replies[0].buttons.flat().find(b => /^o:/.test(b.data)).data;
+      await B.handle({ update_id: 900109, kind: 'callback', data: oData, messageId: 43 }); await sleep(300);
+      check('telegram: Otvori otvara prozor za pregled', $('receiptOverlay').classList.contains('show') && window.__receiptState().items.length === 2, String(window.__receiptState() && window.__receiptState().items.length));
+      $('receiptCancel').click(); await sleep(80);
+      // AI zauzet -> ponovni pokusaj u tick
+      window.__fakeReceiptReading = () => ({ ok: false, kind: 'limit', retryAfter: 30 });
+      const d1 = await B.handle({ update_id: 900110, kind: 'file', caption: 'maxi', progressMessageId: 44, file });
+      check('telegram: AI zauzet -> poruka i čekanje', /zauzet/.test(d1.replies[0].text) && pend().some(p => p.retryAt), d1.replies[0].text);
+      const pl = pend(); pl.forEach(p => { if (p.retryAt) p.retryAt = Date.now() - 1; }); localStorage.setItem('budzet-telegram-cekanje-v1', JSON.stringify(pl));
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke TG Lidl', date: '2026-09-28', total: 50, items: [{ name: 'Smoke TG voda', price: 50, category: 'Hrana' }] }) });
+      const t1 = await B.tick();
+      check('telegram: tick ponovo čita i šalje sažetak', t1.replies.some(r => r.editMessageId === 44 && /Smoke TG Lidl/.test(r.text)), JSON.stringify(t1));
+      // isticanje posle 7 dana
+      const pl2 = pend(); pl2.forEach(p => { p.created = Date.now() - 8 * 864e5; }); localStorage.setItem('budzet-telegram-cekanje-v1', JSON.stringify(pl2));
+      const t2 = await B.tick();
+      check('telegram: posle 7 dana ističe', pend().length === 0 && t2.replies.some(r => /Isteklo/.test(r.text)), JSON.stringify(t2));
+      // los fajl
+      const f1 = await B.handle({ update_id: 900111, kind: 'file', caption: '', progressMessageId: 45, fileError: 'type' });
+      check('telegram: nepodržan fajl dobija objašnjenje', /PDF|JPG/i.test(f1.replies[0].text), f1.replies[0].text);
+      window.__fakeReceiptReading = null; window.__fakeBillReading = null;
+      window.__deleteEntriesById(ents().filter(e => /^Smoke TG/.test(e.desc)).map(e => e.id));
+    }
+
+    // Telegram posle pregleda: kucni racun ne menja postojeci, Otvori po vrsti, Ponisti vraca sliku i listu, ekstenzija iz vrste fajla
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
+      const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+      const file = { base64: btoa(String.fromCharCode(...png)), name: 'telegram.png', mime: 'image/png' };
+      const btn = (out, re) => (out.replies[0].buttons || []).flat().find(b => re.test(b.data));
+      const stT = window.__bills().billTypes.find(x => /struja/i.test(x.name));
+      // 4) isti mesec vec ima racun -> Sacuvaj iz Telegrama ne menja postojeci
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT.locationId, billTypeId: stT.id, month: '2024-03', amount: 1111 }) });
+      const g1 = await B.handle({ update_id: 900201, kind: 'file', caption: 'struja', progressMessageId: 51, file });
+      await B.handle({ update_id: 900202, kind: 'callback', data: btn(g1, /^s:.+:n$/).data, messageId: 51 });
+      const first = window.__bills().bills.find(b => b.month === '2024-03' && b.billTypeId === stT.id);
+      check('telegram pregled: kućni račun sačuvan', !!first && first.amount === 1111, JSON.stringify(first));
+      window.__fakeBillReading = () => ({ ok: true, content: JSON.stringify({ locationId: stT.locationId, billTypeId: stT.id, month: '2024-03', amount: 2222 }) });
+      const g2 = await B.handle({ update_id: 900203, kind: 'file', caption: 'struja', progressMessageId: 52, file });
+      const r2 = await B.handle({ update_id: 900204, kind: 'callback', data: btn(g2, /^s:.+:n$/).data, messageId: 52 });
+      const now2 = window.__bills().bills.filter(b => b.month === '2024-03' && b.billTypeId === stT.id);
+      check('telegram pregled: postojeći račun za isti mesec se ne zamenjuje', now2.length === 1 && now2[0].amount === 1111 && /već postoji/.test(r2.callbackText || ''), JSON.stringify({ n: now2.map(b => b.amount), cb: r2.callbackText }));
+      const x2 = btn(g2, /^x:/); if (x2) await B.handle({ update_id: 900205, kind: 'callback', data: x2.data, messageId: 52 });
+      if (first && window.__deleteBill) window.__deleteBill(first.id);
+      // 5) kucni racun koji AI nije procitao -> Otvori otvara prozor za kucni racun (ne racun iz prodavnice)
+      window.__fakeBillReading = () => ({ ok: false, kind: 'http', status: 500 });
+      const h1 = await B.handle({ update_id: 900206, kind: 'file', caption: 'struja', progressMessageId: 53, file });
+      const o1 = btn(h1, /^o:/);
+      if (o1) { await B.handle({ update_id: 900207, kind: 'callback', data: o1.data, messageId: 53 }); await sleep(300); }
+      check('telegram pregled: Otvori nepročitanog kućnog računa otvara prozor za kućni račun', !!o1 && $('billOverlay').classList.contains('show') && !$('receiptOverlay').classList.contains('show'));
+      if ($('billOverlay').classList.contains('show')) $('billCancel').click();
+      if ($('receiptOverlay').classList.contains('show')) $('receiptCancel').click();
+      await sleep(80);
+      // 6) Ponisti racun iz Telegrama: rashodi, slika i lista za kupovinu se vracaju
+      const sh = window.__shopping();
+      sh.items.push({ id: 'smoke-tg-li', name: 'Smoke TG mleko', section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: true, checked: false });
+      window.__saveShopping();
+      window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke TG Undo', date: '2026-09-27', total: 120, items: [{ name: 'Smoke TG mleko', price: 120, category: 'Hrana' }] }) });
+      const u1 = await B.handle({ update_id: 900208, kind: 'file', caption: 'maxi', progressMessageId: 54, file });
+      const u2 = await B.handle({ update_id: 900209, kind: 'callback', data: btn(u1, /^s:/).data, messageId: 54 });
+      const ue = ents().find(e => e.desc === 'Smoke TG Undo');
+      const att = ue && (ue.attachments || [])[0];
+      const liAfterSave = window.__shopping().items.find(i => i.id === 'smoke-tg-li');
+      check('telegram pregled: račun skida stavku sa liste', !!ue && !!att && liAfterSave && liAfterSave.needed === false, JSON.stringify({ ue: !!ue, att, li: liAfterSave }));
+      await B.handle({ update_id: 900210, kind: 'callback', data: u2.replies[0].buttons[0][0].data, messageId: 54 });
+      const back = att ? await window.desktop.bills.readFile(att) : { ok: true };
+      const liAfterUndo = window.__shopping().items.find(i => i.id === 'smoke-tg-li');
+      check('telegram pregled: Poništi briše rashod, sliku i vraća listu', !ents().some(e => e.desc === 'Smoke TG Undo') && back.ok === false && liAfterUndo && liAfterUndo.needed === true, JSON.stringify({ back: back.ok, li: liAfterUndo }));
+      window.__shopping().items = window.__shopping().items.filter(i => i.id !== 'smoke-tg-li'); window.__saveShopping();
+      // ekstenzija priloga iz vrste fajla (PDF bez ekstenzije u imenu)
+      const p1 = await B.handle({ update_id: 900211, kind: 'file', caption: '', progressMessageId: 55, file: { base64: file.base64, name: 'dokument', mime: 'application/pdf' } });
+      const pp = pend().find(p => p.messageId === 55);
+      check('telegram pregled: PDF bez ekstenzije se čuva kao .pdf', !!pp && /\.pdf$/.test(pp.file || ''), pp && pp.file);
+      const x3 = btn(p1, /^x:/); if (x3) await B.handle({ update_id: 900212, kind: 'callback', data: x3.data, messageId: 55 });
+      window.__fakeReceiptReading = null; window.__fakeBillReading = null;
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

@@ -101,6 +101,8 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
     return path.dirname(p) === base ? p : null;
   }
   const filePath = name => { const p = ALLOWED_EXT.test(String(name || '')) && inside(dir(), name); return p && fs.existsSync(p) ? p : null; };
+  // Bajtovi priloga (Telegram: slika na cekanju se cita nazad posle restarta)
+  function readFile(name) { const p = filePath(name); if (!p) return { ok: false }; try { return { ok: true, bytes: new Uint8Array(fs.readFileSync(p)), name: path.basename(p) }; } catch { return { ok: false }; } }
   function saveFile(bytes, name) {
     try {
       fs.mkdirSync(dir(), { recursive: true });
@@ -165,7 +167,7 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
     });
     return n;
   }
-  return { keyInfo, setKey, setOptions, read, testKey, saveFile, filePath, deleteFile, restoreFile, purgeTrash, mirrorTo };
+  return { keyInfo, setKey, setOptions, read, testKey, saveFile, filePath, readFile, deleteFile, restoreFile, purgeTrash, mirrorTo };
 }
 
 function registerBillsIpc(ipcMain, api, shell) {
@@ -178,6 +180,7 @@ function registerBillsIpc(ipcMain, api, shell) {
   ipcMain.handle('bills:open-file', (_e, name) => { const p = api.filePath(name); if (!p) return { ok: false }; if (!process.env.KNJIGA_TEST) shell.openPath(p); return { ok: true }; });
   ipcMain.handle('bills:delete-file', (_e, name) => api.deleteFile(name));
   ipcMain.handle('bills:restore-file', (_e, name) => api.restoreFile(name));
+  ipcMain.handle('bills:read-file', (_e, name) => api.readFile(name));
 }
 
 module.exports = { createBills, registerBillsIpc, DEFAULT_MODEL, GROQ_URL };
