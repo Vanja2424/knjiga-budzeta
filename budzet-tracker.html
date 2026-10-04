@@ -5305,11 +5305,62 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const rEl = id => document.getElementById(id);
   const defaultShopCat = () => expenseCats.includes('Ostalo') ? 'Ostalo' : (expenseCats[0] || 'Ostalo');
   const emptyReceiptItem = () => ({ raw: '', name: '', qty: 1, unit: '', price: null, category: defaultShopCat(), discount: false });
+  // ---- Fiskalni racun (Srbija): QR -> stranica Poreske uprave -> tacne stavke (AI samo predlaze kategorije po nazivu) ----
+  let fakeFiscal = null, fakeFiscalCategories = null; // test: url -> { ok, html, spec } / req -> { ok, content }
+  Object.defineProperty(window, '__fakeFiscal', { get: ()=> fakeFiscal, set: v=>{ fakeFiscal = v; }, configurable: true });
+  Object.defineProperty(window, '__fakeFiscalCategories', { get: ()=> fakeFiscalCategories, set: v=>{ fakeFiscalCategories = v; }, configurable: true });
+  async function fiscalCategories(reading){
+    const names = reading.items.map(i=> i.name);
+    if(!names.length) return;
+    const req = { images: [], text: '', prompt: C.receiptCategoryPrompt(expenseCats, names) };
+    let res = null;
+    try{ res = fakeFiscalCategories ? await fakeFiscalCategories(req) : (window.desktop && window.desktop.bills ? await window.desktop.bills.read(req) : null); } catch(e){ res = null; }
+    if(!res || !res.ok) return;
+    C.cleanReceiptCategories(res.content, expenseCats, names.length).forEach((c, i)=>{ if(c) reading.items[i].category = c; });
+  }
+  async function readFiscal(url){
+    let res;
+    try{ res = fakeFiscal ? await fakeFiscal(url) : (window.desktop && window.desktop.bills && window.desktop.bills.fiscal ? await window.desktop.bills.fiscal(url) : { ok: false, kind: 'desktop' }); }
+    catch(e){ res = { ok: false, kind: 'network' }; }
+    const fail = kind => ({ error: t('Podaci sa stranice Poreske uprave nisu preuzeti ({0}). Proveri internet ili pošalji sliku računa.', kind) });
+    if(!res || !res.ok) return fail(res && res.kind || '?');
+    const page = C.parseSufPage(res.html);
+    const items = C.sufItems(res.spec) || C.sufJournalItems(page.journal);
+    if(!items.length && page.total == null) return fail(t('nema podataka o računu'));
+    const reading = C.sufReading(page, items);
+    await fiscalCategories(reading);
+    return { reading };
+  }
+  // QR fiskalnog racuna je gust: trazi se u punoj rezoluciji i u donjoj polovini (tamo stoji), pa umanjeno
+  async function decodeFiscalQr(blob){
+    const bmp = await createImageBitmap(blob);
+    const W = bmp.width, H = bmp.height;
+    for(const [sx, sy, sw, sh, max] of [[0, 0, W, H, 4000], [0, Math.round(H * 0.5), W, H - Math.round(H * 0.5), 3000], [0, 0, W, H, 2000], [0, 0, W, H, 1000]]){
+      const scale = Math.min(1, max / Math.max(sw, sh));
+      const w = Math.max(1, Math.round(sw * scale)), h = Math.max(1, Math.round(sh * scale));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(bmp, sx, sy, sw, sh, 0, 0, w, h);
+      const res = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
+      if(res && res.data) return res.data;
+    }
+    return null;
+  }
+  async function fiscalFromPrepared(prep){
+    let txt = null;
+    if(prep.bytes && prep.ext !== 'pdf'){ try{ txt = await decodeFiscalQr(new Blob([prep.bytes])); } catch(e){ txt = null; } }
+    for(const cv of (txt ? [] : prep.canvases || [])){ try{ txt = await decodeQrImage(cv); } catch(e){ txt = null; } if(txt) break; }
+    const url = C.fiscalUrlFrom(txt);
+    return url ? readFiscal(url) : null;
+  }
   async function readReceiptPart(part, idx){
     part.error = part.prep.error || '';
     delete part.errorKind;
     part.reading = part.error ? null : part.reading;
     if(part.error) return;
+    // QR fiskalnog racuna -> tacni podaci Poreske uprave; bez QR-a (ili bez interneta) cita AI kao do sada
+    const fiscal = await fiscalFromPrepared(part.prep);
+    if(fiscal && fiscal.reading){ part.reading = fiscal.reading; return; }
     const canAi = !!fakeReceiptReading || !!(window.desktop && window.desktop.bills);
     if(!canAi){ part.error = BILL_ERR.nokey(); return; }
     const req = { images: part.prep.images, text: part.prep.text, prompt: C.receiptPrompt(expenseCats) };
@@ -5572,7 +5623,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     entries.filter(e=> ids.includes(e.id)).forEach(e=>{ e.tags = [...new Set((e.tags || []).concat(tag))]; });
     saveEntries();
   }
+  // Link sa QR koda fiskalnog racuna (kamera telefona) -> sazetak sa tacnim stavkama, cuvanje posle potvrde
+  async function tgFiscalLink(url, p){
+    const f = await readFiscal(url);
+    if(!f.reading) return tgReply('✕ ' + f.error);
+    const pend = { id: newId(), created: Date.now(), kind: 'receipt', fiscal: true, messageId: null, tag: tgSenderTag(p), state: mergedReceiptState([{ reading: f.reading }]) };
+    tgPendingPut(pend);
+    return tgReply(tgReceiptSummary(pend.state, pend), { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) });
+  }
   async function tgText(text, p){
+    const fiscalUrl = C.fiscalUrlFrom(text);
+    if(fiscalUrl) return tgFiscalLink(fiscalUrl, p);
     const intent = C.telegramIntent(text);
     if(intent.kind === 'command' && intent.command === 'ponisti'){
       const it = await tgUndo(null);
@@ -5652,6 +5713,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(pend.kind === 'receipt'){
       const part = { prep: await prepareBillFile(file, receiptPrepOpts) };
       await readReceiptPart(part, 0);
+      pend.fiscal = !!(part.reading && part.reading.source === 'fiscal');
       if(part.errorKind === 'limit') return busyRetry();
       if(part.error) return fail(part.error);
       pend.state = mergedReceiptState([part]);
@@ -5688,7 +5750,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(dup) lines.push('⚠ ' + t('Ovaj račun je možda već unet ({0}).', st.date));
     if(list.length) lines.push('', ...list);
     if(st.total > 0 && Math.abs(st.total - sum) >= 1) lines.push('', '⚠ ' + t('Zbir stavki je {0}, a ukupno sa računa {1} — proveri listu ili otvori u aplikaciji.', fmtNum(sum, 2), fmtNum(st.total, 2)));
-    if(pend && pend.compressed) lines.push('', '💡 ' + t('Telegram smanjuje fotografije. Za tačnije čitanje pošalji sliku kao fajl (📎 → Fajl), bez kompresije.'));
+    if(pend && pend.fiscal) lines.push('', '✓ ' + t('Tačni podaci sa računa Poreske uprave (QR kod).'));
+    else if(pend && pend.compressed) lines.push('', '💡 ' + t('Za tačne podatke pošalji link sa QR koda (uperi kameru telefona u QR i podeli link), ili sliku kao fajl (📎 → Fajl).'));
     return lines.join('\n');
   }
   function tgBillSummary(r){
@@ -5722,10 +5785,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const dropFile = ()=>{ if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); };
       tgPendingDrop(pend.id); tgMem.delete(pend.id);
       if(window.desktop && window.desktop.showWindow) window.desktop.showWindow();
-      if(!file){ dropFile(); return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId }); }
+      const noFileReceipt = !file && pend.kind === 'receipt' && pend.state && !pend.file;
+      if(!file && !noFileReceipt){ dropFile(); return tgReply('✕ ' + TG_FILE_ERR.download(), { editMessageId: p.messageId }); }
       if(pend.kind === 'receipt' && pend.state){
-        const prep = await prepareBillFile(file, receiptPrepOpts);
-        receipt = Object.assign({ parts: [{ prep, savedName: pend.file }], page: 0, edited: true }, pend.state);
+        const parts = file ? [{ prep: await prepareBillFile(file, receiptPrepOpts), savedName: pend.file }] : [];
+        receipt = Object.assign({ parts, page: 0, edited: true }, pend.state);
         rEl('receiptOverlay').classList.add('show'); renderReceipt();
       } else if(pend.kind === 'bill'){
         ensureBillDefaults();

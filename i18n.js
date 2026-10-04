@@ -646,7 +646,10 @@
     'Isteklo — nije sačuvano.': 'Expired — not saved.',    'Za {0} već postoji račun — otvori ga u aplikaciji.': 'A bill for {0} already exists — open it in the app.',    'Povezan sa grupom „{0}“ ({1}).': 'Connected to the group “{0}” ({1}).',
     'Za zajedničku grupu (npr. ti i partner): kod @BotFather pošalji /setprivacy, izaberi bota i Disable, pa dodaj bota u grupu i pošalji kod u grupu. Svaki rashod iz grupe dobija oznaku sa imenom onog ko ga je poslao.': 'For a shared group (e.g. you and your partner): send /setprivacy to @BotFather, choose the bot and Disable, then add the bot to the group and send the code in the group. Every expense from the group gets a tag with the name of whoever sent it.',    '… i još {0}': '… and {0} more',
     'Zbir stavki je {0}, a ukupno sa računa {1} — proveri listu ili otvori u aplikaciji.': 'The items add up to {0}, but the receipt total is {1} — check the list or open it in the app.',
-    'Telegram smanjuje fotografije. Za tačnije čitanje pošalji sliku kao fajl (📎 → Fajl), bez kompresije.': 'Telegram shrinks photos. For more accurate reading, send the picture as a file (📎 → File), without compression.',
+    'Telegram smanjuje fotografije. Za tačnije čitanje pošalji sliku kao fajl (📎 → Fajl), bez kompresije.': 'Telegram shrinks photos. For more accurate reading, send the picture as a file (📎 → File), without compression.',    'Podaci sa stranice Poreske uprave nisu preuzeti ({0}). Proveri internet ili pošalji sliku računa.': 'Couldn’t get the data from the Tax Administration page ({0}). Check the internet connection or send a photo of the receipt.',
+    'nema podataka o računu': 'no receipt data',
+    'Tačni podaci sa računa Poreske uprave (QR kod).': 'Exact data from the Tax Administration receipt page (QR code).',
+    'Za tačne podatke pošalji link sa QR koda (uperi kameru telefona u QR i podeli link), ili sliku kao fajl (📎 → Fajl).': 'For exact data, send the link from the QR code (point your phone camera at the QR and share the link), or send the picture as a file (📎 → File).',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)
