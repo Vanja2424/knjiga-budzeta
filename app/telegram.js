@@ -26,7 +26,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   };
   let state = 'off';        // off | notoken | running | offline | conflict | badToken
   let pair = null;          // { code, until }
-  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null;
+  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0;
   const attempts = new Map(); // update_id -> broj neuspelih obrada
   // Obrada sa rokom: stranica koja se osvezi/padne usred obrade ne sme da zaustavi petlju zauvek
   const withTimeout = (promise, ms) => new Promise((res, rej) => {
@@ -80,8 +80,14 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     s().telegramTokenLast4 = token.slice(-4);
     if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; delete s().telegramOffset; delete s().telegramBotName; }
     saveSettings();
+    meAt = 0;
     try { const me = await api('getMe'); s().telegramBotName = String(me && me.username || ''); saveSettings(); lastError = ''; state = 'off'; }
-    catch (e) { lastError = scrub(e.message); setState(e.kind === 'badToken' ? 'badToken' : 'offline'); return status(); }
+    catch (e) {
+      lastError = scrub(e.message);
+      if (e.kind === 'badToken') { setState('badToken'); return status(); }
+      // nema mreze / Telegram ne odgovara: token ostaje, petlja ipak krece i sama pokusava ponovo (stanje "offline")
+      setState('offline');
+    }
     start();
     return status();
   }
@@ -209,11 +215,19 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       lastError = scrub(e.message);
       if (e.kind === 'badToken') { setState('badToken'); return -1; }
       setState(e.kind === 'conflict' ? 'conflict' : 'offline');
-      const wait = e.kind === 'limit' && e.retryAfter ? e.retryAfter : BACKOFF[Math.min(errors, BACKOFF.length - 1)];
+      const base = BACKOFF[Math.min(errors, BACKOFF.length - 1)];
+      // 409 = isti bot radi i na drugom racunaru: bez zasipanja Telegrama — najmanje 30 s, pa sve duze
+      const wait = e.kind === 'limit' && e.retryAfter ? e.retryAfter : e.kind === 'conflict' ? Math.max(30, base) : base;
       errors++;
       return wait;
     }
     errors = 0; lastError = ''; setState('running');
+    // ime bota nije procitano pri upisu tokena (nije bilo mreze) — dopuni ga, najvise jednom u 5 minuta
+    if (!s().telegramBotName && now() - meAt >= 5 * 60 * 1000) {
+      meAt = now();
+      const me = await safe(() => api('getMe'));
+      if (me && me.username) { s().telegramBotName = String(me.username); saveSettings(); onStatus(status()); }
+    }
     for (const u of updates || []) {
       try { await processUpdate(u); attempts.delete(u.update_id); }
       catch (e) {

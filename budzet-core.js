@@ -1924,6 +1924,21 @@
     const obs = [].concat(...hs.map(h => h.obs)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return { key: itemKey(item.name), name: String(item.name), obs };
   }
+  // Nabavka -> Cene: istorija starog imena (alias preimenovane stavke liste) ide pod trenutno ime; stavka koja se bas tako zove ima prednost
+  function mergePriceHistoryAliases(history, shoppingItems){
+    const out = new Map(history || []);
+    const owners = aliasOwners(shoppingItems, itemKey);
+    if(!owners.size) return out;
+    const groups = new Map();
+    owners.forEach((item, k) => { if(!out.has(k)) return; const key = itemKey(item.name); if(!key || key === k) return; if(!groups.has(key)) groups.set(key, { item, keys: [] }); groups.get(key).keys.push(k); });
+    groups.forEach(({ item, keys }, key) => {
+      const hs = (out.has(key) ? [out.get(key)] : []).concat(keys.map(k => out.get(k)));
+      keys.forEach(k => out.delete(k));
+      const obs = [].concat(...hs.map(h => h.obs)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      out.set(key, { key, name: String(item.name), obs });
+    });
+    return out;
+  }
   function estimateShoppingItem(item, history, preferredStore){
     const h = itemPriceHistory(item, history);
     if(h && h.obs.length){
@@ -1941,6 +1956,18 @@
   // ---------- Telegram bot: poruka -> namera / nacrt unosa / vrsta slike ----------
   const TELEGRAM_PENDING_DAYS = 7;
   const TG_INCOME_WORDS = ['plata', 'prihod', 'honorar', 'penzija', 'zarada', 'bonus', 'dnevnica'];
+  // Rec prihoda na pocetku ("plata", "honorar"...) je prihod samo kad je to ceo opis ili je prate samo mesec/ime:
+  // "plata", "plata septembar", "plata za oktobar", "honorar Marko" = prihod. Rashod je kad ostatak pominje trosak
+  // (majstor, racun, popravka... — "plata majstoru", "honorar za račun") ili "za <nesto sto nije mesec>" ("plata za majstora").
+  // "+" na pocetku uvek znaci prihod.
+  const TG_EXPENSE_HINTS = ['majstor', 'racun', 'popravk', 'kupovin', 'servis', 'radnik', 'radnic', 'kirij', 'stanarin', 'dadilj'];
+  const TG_PERIOD_RE = /^(januar|februar|mart|april|maj|jun|jul|avgust|septemb|oktob|novemb|decemb|mesec)(a|ar|ra|u|om)?$|^\d{1,4}\.?$/;
+  function tgIncomeRest(words){
+    if(words.some(w => TG_EXPENSE_HINTS.some(h => w.startsWith(h)))) return false;
+    return words.every((w, i) => w !== 'za' || TG_PERIOD_RE.test(words[i + 1] || ''));
+  }
+  // Grupa: obicno caskanje ("vidimo se u 8") nije unos — trazi se iznos od bar 2 cifre i rec u opisu
+  const tgGroupEntry = (desc, amount) => amount >= 10 && /\p{L}{2,}/u.test(desc);
   const TG_KIND_WORDS = [
     ['slip', ['uplatnica', 'uplatnicu', 'nalog za uplatu']],
     ['bill', ['struja', 'struju', 'eps', 'infostan', 'voda', 'vodu', 'vodovod', 'grejanje', 'toplana', 'gas', 'internet', 'telefon', 'kablovska', 'sbb', 'telekom', 'mts', 'yettel', 'komunalije', 'racun za']],
@@ -1955,7 +1982,8 @@
     }
     return { kind: 'entry' };
   }
-  // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...) = prihod; kategorija iz pravila, pa iz istorije
+  // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...; vidi tgIncomeRest) = prihod; kategorija iz pravila, pa iz istorije.
+  // ctx.group: u grupi samo iznos >= 10 uz opis je unos, inace { error: 'chat' }
   function telegramEntryDraft(text, ctx){
     const c = ctx || {};
     let raw = String(text || '').trim(), type = 'expense';
@@ -1964,8 +1992,10 @@
     const desc = String(p.desc || '').trim();
     if(!(p.amount > 0)) return { error: desc || !raw ? 'noamount' : 'nodesc' };
     if(!desc) return { error: 'nodesc' };
-    const first = foldText(desc.split(/\s+/)[0]);
-    if(type === 'expense' && (TG_INCOME_WORDS.includes(first) || (c.incomeCats || []).some(x => foldText(x) === first))) type = 'income';
+    if(c.group && !tgGroupEntry(desc, p.amount)) return { error: 'chat' };
+    const words = foldText(desc).replace(/[^a-z0-9.]+/g, ' ').trim().split(' ').filter(Boolean);
+    const first = words[0] || '';
+    if(type === 'expense' && (TG_INCOME_WORDS.includes(first) || (c.incomeCats || []).some(x => foldText(x) === first)) && tgIncomeRest(words.slice(1))) type = 'income';
     const cats = (type === 'expense' ? c.expenseCats : c.incomeCats) || [];
     const low = desc.toLowerCase();
     let category = null;
@@ -2109,7 +2139,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });

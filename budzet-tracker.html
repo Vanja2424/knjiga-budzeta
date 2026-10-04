@@ -2600,7 +2600,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   <!-- NABAVKA -->
   <div class="screen" id="screen-nabavka">
     <div class="panel">
-      <div class="file-row shop-receipt-row"><button class="btn-secondary" id="shopReceiptBtn">Ubaci račun iz prodavnice…</button><input type="file" id="shopReceiptInput" accept="application/pdf,image/*,.heic" multiple hidden><span class="hint">Slika ili PDF računa: stavke, cene i kategorije se popune same.</span></div>
+      <div class="file-row shop-receipt-row"><button class="btn-secondary" id="shopReceiptBtn">Ubaci račun iz prodavnice…</button><button class="btn-secondary" id="shopFiscalLinkBtn">Nalepi link sa QR koda…</button><input type="file" id="shopReceiptInput" accept="application/pdf,image/*,.heic" multiple hidden><span class="hint">Slika ili PDF računa: stavke, cene i kategorije se popune same.</span></div>
       <input type="text" id="shopQuickInput" class="shop-quick" placeholder="Dodaj stavku, npr. Mleko 2 kom 150" aria-label="Dodaj stavku" autocomplete="off">
       <div class="shop-controls">
         <div class="trend-range-toggle" role="group" aria-label="Grupiši po">
@@ -3184,6 +3184,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 <script>
 (function(){
   const C = window.BudzetCore;
+  // Test kuke (window.__*) postoje samo kad je KNJIGA_TEST postavljen (main.js -> desktop.info.test), kao u prozoru za brzi unos
+  const IS_TEST = !!(window.desktop && window.desktop.info && window.desktop.info.test);
   // Prevodi: staticki tekst se prevodi sam; poruke sa vrednostima idu kroz t('... {0}', x)
   I18N.start();
   const t = I18N.t;
@@ -3247,8 +3249,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // naziv kategorije iz bankovnog izvoda).
   let catRules = JSON.parse(localStorage.getItem(CATRULES_KEY) || '[]');
   const saveCatRules = () => localStorage.setItem(CATRULES_KEY, JSON.stringify(catRules));
-  window.__catRules = ()=> catRules;
-  window.__setCatRules = list => { catRules = list.slice(); saveCatRules(); if(typeof renderCatRules === 'function') renderCatRules(); };
+  if(IS_TEST) window.__catRules = ()=> catRules;
+  if(IS_TEST) window.__setCatRules = list => { catRules = list.slice(); saveCatRules(); if(typeof renderCatRules === 'function') renderCatRules(); };
   const categoryFromRules = desc => C.categoryFromRules(catRules, desc);
   // Kategorije prihoda su od v1.3 izmenljive (ranije fiksna lista).
   const INCOME_CATS_KEY = 'budzet-kategorije-prihoda-v1';
@@ -3319,8 +3321,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const saveFixedCategories = () => localStorage.setItem(FIXED_CATS_KEY, JSON.stringify(fixedCategories));
   const saveShopping = () => localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
   const shoppingCategoryInUse = cat => shopping.items.some(i => i.category === cat);
-  window.__shopping = () => shopping;
-  window.__saveShopping = () => { saveShopping(); invalidate(); if(activeScreen === 'nabavka') renderShopping(); };
+  if(IS_TEST) window.__shopping = () => shopping;
+  if(IS_TEST) window.__saveShopping = () => { saveShopping(); invalidate(); if(activeScreen === 'nabavka') renderShopping(); };
   function catColorFor(cat, fallbackIndex){
     return sanitizeHexColor(catColors[cat]) || PALETTE[fallbackIndex % PALETTE.length];
   }
@@ -3631,7 +3633,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     renderUndoToast();
     return true;
   }
-  window.__undoTop = undoTop;
+  if(IS_TEST) window.__undoTop = undoTop;
   document.addEventListener('keydown', (e)=>{
     if(!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || (e.key !== 'z' && e.key !== 'Z' && e.code !== 'KeyZ')) return;
     if(typingIn(e.target) || document.querySelector('.modal-overlay.show')) return;
@@ -3643,7 +3645,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!grid) return;
     openDialog(t('Prečice na tastaturi'), `<div class="shortcut-grid">${grid.innerHTML}</div>`, { html: true, alertOnly: true, okText: t('Zatvori') });
   }
-  window.__openShortcuts = openShortcutsDialog;
+  if(IS_TEST) window.__openShortcuts = openShortcutsDialog;
   // Mac: Ctrl/Alt/Shift se prikazuju kao ⌘ ⌥ ⇧ (u spisku precica i u opisima dugmadi, npr. "Novi rashod (⌘N)")
   const isMacDesktop = document.documentElement.classList.contains('mac');
   function macKeyLabels(root){
@@ -3954,7 +3956,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     document.getElementById('newEntryLabel').textContent = isIncome ? 'Novi prihod' : 'Novi rashod';
     document.getElementById('newEntryBtn').title = isIncome ? 'Novi prihod (Ctrl+Shift+N)' : 'Novi rashod (Ctrl+N)';
   }
-  window.__showScreen = showScreen;
+  if(IS_TEST) window.__showScreen = showScreen;
   // Novi unos: u desktop aplikaciji uvek kroz prozor za unos; u browseru forma na ekranu
   const usePopoutEntry = () => !!(window.desktop && window.desktop.quick && window.desktop.quick.open);
   function openNewEntry(type){
@@ -3964,7 +3966,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const el = document.getElementById(type === 'income' ? 'incDesc' : 'expDesc');
     setTimeout(()=>{ el.scrollIntoView({behavior:'smooth', block:'center'}); el.focus({preventScroll:true}); }, 60);
   }
-  window.__openNewEntry = openNewEntry;
+  if(IS_TEST) window.__openNewEntry = openNewEntry;
   document.getElementById('newEntryBtn').addEventListener('click', ()=> openNewEntry());
   document.querySelectorAll('nav.tabs button').forEach(btn=>{
     btn.addEventListener('click', ()=> showScreen(lastScreenInGroup[btn.dataset.group] || SCREEN_GROUPS[btn.dataset.group][0][0]));
@@ -4325,7 +4327,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     return changed;
   }
-  window.__processAutoPay = () => { const c = processAutoPay(); if(c) renderAll(); return c; };
+  if(IS_TEST) window.__processAutoPay = () => { const c = processAutoPay(); if(c) renderAll(); return c; };
 
   function paidThroughLabel(r){
     let lastPaidK = -1;
@@ -4483,7 +4485,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     ipsEl('ipsOverlay').classList.remove('show');
     if(ipsState.lastFocus && ipsState.lastFocus.focus) ipsState.lastFocus.focus();
   }
-  window.__openIps = (rid, mode) => { const r = recurring.find(x=> x.id === rid); if(r) openIps(r, mode || (r.payee ? 'pay' : 'edit')); };
+  if(IS_TEST) window.__openIps = (rid, mode) => { const r = recurring.find(x=> x.id === rid); if(r) openIps(r, mode || (r.payee ? 'pay' : 'edit')); };
   ipsEl('ipsAmount').addEventListener('input', renderIpsPay);
   ipsEl('ipsClose').addEventListener('click', closeIps);
   ipsEl('ipsOverlay').addEventListener('click', e=>{ if(e.target.id === 'ipsOverlay') closeIps(); });
@@ -4571,7 +4573,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     setTimeout(()=> ipsEl('ipsAccount').focus(), 0);
     if(file) await applySlipToEdit(file);
   }
-  window.__openIpsOneOff = openIpsOneOff;
+  if(IS_TEST) window.__openIpsOneOff = openIpsOneOff;
   document.getElementById('expSlipBtn').addEventListener('click', ()=> document.getElementById('expSlipInput').click());
   document.getElementById('expSlipInput').addEventListener('change', e=>{ const f = e.target.files[0]; e.target.value = ''; if(f) openIpsOneOff(f); });
   // Slika -> tekst QR koda (jsQR); veliki snimci se prvo smanje, pa se proba jos jednom manje
@@ -4589,7 +4591,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return null;
   }
   let fakeSlipReading = null; // test: zamenjuje Groq poziv za uplatnicu (req -> { ok, content })
-  Object.defineProperty(window, '__fakeSlipReading', { get: ()=> fakeSlipReading, set: v=>{ fakeSlipReading = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeSlipReading', { get: ()=> fakeSlipReading, set: v=>{ fakeSlipReading = v; }, configurable: true });
   // Uplatnica (slika ili PDF): prvo IPS QR lokalno, a bez QR-a AI procita polja naloga (proverava ih ipsProblems)
   async function readSlip(blob, statusEl, isCurrent){
     const say = msg => { if(!isCurrent || isCurrent()) statusEl.textContent = msg; };
@@ -4611,7 +4613,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     let res;
     try{ res = fakeSlipReading ? await fakeSlipReading(req) : await window.desktop.bills.read(req); }
     catch(e){ res = { ok: false, kind: 'http', message: String(e && e.message || e) }; }
-    if(!res || !res.ok){ say((BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {})); return prep ? { failed: true, prep } : null; }
+    if(!res || !res.ok){ say((BILL_ERR[res && res.kind] || BILL_ERR.http)(res || {})); return prep ? { failed: true, prep, kind: (res && res.kind) || 'http' } : null; } // kind 'limit' = AI zauzet (Telegram pokusava ponovo)
     const got = C.cleanSlipReading(res.content);
     if(!got){ say(t('Uplatnica nije pročitana — popuni podatke ručno.')); return prep ? { failed: true, prep } : null; }
     p = Object.assign(got, { source: 'ai', prep });
@@ -4620,8 +4622,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   const slipProblemsHtml = p => C.ipsProblems(Object.assign({}, p, { amount: p.amount || 1 })).map(x=> `<div>${escapeHtml(t(x))}</div>`).join('')
     + C.slipWarnings(p).map(x=> `<div class="ips-warn">${escapeHtml(t(x))}</div>`).join('');
-  window.__readSlipText = text => C.parseIpsQr(text);
-  window.__readSlipBlob = blob => readSlip(blob, document.getElementById('recSlipStatus'));
+  if(IS_TEST) window.__readSlipText = text => C.parseIpsQr(text);
+  if(IS_TEST) window.__readSlipBlob = blob => readSlip(blob, document.getElementById('recSlipStatus'));
   async function applySlipToEdit(blob){
     const st = ipsState;
     const isCurrent = ()=> ipsState === st && ipsEl('ipsOverlay').classList.contains('show');
@@ -4670,7 +4672,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     document.getElementById('recSlipStatus').textContent = t('Podaci za plaćanje sa uplatnice biće sačuvani uz stavku ({0}).', C.formatAccount(p.account));
     desc.focus();
   }
-  window.__fillRecFromSlipText = text => { const p = C.parseIpsQr(text); if(p) fillRecFormFromSlip(p); return !!p; };
+  if(IS_TEST) window.__fillRecFromSlipText = text => { const p = C.parseIpsQr(text); if(p) fillRecFormFromSlip(p); return !!p; };
   ipsEl('ipsFromImageBtn').addEventListener('click', ()=> ipsEl('ipsImageInput').click());
   ipsEl('ipsImageInput').addEventListener('change', e=>{ const f = e.target.files[0]; e.target.value = ''; if(f) applySlipToEdit(f); });
   document.getElementById('recFromSlipBtn').addEventListener('click', ()=> document.getElementById('recSlipInput').click());
@@ -4688,7 +4690,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Besplatan Groq nivo: ~7000 ulaznih tokena u minuti; slika ~2400. PDF sa tekstom: tekst + prva strana; sken: do 2 strane.
   const BILL_MAX_SIDE = 1600, BILL_JPEG_Q = 0.85, BILL_MAX_PAGES = 2, BILL_MAX_TEXT = 6000, BILL_TEXT_PDF_MIN = 200;
   let pdfjsLib = null, pdfDocsOpen = 0;
-  window.__pdfDocsOpen = ()=> pdfDocsOpen;
+  if(IS_TEST) window.__pdfDocsOpen = ()=> pdfDocsOpen;
   async function loadPdfJs(){
     if(pdfjsLib) return pdfjsLib;
     pdfjsLib = await import('./pdf.min.mjs');
@@ -4755,7 +4757,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return null;
   }
   let fakeBillReading = null; // test: zamenjuje Groq poziv (req -> { ok, content })
-  Object.defineProperty(window, '__fakeBillReading', { get: ()=> fakeBillReading, set: v=>{ fakeBillReading = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeBillReading', { get: ()=> fakeBillReading, set: v=>{ fakeBillReading = v; }, configurable: true });
   const BILL_ERR = {
     nokey: ()=> t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa). Popuni podatke ručno.'),
     key: ()=> t('Groq ključ nije ispravan (401). Proveri ga u podešavanjima.'),
@@ -4798,8 +4800,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       await openBillReview({ prepared: prep, reading: r.reading, message: r.message, source: r.source });
     }
   }
-  window.__addBillFiles = addBillFiles;
-  window.__openBillReview = opts => openBillReview(opts);
+  if(IS_TEST) window.__addBillFiles = addBillFiles;
+  if(IS_TEST) window.__openBillReview = opts => openBillReview(opts);
 
   let billReview = null; // { prepared, bill (izmena), source, payee, recurring, page, resolve }
   const billEl = id => document.getElementById(id);
@@ -5005,12 +5007,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(opts && opts.confirm === false) return run();
     appConfirm(t('Obrisati ovaj račun? Priloženi fajl ide u Prilozi/.obrisano i trajno se briše posle 30 dana.'), { okText: t('Obriši'), danger: true }).then(ok=>{ if(ok) run(); });
   }
-  window.__deleteBill = deleteBill;
-  window.__bills = ()=> ({ locations, billTypes, bills });
-  window.__setBillState = s => { locations = s.locations; billTypes = s.billTypes; bills = s.bills; saveBillsState(); invalidate(); };
-  window.__ensureBillDefaults = ensureBillDefaults;
-  window.__fxRates = ()=> Object.assign({}, fx.rates);
-  window.__setFxRate = (c, v)=>{ if(v === undefined) delete fx.rates[c]; else fx.rates[c] = v; };
+  if(IS_TEST) window.__deleteBill = deleteBill;
+  if(IS_TEST) window.__bills = ()=> ({ locations, billTypes, bills });
+  if(IS_TEST) window.__setBillState = s => { locations = s.locations; billTypes = s.billTypes; bills = s.bills; saveBillsState(); invalidate(); };
+  if(IS_TEST) window.__ensureBillDefaults = ensureBillDefaults;
+  if(IS_TEST) window.__fxRates = ()=> Object.assign({}, fx.rates);
+  if(IS_TEST) window.__setFxRate = (c, v)=>{ if(v === undefined) delete fx.rates[c]; else fx.rates[c] = v; };
   // Prevlacenje PDF-a ili slike bilo gde u prozor
   const isBillFile = f => /^(application\/pdf|image\/)/.test(f.type) || /\.(pdf|heic|jpe?g|png|webp)$/i.test(f.name);
   document.addEventListener('dragover', e=>{ if(e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
@@ -5086,7 +5088,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!ids.length){ openBillReview({ typeId: td.dataset.type, month: td.dataset.month, source: 'manual' }); return; }
     openBillDetail(ids);
   });
-  window.__openBillDetail = ids => openBillDetail(ids);
+  if(IS_TEST) window.__openBillDetail = ids => openBillDetail(ids);
   function openBillDetail(ids){
     const list = ids.map(id=> bills.find(b=> b.id === id)).filter(Boolean);
     const body = list.map(b=>{
@@ -5122,7 +5124,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveBillsState(); renderAll();
     return { created: r.bills.length, duplicates: r.duplicates, year: parsed.year, newLocations: r.newLocations.map(l=> l.name) };
   }
-  window.__importBillsSheet = importBillsSheet;
+  if(IS_TEST) window.__importBillsSheet = importBillsSheet;
   function billsSheetPreview(aoa, currencyByName){
     const parsed = C.parseBillsSheet(aoa);
     if(!parsed || !parsed.year) return '';
@@ -5133,7 +5135,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       r.newLocations.length ? t('Nove lokacije: {0}.', r.newLocations.map(l=> l.name).join(', ')) : '',
       r.newTypes.length ? t('Nove vrste računa: {0}.', r.newTypes.map(x=> x.name + ' (' + locName(x.locationId) + ')').join(', ')) : ''].filter(Boolean).join(' ');
   }
-  window.__billsSheetPreview = billsSheetPreview;
+  if(IS_TEST) window.__billsSheetPreview = billsSheetPreview;
   function removeLocation(id){
     const typeIds = billTypes.filter(x=> x.locationId === id).map(x=> x.id);
     const gone = bills.filter(b=> typeIds.includes(b.billTypeId));
@@ -5141,7 +5143,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     bills = bills.filter(b=> !typeIds.includes(b.billTypeId)); billTypes = billTypes.filter(x=> x.locationId !== id); locations = locations.filter(l=> l.id !== id);
     saveBillsState(); renderAll();
   }
-  window.__removeLocation = removeLocation;
+  if(IS_TEST) window.__removeLocation = removeLocation;
   document.getElementById('rezijeImportBtn').addEventListener('click', ()=> document.getElementById('rezijeImportInput').click());
   document.getElementById('rezijeImportInput').addEventListener('change', async e=>{
     const f = e.target.files[0]; e.target.value = ''; if(!f) return;
@@ -5260,7 +5262,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---------- Telegram bot: podesavanja (token i petlja su u glavnom procesu) ----------
   const tgEl = id => document.getElementById(id);
   const TG_STATE = { notoken: ()=> t('Token nije upisan.'), off: ()=> t('Bot je isključen.'), running: ()=> t('Radi.'), offline: ()=> t('Nema veze sa Telegramom — pokušavam ponovo.'),
-    conflict: ()=> t('Isti bot radi na drugom mestu (drugi računar ili webhook).'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
+    conflict: ()=> t('Isti bot radi na drugom računaru — ugasi ga tamo (isključi bota u Podešavanjima ili zatvori aplikaciju), pa ovde nastavlja sam. Dok rade oba, poruke se dele između računara.'), badToken: ()=> t('Token ne važi — proveri ga u @BotFather.') };
   let tgPairTimer = null;
   function renderTgStatus(st){
     if(!st) return;
@@ -5298,17 +5300,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---------- Fiskalni racun iz prodavnice: slike (delovi) -> Groq po delu -> spajanje -> stavke/kategorije/lista -> rashodi ----------
   const RECEIPT_MAX_SIDE = 2000;
   let fakeReceiptReading = null; // test: (req, partIndex) -> { ok, content }
-  Object.defineProperty(window, '__fakeReceiptReading', { get: ()=> fakeReceiptReading, set: v=>{ fakeReceiptReading = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeReceiptReading', { get: ()=> fakeReceiptReading, set: v=>{ fakeReceiptReading = v; }, configurable: true });
   let fakeSaveFile = null; // test: (bytes, name) -> { ok, name }
-  Object.defineProperty(window, '__fakeSaveFile', { get: ()=> fakeSaveFile, set: v=>{ fakeSaveFile = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeSaveFile', { get: ()=> fakeSaveFile, set: v=>{ fakeSaveFile = v; }, configurable: true });
   let receipt = null; // { parts: [{ prep, reading, error }], items, store, date, total, page, resolve, duplicate, diff }
   const rEl = id => document.getElementById(id);
   const defaultShopCat = () => expenseCats.includes('Ostalo') ? 'Ostalo' : (expenseCats[0] || 'Ostalo');
   const emptyReceiptItem = () => ({ raw: '', name: '', qty: 1, unit: '', price: null, category: defaultShopCat(), discount: false });
   // ---- Fiskalni racun (Srbija): QR -> stranica Poreske uprave -> tacne stavke (AI samo predlaze kategorije po nazivu) ----
   let fakeFiscal = null, fakeFiscalCategories = null; // test: url -> { ok, html, spec } / req -> { ok, content }
-  Object.defineProperty(window, '__fakeFiscal', { get: ()=> fakeFiscal, set: v=>{ fakeFiscal = v; }, configurable: true });
-  Object.defineProperty(window, '__fakeFiscalCategories', { get: ()=> fakeFiscalCategories, set: v=>{ fakeFiscalCategories = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeFiscal', { get: ()=> fakeFiscal, set: v=>{ fakeFiscal = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeFiscalCategories', { get: ()=> fakeFiscalCategories, set: v=>{ fakeFiscalCategories = v; }, configurable: true });
   async function fiscalCategories(reading){
     const names = reading.items.map(i=> i.name);
     if(!names.length) return;
@@ -5465,8 +5467,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     rebuildReceiptItems(); renderReceipt();
     return done;
   }
-  window.__addReceiptFiles = addReceiptFiles;
-  window.__receiptState = ()=> receipt;
+  if(IS_TEST) window.__addReceiptFiles = addReceiptFiles;
+  if(IS_TEST) window.__receiptState = ()=> receipt;
   function closeReceipt(saved){
     rEl('receiptOverlay').classList.remove('show');
     if(!saved && receipt && window.desktop && window.desktop.bills) receipt.parts.forEach(p=>{ if(p.savedName) window.desktop.bills.deleteFile(p.savedName); });
@@ -5558,7 +5560,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     renderAll();
     if(photoFailed) appAlert(t('Rashodi su sačuvani, ali {0} od {1} slika računa nije sačuvano u Prilozi.', photoFailed, photoTotal));
     showUndoToast(t('Račun iz prodavnice dodat ({0} stavki)', items.length), ()=>{
-      const ids = new Set(made.map(e=> e.id)); entries = entries.filter(e=> !ids.has(e.id));
+      const ids = new Set(made.map(e=> e.id));
+      entries.forEach(e=>{ if(ids.has(e.id)) unapplyRoundUpSaving(e.amount); });
+      entries = entries.filter(e=> !ids.has(e.id));
       // slike ovog racuna idu u Prilozi/.obrisano (nijedan drugi rashod ih ne koristi)
       if(attachments.length && window.desktop && window.desktop.bills) attachments.forEach(n=> window.desktop.bills.deleteFile(n));
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
@@ -5577,16 +5581,31 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     closeReceipt(true);
   }
   rEl('receiptSave').addEventListener('click', saveReceipt);
-  window.__saveReceipt = saveReceipt;
+  if(IS_TEST) window.__saveReceipt = saveReceipt;
   rEl('shopReceiptBtn').addEventListener('click', ()=> rEl('shopReceiptInput').click());
   rEl('shopReceiptInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addReceiptFiles(f); });
+  // Link sa QR koda fiskalnog racuna (npr. kopiran sa telefona) -> podaci Poreske uprave u prozoru racuna, bez slike
+  async function openReceiptFromFiscalLink(text){
+    const url = C.fiscalUrlFrom(text);
+    if(!url){ appAlert(t('To nije link sa QR koda fiskalnog računa (počinje sa https://suf.purs.gov.rs/v/?vl=).')); return false; }
+    const btn = rEl('shopFiscalLinkBtn');
+    btn.disabled = true;
+    let f;
+    try{ f = await readFiscal(url); } finally { btn.disabled = false; }
+    if(!f || !f.reading){ appAlert((f && f.error) || t('Podaci sa stranice Poreske uprave nisu preuzeti ({0}). Proveri internet ili pošalji sliku računa.', '?')); return false; }
+    receipt = Object.assign({ parts: [], page: 0, edited: true }, mergedReceiptState([{ reading: f.reading }]));
+    rEl('receiptOverlay').classList.add('show'); renderReceipt();
+    return true;
+  }
+  rEl('shopFiscalLinkBtn').addEventListener('click', ()=> openEditModal(t('Fiskalni račun sa QR koda'),
+    [{ key: 'url', label: 'Link sa QR koda računa (https://suf.purs.gov.rs/v/?vl=…)', type: 'text', value: '' }], vals=> openReceiptFromFiscalLink(vals.url)));
 
   // ---------- Telegram bot: obrada poruka (glavni proces prosledi poruku, ovde se upisuje i vrati odgovor) ----------
   const TG_DONE_KEY = 'budzet-telegram-obradjeno-v1', TG_PENDING_KEY = 'budzet-telegram-cekanje-v1', TG_LOG_KEY = 'budzet-telegram-unosi-v1';
   const tgLoad = k => { try{ const v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch(e){ return []; } };
   const tgSave = (k, v) => localStorage.setItem(k, JSON.stringify(v));
   let fakeTgCategory = null; // test: req -> { ok, content }
-  Object.defineProperty(window, '__fakeTgCategory', { get: ()=> fakeTgCategory, set: v=>{ fakeTgCategory = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeTgCategory', { get: ()=> fakeTgCategory, set: v=>{ fakeTgCategory = v; }, configurable: true });
   const tgReply = (text, extra) => ({ replies: [Object.assign({ text }, extra || {})] });
   const tgDayLabel = iso => { const today = toISODateLocal(new Date()); const y = new Date(); y.setDate(y.getDate() - 1);
     return iso === today ? t('danas') : iso === toISODateLocal(y) ? t('juče') : fmtDocDate(iso); };
@@ -5646,8 +5665,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(intent.kind !== 'entry') return tgReply(TG_HELP());
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
-      rules: data.rules, history: data.history, expenseCats, incomeCats });
-    if(d.error === 'noamount') return p && p.group ? { replies: [] } : tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.')); // u grupi: obicno caskanje
+      rules: data.rules, history: data.history, expenseCats, incomeCats, group: !!(p && p.group) });
+    if(d.error && p && p.group) return { replies: [] }; // u grupi: obicno caskanje ("vidimo se u 8") — bez odgovora
+    if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
     const r = window.__desktopBridge.addEntry({ type: d.type, desc: d.desc, amount: d.amount, currency: d.currency || 'RSD', date: d.date, accountId: d.accountId || undefined, category, paid: true, tags: tgSenderTag(p) });
@@ -5695,9 +5715,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const edit = p.progressMessageId ? { editMessageId: p.progressMessageId } : null;
     if(p.fileError || !p.file) return tgReply('✕ ' + (TG_FILE_ERR[p.fileError] || TG_FILE_ERR.download)(), edit);
     const file = new File([b64ToBytes(p.file.base64)], p.file.name, { type: p.file.mime });
-    const pend = { id: newId(), created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p), compressed: !!p.file.compressed };
+    // Isti update stigne ponovo (aplikacija ugasena usred citanja, Telegram ga salje opet): isto cekanje i isti prilog, cita se ponovo
+    const prev = p.update_id != null ? tgPending().find(x=> x.update_id === p.update_id) : null;
+    const pend = prev || { id: newId(), update_id: p.update_id, created: Date.now(), fileName: p.file.name, mime: p.file.mime, kind: C.photoKindFromCaption(p.caption), messageId: p.progressMessageId || null, tag: tgSenderTag(p), compressed: !!p.file.compressed };
+    if(prev && p.progressMessageId) pend.messageId = p.progressMessageId;
+    tgPendingPut(pend); // pre cuvanja priloga: posle izlaska usred citanja zna se da prilog vec postoji
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
-    if(saveFile){
+    if(saveFile && !pend.file){
       const ext = ({ 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' })[p.file.mime] || (/\.(\w+)$/.exec(p.file.name) || [, 'jpg'])[1].toLowerCase();
       try{ const r = await saveFile(new Uint8Array(await file.arrayBuffer()), `${toISODateLocal(new Date())}-telegram-${pend.id}.${ext}`); if(r && r.ok) pend.file = r.name; } catch(e){ /* ostaje u memoriji */ }
     }
@@ -5743,6 +5767,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const status = { textContent: '' };
     const s = await readSlip(file, status, null);
+    if(s && s.failed && s.kind === 'limit') return busyRetry();
     if(!s || s.failed) return fail(status.textContent || t('Uplatnica nije pročitana — popuni podatke ručno.'));
     pend.state = { name: s.name || '', account: s.account || '', model: s.model || '', reference: s.reference || '', purpose: s.purpose || '', code: s.code || '', amount: s.amount || 0, currency: s.currency || 'RSD' };
     tgPendingPut(pend);
@@ -5862,7 +5887,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   let docFilter = 'all';
   let docReview = null; // { doc (izmena) | null, files: [{ name?, prep?, label }], removed: [imena], entryId?, resolve }
   let fakeDocReading = null; // test: req -> { ok, content }
-  Object.defineProperty(window, '__fakeDocReading', { get: ()=> fakeDocReading, set: v=>{ fakeDocReading = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeDocReading', { get: ()=> fakeDocReading, set: v=>{ fakeDocReading = v; }, configurable: true });
   const docToday = ()=> toISODateLocal(new Date());
   const docGroupsAll = ()=> [...new Set(C.DOC_GROUPS.concat(documents.map(d=> d.group)).filter(Boolean))];
   const fmtDocDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'numeric', year: 'numeric' }); };
@@ -6011,8 +6036,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     addFilesToDocReview(Array.from(files || []));
     return p;
   }
-  window.__addDocFiles = addDocFiles;
-  window.__openDocReview = opts => openDocReview(opts || {});
+  if(IS_TEST) window.__addDocFiles = addDocFiles;
+  if(IS_TEST) window.__openDocReview = opts => openDocReview(opts || {});
   dEl('docAddFile').addEventListener('click', ()=> dEl('docFileInput').click());
   dEl('docFileInput').addEventListener('change', e=>{ const f = [...e.target.files]; e.target.value = ''; if(f.length) addFilesToDocReview(f); });
   dEl('docKind').addEventListener('change', docKindChanged);
@@ -6056,8 +6081,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(current) closeDocReview(true); else if(st.resolve) st.resolve(true);
     renderAll();
   });
-  window.__saveDocumentRaw = obj => { const d = C.cleanDocuments([Object.assign({ id: newId(), files: [] }, obj)])[0]; if(!d) return null; documents = documents.filter(x=> x.id !== d.id).concat(d); saveDocuments(); renderAll(); return d.id; };
-  window.__documents = ()=> documents;
+  if(IS_TEST) window.__saveDocumentRaw = obj => { const d = C.cleanDocuments([Object.assign({ id: newId(), files: [] }, obj)])[0]; if(!d) return null; documents = documents.filter(x=> x.id !== d.id).concat(d); saveDocuments(); renderAll(); return d.id; };
+  if(IS_TEST) window.__documents = ()=> documents;
   function deleteDocument(id, opts){
     const d = documents.find(x=> x.id === id); if(!d) return;
     const run = ()=>{
@@ -6077,7 +6102,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(opts && opts.confirm === false) return run();
     appConfirm(t('Obrisati „{0}“? Prilozi idu u Prilozi/.obrisano i trajno se brišu posle 30 dana.', d.title), { okText: t('Obriši'), danger: true }).then(ok=>{ if(ok) run(); });
   }
-  window.__deleteDocument = deleteDocument;
+  if(IS_TEST) window.__deleteDocument = deleteDocument;
   function renewDocumentNow(id){
     const d = documents.find(x=> x.id === id); if(!d) return;
     const nd = C.renewDocument(d, docToday());
@@ -6102,7 +6127,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       renderAll();
     });
   }
-  window.__renewDocument = renewDocumentNow;
+  if(IS_TEST) window.__renewDocument = renewDocumentNow;
   // Pregled: "Uskoro istice" (uskoro + istekli u poslednjih 30 dana)
   function renderDocReminders(){
     const box = dEl('docReminders'); if(!box) return;
@@ -6115,7 +6140,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     box.querySelectorAll('.doc-row').forEach(r=>{ r.addEventListener('click', ()=>{ showScreen('dokumenti'); const d = documents.find(x=> x.id === r.dataset.id); if(d) openDocReview({ doc: d }); }); r.addEventListener('keydown', docRowKey); });
     dEl('docRemindersOpen').addEventListener('click', ()=> showScreen('dokumenti'));
   }
-  window.__docNotifyKeys = ()=> C.documentReminders(documents, docToday()).map(x=> x.notifyKey);
+  if(IS_TEST) window.__docNotifyKeys = ()=> C.documentReminders(documents, docToday()).map(x=> x.notifyKey);
   const DOC_NOTIFIED_KEY = 'budzet-dokumenti-obavesteno-v1';
   function runDocNotifications(){
     const rem = C.documentReminders(documents, docToday());
@@ -6133,7 +6158,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     localStorage.setItem(DOC_NOTIFIED_KEY, JSON.stringify(log));
     return toSend.map(x=> x.notifyKey);
   }
-  window.__runDocNotifications = ()=> runDocNotifications();
+  if(IS_TEST) window.__runDocNotifications = ()=> runDocNotifications();
   // Garancija iz rashoda: popunjen nov zapis sa prilozima rashoda
   function openWarrantyFromEntry(e){
     const first = Array.isArray(e.items) && e.items[0] ? C.purchasedItemName(e.items[0]) : '';
@@ -6142,11 +6167,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   // ---------- Pitaj svoj budzet: AI bira proracune, aplikacija racuna lokalno, AI pise odgovor ----------
   let fakeAsk = null; // test: (req, step) -> { ok, content }
-  Object.defineProperty(window, '__fakeAsk', { get: ()=> fakeAsk, set: v=>{ fakeAsk = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeAsk', { get: ()=> fakeAsk, set: v=>{ fakeAsk = v; }, configurable: true });
   let askBusy = false;
   let askKeySet = null; // null = jos nije provereno (kljuc zna samo glavni proces)
   let askLangOverride = null; // test: jezik odgovora
-  Object.defineProperty(window, '__askLang', { get: ()=> askLangOverride, set: v=>{ askLangOverride = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__askLang', { get: ()=> askLangOverride, set: v=>{ askLangOverride = v; }, configurable: true });
   const ASK_HINT = 'Aplikacija sama računa brojeve; AI dobija samo pitanje i rezultate potrebnih proračuna (vidi „Šta je poslato AI-ju“ uz svaki odgovor).';
   const askAiAvailable = ()=> !!(fakeAsk || (window.desktop && window.desktop.bills && askKeySet !== false));
   function renderAsk(){
@@ -6260,6 +6285,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }).filter(Boolean);
     if(!chosen.length){ closePayOverdue(); return false; }
     // markRecurringPaid vraca null za ratu ciji je dug u medjuvremenu izmiren — takve preskoci (nista nije nastalo).
+    const restore = recurringPayUndo(chosen.map(c=> c.r.id), mKey);
     const made = chosen.map(({ r, amount })=> ({ rid: r.id, entryId: markRecurringPaid(r, mKey, amount) })).filter(m=> m.entryId != null);
     if(!made.length){ closePayOverdue(); return false; }
     saveApplied(); saveEntries(); closePayOverdue(); playPaidSound(); renderAll();
@@ -6267,12 +6293,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     showUndoToast(t('Plaćeno {0} stavki ({1})', made.length, fmt(total)), ()=>{
       const ids = new Set(made.map(m=> m.entryId));
       entries = entries.filter(e=> !ids.has(e.id));
-      made.forEach(m=>{ applied[mKey] = (applied[mKey] || []).filter(x=> x !== m.rid); });
-      saveApplied(); saveEntries(); renderAll();
+      restore();
+      saveEntries(); renderAll();
     });
     return true;
   }
-  window.__payOverdue = opts => confirmPayOverdue(opts);
+  if(IS_TEST) window.__payOverdue = opts => confirmPayOverdue(opts);
   document.getElementById('payOverdueBtn').addEventListener('click', openPayOverdue);
   document.getElementById('payOverdueCancel').addEventListener('click', closePayOverdue);
   document.getElementById('payOverdueSave').addEventListener('click', ()=> confirmPayOverdue());
@@ -6375,8 +6401,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     recurring.push(r); saveRecurring(); renderAll();
     return r;
   }
-  window.__createDebtInstallment = (id, o) => { const d = debts.find(x=> x.id === id); return d ? createDebtInstallment(d, o) : null; };
-  window.__markRecurringPaid = (rid, amount) => { const r = recurring.find(x=> x.id === rid); if(!r) return null; const id = markRecurringPaid(r, currentMonthKey(), amount); if(id){ saveApplied(); saveEntries(); renderAll(); } return id; };
+  if(IS_TEST) window.__createDebtInstallment = (id, o) => { const d = debts.find(x=> x.id === id); return d ? createDebtInstallment(d, o) : null; };
+  if(IS_TEST) window.__markRecurringPaid = (rid, amount) => { const r = recurring.find(x=> x.id === rid); if(!r) return null; const id = markRecurringPaid(r, currentMonthKey(), amount); if(id){ saveApplied(); saveEntries(); renderAll(); } return id; };
 
   // Dugovi gde JA dugujem ('i_owe') se racunaju u ukupne cifre isto kao obican rashod: uplaceni
   // deo (paidAmount) je "stvarno potroseno" -> RASHODI, a preostali deo je obaveza koja tek treba
@@ -6416,7 +6442,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const count = direct.length + recExpenseItems.length + debt.pendingCount;
     return { expense, income, count };
   }
-  window.__pendingForMonth = pendingForMonth;
+  if(IS_TEST) window.__pendingForMonth = pendingForMonth;
   function renderSummary(){
     const cur = currentMonthKey();
     const mt = monthTotals(viewMonth);
@@ -6832,7 +6858,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     } else show();
     return true;
   }
-  window.__processGoalPlans = () => { const c = processGoalPlans({ showNow: true }); if(c) renderAll(); return c; };
+  if(IS_TEST) window.__processGoalPlans = () => { const c = processGoalPlans({ showNow: true }); if(c) renderAll(); return c; };
   // Nov plan: od tekuceg meseca ako dan jos nije prosao, inace od sledeceg (ili uvek od sledeceg).
   function setGoalPlan(g, amount, day, fromNextMonth){
     const cur = currentMonthKey();
@@ -6937,8 +6963,24 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     });
     if(r.unpaidRecurring.length) document.getElementById('monthReviewPayRec').addEventListener('click', ()=> payMonthReviewRecurring(r.unpaidRecurring.map(x=> x.id), mKey));
   }
+  // Za opoziv placanja: sta je markRecurringPaid promenio za ove stavke u mesecu (placeno, preskoceno, veza racuna sa rashodom).
+  // Vraca funkciju koja te stavke vraca tacno na prethodno stanje (ostale izmene u medjuvremenu ostaju).
+  function recurringPayUndo(ids, mKey){
+    const was = ids.map(id=> ({ id, applied: (applied[mKey] || []).includes(id), skipped: (skipped[mKey] || []).includes(id) }));
+    const links = bills.filter(b=> ids.includes(b.recurringId) && (b.expenseMonth || b.month) === mKey).map(b=> ({ b, had: 'entryId' in b, entryId: b.entryId }));
+    return ()=>{
+      was.forEach(w=>{
+        if(!w.applied && applied[mKey]) applied[mKey] = applied[mKey].filter(x=> x !== w.id);
+        if(w.skipped){ if(!skipped[mKey]) skipped[mKey] = []; if(!skipped[mKey].includes(w.id)) skipped[mKey].push(w.id); }
+      });
+      let relink = false;
+      links.forEach(l=>{ if(l.b.entryId === l.entryId) return; relink = true; if(l.had) l.b.entryId = l.entryId; else delete l.b.entryId; });
+      saveApplied(); saveSkipped(); if(relink) saveBillsState();
+    };
+  }
   // Placanje ponavljajucih koje su ostale neplacene u proslom mesecu (rashod sa datumom dospeca tog meseca), sa opozivom
   function payMonthReviewRecurring(ids, mKey){
+    const restore = recurringPayUndo(ids, mKey);
     const paid = [];
     ids.forEach(id=>{
       const rr = recurring.find(x=> x.id === id); if(!rr) return;
@@ -6951,14 +6993,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     showUndoToast(t('Plaćeno za {0}: {1}', monthYearLabelSr(mKey), paid.length), ()=>{
       const drop = new Set(paid.filter(p=> !p.had).map(p=> p.eid));
       entries = entries.filter(e=> !drop.has(e.id));
-      applied[mKey] = (applied[mKey] || []).filter(id=> !paid.some(p=> p.id === id));
-      saveApplied(); saveEntries(); renderAll();
+      restore();
+      saveEntries(); renderAll();
     });
   }
-  window.__monthReview = iso => { monthReviewToday = iso || null; renderMonthReview(); };
-  window.__goals = () => goals;
-  window.__recurringRaw = { list: ()=> recurring, applied: ()=> applied, save: ()=>{ saveRecurring(); saveApplied(); renderAll(); } };
-  window.__saveGoals = () => { saveGoals(); renderAll(); };
+  if(IS_TEST) window.__monthReview = iso => { monthReviewToday = iso || null; renderMonthReview(); };
+  if(IS_TEST) window.__goals = () => goals;
+  if(IS_TEST) window.__recurringRaw = { list: ()=> recurring, applied: ()=> applied, skipped: ()=> skipped, save: ()=>{ saveRecurring(); saveApplied(); renderAll(); } };
+  if(IS_TEST) window.__saveGoals = () => { saveGoals(); renderAll(); };
   document.getElementById('monthReviewClose').addEventListener('click', ()=>{
     const mKey = document.getElementById('monthReviewPanel').dataset.month;
     if(!mKey) return;
@@ -7366,6 +7408,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return priceHistCache.hist;
   }
   function renderShopPrices(hist){
+    hist = C.mergePriceHistoryAliases(hist, shopping.items);
     const box = document.getElementById('shopPrices');
     const today = toISODateLocal(new Date());
     const all = [...hist.values()].map(h=> C.priceInsight(h, today)).filter(Boolean);
@@ -7661,7 +7704,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     });
     return true;
   }
-  window.__finishPurchase = opts => confirmFinishPurchase(opts);
+  if(IS_TEST) window.__finishPurchase = opts => confirmFinishPurchase(opts);
   document.getElementById('finishShopTotal').addEventListener('input', renderFinishSplit);
   document.getElementById('finishShopTotal').addEventListener('keydown', e=>{
     if(e.isComposing || e.key !== 'Enter') return;
@@ -8363,7 +8406,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const prevExp = monthTotals(C.addMonths(viewMonth, -1)).expense;
 
     if(thisInc > 0 && thisExp > thisInc){
-      warnings.push({level:'danger', icon:'⚠', txt:`${isCurrent ? 'Ovog meseca <b>trošiš više nego što zarađuješ</b>' : 'U ovom mesecu <b>rashodi su bili veći od prihoda</b>'} — za ${fmt(thisExp-thisInc)}.`});
+      warnings.push({level:'danger', icon:'⚠', txt: t(isCurrent ? 'Ovog meseca <b>trošiš više nego što zarađuješ</b> — za {0}.' : 'U ovom mesecu <b>rashodi su bili veći od prihoda</b> — za {0}.', fmt(thisExp-thisInc))});
     }
     if(catEntries.length){
       const [topCat, topVal] = catEntries[0];
@@ -8478,7 +8521,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       setTimeout(()=> el.classList.remove('row-flash'), 1600);
     }, 60);
   }
-  window.__openNotificationTarget = openNotificationTarget;
+  if(IS_TEST) window.__openNotificationTarget = openNotificationTarget;
   function checkAndSendNotifications(){
     if(!('Notification' in window) || Notification.permission !== 'granted') return;
     runDocNotifications();
@@ -8822,7 +8865,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveEntries(); renderAll();
   }
 
-  window.__duplicateEntry = duplicateEntry;
+  if(IS_TEST) window.__duplicateEntry = duplicateEntry;
   function updateExpenseBulkBar(){
     [...selectedExpenseIds].forEach(id=>{ if(!entries.some(e=>e.id===id)) selectedExpenseIds.delete(id); });
     const bar = document.getElementById('expenseBulkBar');
@@ -9230,12 +9273,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveFixedCategories();
     invalidate();
   }
-  window.__setCategoryFixed = setCategoryFixed;
-  window.__renameCategory = (a, b) => renameCategory(a, b);
-  window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
+  if(IS_TEST) window.__setCategoryFixed = setCategoryFixed;
+  if(IS_TEST) window.__renameCategory = (a, b) => renameCategory(a, b);
+  if(IS_TEST) window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
   // Samo za automatske provere: uklanja stavke po id-u (npr. da bi se izbrisala test kategorija posle).
-  window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); syncDebtInstallments(); invalidate(); };
-  window.__setEntryItems = (id, items) => { const e = entries.find(x=> x.id === id); if(e){ e.items = items.slice(); saveEntries(); invalidate(); } };
+  if(IS_TEST) window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); syncDebtInstallments(); invalidate(); };
+  if(IS_TEST) window.__setEntryItems = (id, items) => { const e = entries.find(x=> x.id === id); if(e){ e.items = items.slice(); saveEntries(); invalidate(); } };
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();
     if(!newName || newName === oldName) return;
@@ -9269,7 +9312,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     populateExpenseCategorySelect(); populateExpenseFilters(); populateRecurringCategorySelect(); renderCatRules();
     renderCategories();
   }
-  window.__addExpenseCategory = name => { document.getElementById('newCatInput').value = name; addCategory(); };
+  if(IS_TEST) window.__addExpenseCategory = name => { document.getElementById('newCatInput').value = name; addCategory(); };
 
   // ---- Ponavljajuce ----
   document.getElementById('recTypeExpense').addEventListener('click', ()=>{
@@ -9802,8 +9845,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     saveDebts(); renderAll();
     showUndoToast(t('Dug preračunat po današnjem kursu: {0}', fmt(d.amount)), ()=>{ d.amount = prev.amount; d.rate = prev.rate; saveDebts(); renderAll(); });
   }
-  window.__revalueDebt = revalueDebt;
-  window.__setDebtAmount = (id, amt) => { const d = debts.find(x=> x.id === id); if(d){ d.amount = amt; saveDebts(); renderAll(); } };
+  if(IS_TEST) window.__revalueDebt = revalueDebt;
+  if(IS_TEST) window.__setDebtAmount = (id, amt) => { const d = debts.find(x=> x.id === id); if(d){ d.amount = amt; saveDebts(); renderAll(); } };
 
   // ---- Uporedi ----
   function populateCompareSelects(){
@@ -10122,7 +10165,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   // AI predlog kategorije i kljucne reci za nepoznate opise; salju se SAMO opisi (bez iznosa i datuma), do 60 po zahtevu
   let fakeImportCategorizing = null; // test: req -> { ok, content }
-  Object.defineProperty(window, '__fakeImportCategorizing', { get: ()=> fakeImportCategorizing, set: v=>{ fakeImportCategorizing = v; }, configurable: true });
+  if(IS_TEST) Object.defineProperty(window, '__fakeImportCategorizing', { get: ()=> fakeImportCategorizing, set: v=>{ fakeImportCategorizing = v; }, configurable: true });
   // greske iz BILL_ERR su pisane za racun ("Racun je prevelik…", "Popuni podatke rucno") — za uvoz izvoda sopstvene reci
   const importAiErr = r => r && r.kind === 'toolarge' ? t('Previše opisa za besplatni Groq limit — pokušaj ponovo za minut.')
     : r && r.kind === 'nokey' ? t('AI čitanje nije podešeno (Podešavanja → AI čitanje računa).')
@@ -10279,7 +10322,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     });
   }
   // Za testove: uvoz tekstualnih fajlova bez biranja fajla
-  window.__runImportText = files => runImport(files.map(f=> new File([f.text], f.name, { type: 'text/plain' })), document.getElementById('csvImportStatus'));
+  if(IS_TEST) window.__runImportText = files => runImport(files.map(f=> new File([f.text], f.name, { type: 'text/plain' })), document.getElementById('csvImportStatus'));
   document.getElementById('csvImportInput').addEventListener('change', function(e){
     const files = [...e.target.files];
     e.target.value = '';
@@ -10461,9 +10504,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       })(),
     };
   }
-  window.__sanitizeImportedBackup = sanitizeImportedBackup;
-  window.__itemArraysFromCells = itemArraysFromCells;
-  window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
+  if(IS_TEST) window.__sanitizeImportedBackup = sanitizeImportedBackup;
+  if(IS_TEST) window.__itemArraysFromCells = itemArraysFromCells;
+  if(IS_TEST) window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
 
   document.getElementById('backupImportInput').addEventListener('change', function(e){
     const file = e.target.files[0];
@@ -10731,7 +10774,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     XLSX.utils.book_append_sheet(wb, wsPod, 'Podesavanja');
     return wb;
   }
-  window.__buildWorkbook = () => buildWorkbook(Date.now());
+  if(IS_TEST) window.__buildWorkbook = () => buildWorkbook(Date.now());
   // Cita samo timestamp izmene iz "Podesavanja" liste, bez ostalog parsiranja/mutiranja globalnog
   // stanja — koristi se za odlucivanje da li je fajl stvarno noviji od onoga sa cim smo sinhronizovani.
   function readFileDataTimestamp(wb){
@@ -10746,7 +10789,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const chk = C.checkWorkbookShape(wb.SheetNames, header);
     return chk.ok ? null : t('Ovo ne izgleda kao Excel fajl Knjige budžeta (nedostaje: {0}). Podaci nisu promenjeni.', chk.missing.join(', '));
   }
-  window.__workbookShapeError = workbookShapeError;
+  if(IS_TEST) window.__workbookShapeError = workbookShapeError;
 
   // Kucni racuni iz Excela (listovi Lokacije, VrsteRacuna, KucniRacuni); null = stari fajl bez njih (racuni ostaju)
   function billsFromWorkbook(wb){
@@ -10758,7 +10801,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const list = C.cleanBills(sheetRows('KucniRacuni').filter(r=> r.ID).map(r=>({ id: String(r.ID), billTypeId: String(r.VrstaID), month: String(r.Mesec), expenseMonth: String(r.MesecRashoda||''), amount: r.Iznos, currency: String(r.Valuta), values: js(r.Vrednosti), periodFrom: String(r.OdDatuma||''), periodTo: String(r.DoDatuma||''), dueDate: String(r.Rok||''), entryId: String(r.StavkaID||''), recurringId: String(r.PonavljajucaID||''), file: String(r.Prilog||''), source: String(r.Izvor||''), payee: r.PrimalacRacun || r.PrimalacNaziv ? { account: String(r.PrimalacRacun||''), name: String(r.PrimalacNaziv||''), model: String(r.Model||''), reference: String(r.PozivNaBroj||'') } : undefined })), types.map(x=> x.id));
     return { locations: locs, billTypes: types, bills: list };
   }
-  window.__billsFromWorkbook = billsFromWorkbook;
+  if(IS_TEST) window.__billsFromWorkbook = billsFromWorkbook;
   // List Dokumenti (null = stari fajl bez njega); datumi mogu biti broj iz Excela ili dd.mm.gggg
   function documentsFromWorkbook(wb){
     if(!wb.Sheets['Dokumenti']) return null;
@@ -10766,7 +10809,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const dateCell = v => v === '' || v == null ? '' : normalizeDateCell(v, '');
     return C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: dateCell(r.Izdato), expires: dateCell(r.Istice), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||'') })));
   }
-  window.__documentsFromWorkbook = documentsFromWorkbook;
+  if(IS_TEST) window.__documentsFromWorkbook = documentsFromWorkbook;
   // List Ciljevi (racun cilja se cuva po ID-ju, kao i racuni u listu Racuni)
   function goalsFromWorkbook(wb){
     const rows = wb.Sheets['Ciljevi'] ? XLSX.utils.sheet_to_json(wb.Sheets['Ciljevi'], {defval:''}) : [];
@@ -10780,7 +10823,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       ...(String(r.RacunID || '').trim() ? { accountId: String(r.RacunID).trim() } : {})
     }));
   }
-  window.__goalsFromWorkbook = goalsFromWorkbook;
+  if(IS_TEST) window.__goalsFromWorkbook = goalsFromWorkbook;
   function parseWorkbook(wb){
     const sheetRows = (name) => wb.Sheets[name] ? XLSX.utils.sheet_to_json(wb.Sheets[name], {defval:''}) : [];
 
@@ -11028,7 +11071,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   let excelShapeStatus = '';
-  window.__excelShapeStatus = () => excelShapeStatus;
+  if(IS_TEST) window.__excelShapeStatus = () => excelShapeStatus;
 
   async function connectNewExcelFile(){
     try{
@@ -11625,7 +11668,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           : t('Verzija {0} je spremna i instaliraće se automatski za nekoliko trenutaka.', s.version),
         installing: t('Instaliram verziju {0}…', s.version),
         manual: t('Dostupna je verzija {0}. Klikni „Preuzmi“, otvori preuzeti .dmg i prevuci aplikaciju u Applications (preko stare) — podaci ostaju.', s.version),
-        error: 'Provera nije uspela (možda nema interneta) — pokušaću ponovo kasnije. ' + (s.error || '')
+        error: t('Provera nije uspela (možda nema interneta) — pokušaću ponovo kasnije. {0}', s.error || '')
       }[s.status] || '';
       byId('deskUpdateStatus').textContent = isMacDesktop && ['idle', 'current'].includes(s.status)
         ? (s.status === 'current' ? t('Imaš najnoviju verziju. Aplikacija sama proverava nove verzije i javi kad stigne nova.') : t('Nove verzije se proveravaju automatski; kad stigne nova, aplikacija ponudi dugme „Preuzmi“.'))
@@ -11653,7 +11696,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       tick();
       if(s.installAt) countdownTimer = setInterval(tick, 1000);
     }
-    window.__renderUpdate = renderUpdate; // za automatske provere
+    if(IS_TEST) window.__renderUpdate = renderUpdate; // za automatske provere
     desktop.update.onChange(renderUpdate);
     desktop.update.get().then(renderUpdate);
     byId('deskUpdateCheckBtn').addEventListener('click', ()=> desktop.update.check());
