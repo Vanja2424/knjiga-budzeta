@@ -2121,6 +2121,129 @@
       check('QR: neispravna slika daje null', (await window.desktop.bills.decodeQr(new Uint8Array([1, 2, 3]))) === null);
     } else check('QR: desktop.bills.decodeQr postoji', false);
 
+    // fix2-R: Cene spajaju preimenovane stavke; opoziv racuna vraca zaokruzivanje; link sa QR koda u aplikaciji; opoziv zaostalih ponavljajucih
+    {
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const cm = monthKey(new Date()), Cx = window.BudzetCore;
+      // 8) Nabavka -> Cene: staro i novo ime preimenovane stavke su jedan artikal
+      {
+        const sh = window.__shopping();
+        sh.items.push({ id: 'smoke-r8', name: 'Smoke R8 novo', aliases: ['Smoke R8 staro'], section: 'Ostalo', store: '', category: 'Hrana', price: null, qty: '', needed: false, checked: false });
+        window.__saveShopping();
+        const rc = (id, date, name, price) => ({ id, type: 'expense', desc: 'Smoke R8 prodavnica', amount: price, category: 'Hrana', date, paid: true, tags: ['nabavka'], receiptId: 'rcpt-' + id, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: 'kom' }] });
+        window.__addEntriesRaw([rc('smoke-r8-a', cm + '-01', 'Smoke R8 staro', 100), rc('smoke-r8-b', cm + '-02', 'Smoke R8 novo', 120)]);
+        go('nabavka'); await sleep(60);
+        const prevShow = document.querySelector('.shop-show-btn.active');
+        const pricesBtn = document.querySelector('.shop-show-btn[data-show="prices"]');
+        if (pricesBtn) { pricesBtn.click(); await sleep(80); }
+        const names = [...document.querySelectorAll('#shopPrices .price-row .shop-name')].map(x => x.textContent).filter(n => /Smoke R8/.test(n));
+        check('Cene: preimenovana stavka je jedan artikal pod novim imenom', names.length === 1 && names[0] === 'Smoke R8 novo', JSON.stringify(names));
+        const row = [...document.querySelectorAll('#shopPrices .price-row')].find(r => /Smoke R8/.test(r.textContent));
+        check('Cene: promena cene računa i staru kupovinu', !!row && /↑20%/.test(row.textContent), row && row.textContent.replace(/\s+/g, ' '));
+        const listBtn = prevShow && prevShow.dataset.show !== 'prices' ? prevShow : document.querySelector('.shop-show-btn[data-show="need"]');
+        if (listBtn) { listBtn.click(); await sleep(40); }
+        window.__deleteEntriesById(['smoke-r8-a', 'smoke-r8-b']);
+        sh.items.splice(sh.items.findIndex(i => i.id === 'smoke-r8'), 1); window.__saveShopping();
+      }
+      // 9) Racun iz prodavnice (PC): opoziv vraca i zaokruzivanje u cilj
+      if (typeof window.__addReceiptFiles === 'function') {
+        const gs = window.__goals();
+        gs.push({ id: 'smoke-r9-goal', name: 'Smoke R9 cilj', target: 100000, current: 0, deadline: '' }); window.__saveGoals(); await sleep(40);
+        go('ciljevi'); await sleep(60);
+        setVal('roundUpGoalSelect', 'smoke-r9-goal');
+        check('račun (PC): cilj za zaokruživanje izabran', $('roundUpGoalSelect').value === 'smoke-r9-goal');
+        window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke R9 prodavnica', date: cm + '-03', total: 150.37, items: [{ name: 'Smoke R9 stvar', price: 150.37, category: 'Hrana' }] }) });
+        const img = await new Promise(r => { const c = document.createElement('canvas'); c.width = 60; c.height = 60; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 60, 60); c.toBlob(r, 'image/png'); });
+        window.__addReceiptFiles([new File([img], 'r9.png', { type: 'image/png' })]);
+        await sleep(1500);
+        await window.__saveReceipt(); await sleep(80);
+        const goal = () => window.__goals().find(g => g.id === 'smoke-r9-goal');
+        const made = ents().filter(e => e.desc === 'Smoke R9 prodavnica');
+        check('račun (PC): zaokruživanje ide u cilj', made.length === 1 && Math.abs(goal().current - 49.63) < 0.001, made.length + ' ' + goal().current);
+        window.__undoTop(); await sleep(80);
+        check('račun (PC): opoziv vraća i zaokruživanje', !ents().some(e => e.desc === 'Smoke R9 prodavnica') && goal().current === 0, String(goal().current));
+        window.__fakeReceiptReading = null;
+        setVal('roundUpGoalSelect', '');
+        gs.splice(gs.findIndex(g => g.id === 'smoke-r9-goal'), 1); window.__saveGoals(); await sleep(40);
+      } else check('račun (PC): hook __addReceiptFiles', false);
+      // 10) Nabavka: link sa QR koda fiskalnog racuna otvara prozor racuna sa podacima Poreske uprave
+      {
+        go('nabavka'); await sleep(60);
+        const SUF_HTML = ["<script>viewModel.InvoiceNumber('SMK-10'); viewModel.Token('tok');</script>", '<span id="shopFullNameLabel">7654321-SMOKE LINK</span>',
+          '<span id="totalAmountLabel">259,98</span>', '<span id="sdcDateTimeLabel">9.9.2026. 10:00:00</span>'].join('\n');
+        const urls = [];
+        window.__fakeFiscal = url => { urls.push(url); return /vl=SMOKE/.test(url) ? { ok: true, html: SUF_HTML, spec: { success: true, items: [{ name: 'MLEKO (Е)/kom', quantity: 2, total: 259.98 }] } } : { ok: false, kind: 'network' }; };
+        window.__fakeFiscalCategories = () => ({ ok: true, content: '{"kategorije":["Hrana"]}' });
+        const btn = $('shopFiscalLinkBtn');
+        check('link sa QR koda: dugme u Nabavci', !!btn);
+        if (btn) {
+          btn.click(); await sleep(60);
+          const inp = document.querySelector('#editModalFields input');
+          check('link sa QR koda: prozor sa poljem za link', $('editModalOverlay').classList.contains('show') && !!inp);
+          if (inp) { inp.value = 'nije link'; $('editModalSave').click(); await sleep(80); }
+          check('link sa QR koda: pogrešan tekst daje poruku, bez preuzimanja', $('dialogOverlay').classList.contains('show') && /suf\.purs\.gov\.rs/.test($('dialogBody').textContent) && !urls.length, $('dialogBody').textContent);
+          if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+          btn.click(); await sleep(60);
+          const inp2 = document.querySelector('#editModalFields input');
+          if (inp2) { inp2.value = ' https://suf.purs.gov.rs/v/?vl=SMOKE%2B10%3D '; $('editModalSave').click(); }
+          await sleep(400);
+          const st = window.__receiptState();
+          check('link sa QR koda: otvara račun sa podacima Poreske uprave', $('receiptOverlay').classList.contains('show') && !!st && st.store === 'Smoke link' && st.total === 259.98 && st.items.length === 1 && urls[0] === 'https://suf.purs.gov.rs/v/?vl=SMOKE%2B10%3D',
+            JSON.stringify(st && { store: st.store, total: st.total, n: st.items.length }) + ' ' + urls.join());
+          if ($('receiptOverlay').classList.contains('show')) $('receiptCancel').click();
+          await sleep(40);
+          btn.click(); await sleep(60);
+          const inp3 = document.querySelector('#editModalFields input');
+          if (inp3) { inp3.value = 'https://suf.purs.gov.rs/v/?vl=NEMA'; $('editModalSave').click(); }
+          await sleep(300);
+          check('link sa QR koda: neuspelo preuzimanje daje poruku', $('dialogOverlay').classList.contains('show') && /Poreske uprave/.test($('dialogBody').textContent) && !$('receiptOverlay').classList.contains('show'), $('dialogBody').textContent);
+          if ($('dialogOverlay').classList.contains('show')) $('dialogOk').click();
+        }
+        window.__fakeFiscal = null; window.__fakeFiscalCategories = null;
+      }
+      // 11) Mesec iza tebe: opoziv placanja zaostalih vraca preskakanje i vezu racuna sa rashodom
+      if (window.__recurringRaw && typeof window.__setBillState === 'function') {
+        const prevM = Cx.addMonths(cm, -1), prev2 = Cx.addMonths(cm, -2);
+        const rr = { id: 'smoke-r11', desc: 'Smoke R11 voda', amount: 1234, category: 'Ostalo', type: 'expense', day: 5, frequency: 'monthly', anchorMonth: 1 };
+        window.__recurringRaw.list().push(rr);
+        const ap = window.__recurringRaw.applied(); ap[prev2] = (ap[prev2] || []).concat(rr.id);
+        window.__recurringRaw.save();
+        window.__addEntriesRaw([{ id: 'smoke-r11-prev', type: 'expense', desc: 'Smoke R11 prošli', amount: 100, category: 'Ostalo', date: prevM + '-03', paid: true, tags: [] },
+          { id: 'smoke-r11-old', type: 'expense', desc: 'Smoke R11 staro', amount: 1234, category: 'Ostalo', date: prevM + '-04', paid: true, tags: [] }]);
+        window.__ensureBillDefaults();
+        const B = window.__bills;
+        const bill = { id: 'smoke-r11-bill', billTypeId: B().billTypes[0].id, month: prevM, expenseMonth: prevM, amount: 1234, currency: 'RSD', values: {}, source: 'manual', recurringId: rr.id, entryId: 'smoke-r11-old' };
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.concat(bill) });
+        localStorage.removeItem('budzet-mesecni-pregled-zatvoren-v1');
+        go('pregled'); await sleep(60);
+        window.__monthReview(cm + '-03'); await sleep(60);
+        const payBtn = $('monthReviewPayRec');
+        check('R11: dugme za plaćanje zaostalih', !!payBtn, $('monthReviewActions').textContent);
+        // u medjuvremenu (kartica vec prikazana) stavka je pauzirana za taj mesec
+        const sk = window.__recurringRaw.skipped ? window.__recurringRaw.skipped() : null;
+        check('R11: hook za preskočene', !!sk);
+        if (sk) sk[prevM] = (sk[prevM] || []).concat(rr.id);
+        const recEid = 'rec-' + rr.id + '-' + prevM;
+        if (payBtn) { payBtn.click(); await sleep(100); }
+        const billNow = () => B().bills.find(b => b.id === 'smoke-r11-bill');
+        check('R11: plaćanje upisuje rashod i vezuje račun', ents().some(e => e.id === recEid) && billNow().entryId === recEid && !(sk && (sk[prevM] || []).includes(rr.id)), billNow().entryId);
+        window.__undoTop(); await sleep(80);
+        check('R11: opoziv vraća preskakanje', !!sk && (sk[prevM] || []).includes(rr.id), sk && JSON.stringify(sk[prevM]));
+        check('R11: opoziv vraća vezu računa sa rashodom', billNow().entryId === 'smoke-r11-old', billNow().entryId);
+        check('R11: opoziv briše rashod i plaćeno', !ents().some(e => e.id === recEid) && !(window.__recurringRaw.applied()[prevM] || []).includes(rr.id));
+        window.__monthReview(null);
+        if (sk) Object.keys(sk).forEach(k => { sk[k] = sk[k].filter(id => id !== rr.id); });
+        const list = window.__recurringRaw.list(); list.splice(list.findIndex(r => r.id === rr.id), 1);
+        Object.keys(ap).forEach(k => { ap[k] = ap[k].filter(id => id !== rr.id); });
+        window.__recurringRaw.save();
+        window.__setBillState({ locations: B().locations, billTypes: B().billTypes, bills: B().bills.filter(b => b.id !== 'smoke-r11-bill') });
+        window.__deleteEntriesById(['smoke-r11-prev', 'smoke-r11-old']);
+        localStorage.setItem('budzet-mesecni-pregled-zatvoren-v1', prevM);
+      } else check('R11: hookovi __recurringRaw/__setBillState', false);
+      // 12) test kuke postoje samo u test pokretanju
+      check('test kuke: desktop.info.test je uključen u smoke testu', !!(window.desktop && window.desktop.info && window.desktop.info.test) && typeof window.__undoTop === 'function');
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

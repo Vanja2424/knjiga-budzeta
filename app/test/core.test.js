@@ -1720,6 +1720,28 @@ test('preimenovana stavka liste zadrzava istoriju kupovina (aliases)', () => {
   assert.deepEqual(n.items[0].aliases, ['Mleko']);
   assert.equal('aliases' in C.normalizeShopping({ items: [{ id: 'z', name: 'Z' }] }, () => 'x').items[0], false);
 });
+test('Cene: preimenovana stavka liste spaja istoriju cena starog i novog imena', () => {
+  const R = (id, date, items, prices) => ({ id, type: 'expense', receiptId: 'r' + id, date, desc: 'Maxi', amount: 1, category: 'Hrana', items, itemPrices: prices });
+  const hist = C.priceHistory([R('a', '2026-09-01', ['Mleko'], [120]), R('b', '2026-09-10', ['Mleko 2,8%'], [130]), R('c', '2026-09-12', ['Hleb'], [80])]);
+  assert.equal(hist.size, 3);
+  const items = [{ id: 'm', name: 'Mleko 2,8%', aliases: ['Mleko'] }];
+  const merged = C.mergePriceHistoryAliases(hist, items);
+  assert.deepEqual([...merged.keys()].sort(), ['hleb', 'mleko 2,8%']);
+  const m = merged.get('mleko 2,8%');
+  assert.equal(m.name, 'Mleko 2,8%');
+  assert.deepEqual(m.obs.map(o => o.total), [120, 130]);
+  assert.equal(hist.size, 3, 'ulazna mapa se ne menja');
+  // samo staro ime ima cene -> prikazuje se pod novim imenom
+  const old = C.mergePriceHistoryAliases(C.priceHistory([R('a', '2026-09-01', ['Mleko'], [120])]), items);
+  assert.deepEqual([...old.keys()], ['mleko 2,8%']);
+  assert.equal(old.get('mleko 2,8%').name, 'Mleko 2,8%');
+  // stavka koja se bas tako zove ima prednost nad aliasom
+  const two = C.mergePriceHistoryAliases(hist, items.concat([{ id: 'n', name: 'Mleko' }]));
+  assert.deepEqual([...two.keys()].sort(), ['hleb', 'mleko', 'mleko 2,8%']);
+  assert.equal(two.get('mleko 2,8%').obs.length, 1);
+  // bez stavki liste: ista mapa
+  assert.equal(C.mergePriceHistoryAliases(hist, []).size, 3);
+});
 test('pruneDismissed: izbacuje sakrivanja posle novije kupovine i za stvari koje vise nisu kupljene', () => {
   const buy = (id, date, items) => ({ id, type: 'expense', date, amount: 100, category: 'Hrana', desc: 'x', items });
   const entries = [buy('1', '2026-09-01', ['Sok']), buy('2', '2026-09-10', ['Hleb']), buy('3', '2026-09-20', ['Hleb'])];
@@ -1736,6 +1758,21 @@ test('i18n: jedinice i "danas" na engleskom', () => {
   assert.equal(t('kom'), 'pcs');
   assert.equal(t('pak'), 'pack');
   assert.equal(t('najjeftinije: {0} {1} (danas)', 'Lidl', '10 RSD/pcs'), 'cheapest: Lidl 10 RSD/pcs (today)');
+});
+test('i18n: svaki kljuc recnika se koristi u izvornom kodu', () => {
+  const fs = require('node:fs'), vm = require('node:vm'), path = require('node:path');
+  const ROOT = path.join(__dirname, '../..');
+  const ctx = { localStorage: { getItem: () => 'sr' } };
+  ctx.self = ctx;
+  vm.runInNewContext(fs.readFileSync(path.join(ROOT, 'i18n.js'), 'utf8'), ctx);
+  const files = ['budzet-tracker.html', 'app/quick-add.html', 'budzet-core.js', 'app/main.js', 'app/bills.js', 'app/telegram.js', 'app/preload.js'];
+  const src = files.map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+  const norm = s => s.replace(/\s+/g, ' ');
+  const decode = s => s.replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, '\u00a0').replace(/&amp;/g, '&')
+    .replace(/\\n/g, '\n').replace(/\\'/g, "'").replace(/\\"/g, '"').replace(/\\u([0-9a-fA-F]{4})/g, (m, h) => String.fromCharCode(parseInt(h, 16)));
+  const hay = [src, norm(src), decode(src), norm(decode(src))];
+  const unused = Object.keys(ctx.I18N.EN).filter(k => !hay.some(h => h.includes(k) || h.includes(norm(k).trim())));
+  assert.deepEqual(unused, []);
 });
 test('billCurrencyMismatch: valuta procitana sa racuna (AI ili QR) razlicita od valute lokacije', () => {
   const eur = C.cleanBillReading({ locationId: 'L1', billTypeId: 'T1', month: '2025-01', amount: 40, currency: 'eur' }, BILL_CTX);
