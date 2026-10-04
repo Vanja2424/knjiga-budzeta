@@ -6189,6 +6189,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const f = C.cashForecast({ today, days: 60, startBalance: C.round2(start), recurring: rec, entries, applied, skipped, goals, dailySpend,
       payday: payday.mode === 'manual' ? payday : null });
     f.dailySpend = C.round2(dailySpend);
+    f.startBalance = C.round2(start);
     return f;
   }
   const fcDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' }); };
@@ -6229,7 +6230,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       + pay + `<polyline class="fc-line" points="${f.points.map((p, i)=> x(i).toFixed(1) + ',' + y(p.balance).toFixed(1)).join(' ')}"/>` + dots;
     const dailySpend = f.dailySpend;
     document.getElementById('forecastSummary').textContent = [
-      t('Polazno stanje (računi bez štednje): {0}', fmt(f.points[0].balance)),
+      t('Polazno stanje (računi bez štednje): {0}', fmt(f.startBalance)),
       dailySpend > 0 ? t('svakodnevna potrošnja ~{0} dnevno (prosek 3 meseca)', fmt(dailySpend)) : '',
       f.payday ? t('plata {0}: {1}', fcDate(f.payday.date), fmt(f.payday.amount)) : t('plata nije poznata'),
       t('najniže: {0} ({1})', fmt(f.lowest.balance), fcDate(f.lowest.date))

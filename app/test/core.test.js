@@ -2043,3 +2043,19 @@ test('prognoza: rashod sa buducim datumom ulazi i kad je oznacen kao placen', ()
   const f = C.cashForecast({ today: '2026-10-04', startBalance: 1000, recurring: [], goals: [], entries: [{ id: 'a', type: 'expense', desc: 'Avans', amount: 300, date: '2026-10-20' }] });
   assert.ok(f.events.some(e => e.date === '2026-10-20' && e.amount === -300));
 });
+
+test('prognoza: ponavljajuci rashod vec upisan rucno u tekucem mesecu (isti naziv ili kategorija i iznos +-10%) se ne racuna ponovo', () => {
+  const rec = [{ id: 'k', type: 'expense', desc: 'Kirija', amount: 45000, category: 'Stan', day: 1 }, { id: 's', type: 'expense', desc: 'Struja', amount: 7000, category: 'Režije', day: 2 },
+    { id: 'i', type: 'expense', desc: 'Internet', amount: 3500, category: 'Režije', day: 3 }];
+  const entries = [
+    { id: 'a', type: 'expense', desc: 'kirija oktobar', amount: 45000, category: 'Stan', date: '2026-10-02' },  // isti naziv (pocetak)
+    { id: 'b', type: 'expense', desc: 'EPS', amount: 7300, category: 'Režije', date: '2026-10-03' },            // ista kategorija, iznos +-10%
+    { id: 'c', type: 'expense', desc: 'Kirija', amount: 45000, category: 'Stan', date: '2026-09-01' }           // prosli mesec ne vazi
+  ];
+  const f = C.cashForecast({ today: '2026-10-04', startBalance: 100000, recurring: rec, entries, goals: [] });
+  const ev = f.events.map(e => e.date + ' ' + e.desc);
+  assert.ok(!ev.includes('2026-10-04 Kirija'));
+  assert.ok(!ev.includes('2026-10-04 Struja'));
+  assert.ok(ev.includes('2026-10-04 Internet'));     // nije upisan
+  assert.ok(ev.includes('2026-11-01 Kirija'));       // sledeci mesec ostaje
+});

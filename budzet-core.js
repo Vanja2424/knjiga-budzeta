@@ -2106,9 +2106,17 @@
     const events = [];
     const add = (date, desc, amount, kind) => { const d = date < today ? today : date; if(d <= end && amount) events.push({ date: d, desc: desc || '', amount: round2(amount), kind }); };
     const ids = new Set(entries.map(e => e.id));
+    // ponavljajuci rashod tekuceg meseca koji je korisnik vec upisao rucno (bot, brzi unos) a nije stiklirao:
+    // rashod ovog meseca istog naziva (pocinje istim recima) ili iste kategorije i iznosa +-10%
+    const thisMonth = entries.filter(e => e && e.type === 'expense' && String(e.date || '').slice(0, 7) === today.slice(0, 7));
+    const enteredByHand = r => r.type === 'expense' && thisMonth.some(e => {
+      const a = foldText(e.desc || '').trim(), b = foldText(r.desc || '').trim();
+      return (b && (a === b || a.startsWith(b + ' '))) || (e.category && e.category === r.category && Math.abs(e.amount - r.amount) <= r.amount * 0.1);
+    });
     monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
       recurring.forEach(r => {
         if(!isDueInMonth(r, mKey) || isRecurringPaid(o.applied, r, mKey) || isRecurringSkipped(o.skipped, r, mKey) || ids.has(recurringEntryId(r, mKey))) return;
+        if(mKey === today.slice(0, 7) && enteredByHand(r)) return;
         const date = dueDateFor(r, mKey);
         if(manual && salary && r.id === salary.id && date <= manual.date) return; // zamenjeno rucnom platom
         add(date, r.desc, r.type === 'income' ? r.amount : -r.amount, 'recurring');
