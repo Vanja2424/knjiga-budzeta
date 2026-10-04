@@ -1656,6 +1656,18 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-row{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto auto auto; gap:0.7em; align-items:center; padding:0.45em 0; border-bottom:1px solid var(--paper-line); }
 .shop-name{ min-width:0; overflow-wrap:anywhere; }
 .shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.forecast-card{ cursor:default; }
+.forecast-card .fc-main{ font-size:15px; }
+.forecast-card.fc-warn .fc-main{ color:var(--neg-text); font-weight:600; }
+.forecast-card .fc-sub{ font-size:12.5px; color:var(--ink-soft); margin-top:0.3em; }
+.forecast-card .fc-note{ font-size:12.5px; color:var(--warn-text); margin-top:0.4em; }
+#forecastChart .fc-zero{ stroke:var(--neg-text); stroke-dasharray:4 4; stroke-width:1; }
+#forecastChart .fc-line{ fill:none; stroke:var(--accent); stroke-width:2; }
+#forecastChart .fc-pay{ stroke:var(--pos-text); stroke-width:1.5; stroke-dasharray:2 3; }
+#forecastChart .fc-dot-in{ fill:var(--pos-text); } #forecastChart .fc-dot-out{ fill:var(--neg-text); }
+#forecastChart .fc-label{ font:11px var(--font); fill:var(--ink-soft); }
+.forecast-table td.num, .forecast-table th.num{ text-align:right; font-variant-numeric:tabular-nums; }
+.forecast-table tr.fc-neg td.num:last-child{ color:var(--neg-text); }
 .shop-name-wrap{ min-width:0; display:flex; flex-direction:column; }
 .shop-cheapest{ font-size:11.5px; color:var(--ink-soft); }
 .shop-price-change{ font-size:11.5px; font-weight:600; margin-left:0.3em; }
@@ -1927,6 +1939,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   <!-- PREGLED -->
   <div class="screen active" id="screen-pregled">
     <div class="panel doc-reminders" id="docReminders" style="display:none; margin-bottom:1.8em;"></div>
+    <div class="panel forecast-card" id="forecastCard" style="display:none; margin-bottom:1.8em;" role="button" tabindex="0"></div>
 
     <div class="panel month-review" id="monthReviewPanel" style="display:none; margin-bottom:1.8em;">
       <div class="month-review-head">
@@ -2494,6 +2507,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   </div>
 
   <!-- IZVESTAJ -->
+  <div class="screen" id="screen-prognoza">
+    <div class="panel">
+      <h3 style="margin-top:0;">Prognoza stanja (60 dana)</h3>
+      <div id="forecastSummary" class="import-status" style="margin-top:0;"></div>
+      <svg id="forecastChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Prognoza stanja"></svg>
+      <div class="table-scroll"><table class="forecast-table">
+        <thead><tr><th>Datum</th><th>Opis</th><th class="num">Iznos</th><th class="num">Stanje na kraju dana</th></tr></thead>
+        <tbody id="forecastBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
   <div class="screen" id="screen-pitaj">
     <div class="panel">
       <h3 style="margin-top:0;">Pitaj svoj budžet</h3>
@@ -2704,6 +2729,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <div class="import-status" style="margin-top:0;">Svaka lokacija ima svoju valutu i vrste računa. Merenja (npr. Skupa kWh) se prate u tabeli Kućni računi.</div>
         <div id="billLocList"></div>
         <div class="file-row"><button class="btn-secondary" id="billAddLoc">Dodaj lokaciju</button></div>
+      </div>
+
+      <div class="settings-group" id="paydaySettings">
+        <h3>Plata</h3>
+        <div class="import-status" style="margin-top:0;">Za prognozu do plate (Pregled i Izveštaji → Prognoza).</div>
+        <label class="paid-checkbox-label"><input type="radio" name="paydayMode" value="auto"> Automatski — najveći ponavljajući prihod</label>
+        <div class="import-status" id="paydayAutoInfo"></div>
+        <label class="paid-checkbox-label"><input type="radio" name="paydayMode" value="manual"> Ručno — sledeća plata:</label>
+        <div class="file-row"><input type="date" id="paydayDate" aria-label="Datum sledeće plate"><input type="number" id="paydayAmount" min="0" step="1" style="max-width:160px;" aria-label="Iznos plate (RSD)" placeholder="RSD"><button class="btn-secondary" id="paydaySave">Sačuvaj</button></div>
+        <div class="import-status" id="paydayStatus" aria-live="polite"></div>
       </div>
 
       <div class="settings-group" id="aiSettings" style="display:none;">
@@ -3319,6 +3354,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const saveHealthHistory = () => localStorage.setItem(HEALTH_KEY, JSON.stringify(healthHistory));
   const saveEnvelopeState = () => localStorage.setItem(ENVELOPES_KEY, JSON.stringify(envelopeState));
   const saveFixedCategories = () => localStorage.setItem(FIXED_CATS_KEY, JSON.stringify(fixedCategories));
+  // Plata za prognozu: automatski (najveci ponavljajuci prihod) ili rucno { date, amount } dok datum ne prodje
+  const PAYDAY_KEY = 'budzet-plata-v1';
+  function cleanPayday(v){
+    const ok = v && typeof v === 'object' && v.mode === 'manual' && /^\d{4}-\d{2}-\d{2}$/.test(v.date || '') && Number(v.amount) > 0;
+    return ok ? { mode: 'manual', date: v.date, amount: Math.round(Number(v.amount) * 100) / 100 } : { mode: 'auto' };
+  }
+  let payday = (()=>{ try{ return cleanPayday(JSON.parse(localStorage.getItem(PAYDAY_KEY) || 'null')); } catch(e){ return { mode: 'auto' }; } })();
+  const savePayday = () => localStorage.setItem(PAYDAY_KEY, JSON.stringify(payday));
   const saveShopping = () => localStorage.setItem(SHOPPING_KEY, JSON.stringify(shopping));
   const shoppingCategoryInUse = cat => shopping.items.some(i => i.category === cat);
   if(IS_TEST) window.__shopping = () => shopping;
@@ -3881,7 +3924,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     transakcije: [['rashodi', 'Rashodi'], ['prihodi', 'Prihodi'], ['ponavljajuce', 'Ponavljajuće'], ['racuni', 'Računi i prenosi'], ['pretraga', 'Pretraga']],
     budzet: [['kategorije', 'Budžet i kategorije']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
-    izvestaji: [['analiza', 'Analiza'], ['pitaj', 'Pitaj'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    izvestaji: [['analiza', 'Analiza'], ['prognoza', 'Prognoza'], ['pitaj', 'Pitaj'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     nabavka: [['nabavka', 'Nabavka']],
     dokumenti: [['dokumenti', 'Dokumenti']],
@@ -3892,7 +3935,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   let activeScreen = 'pregled';
   // Iscrtavanje po ekranu — posle izmene se odmah crta samo vidljivi ekran, ostali pri otvaranju.
   const SCREEN_RENDER = {
-    pregled: ()=>{ renderDocReminders(); renderPregledStart(); renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
+    pregled: ()=>{ renderDocReminders(); renderForecastCard(); renderPregledStart(); renderMonthReview(); renderHealthScore(); renderEnvelopesPanel(); renderAccountsOverview(); renderPregled(); },
     prihodi: ()=> renderIncome(),
     rashodi: ()=> renderExpenses(),
     racuni: ()=> renderAccounts(),
@@ -3902,6 +3945,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     ciljevi: ()=> renderGoals(),
     dugovi: ()=> renderDebts(),
     analiza: ()=> renderAnaliza(),
+    prognoza: ()=> renderForecast(),
     rezije: ()=> renderRezije(),
     pitaj: ()=> renderAsk(),
     izvestaj: ()=> renderReport(),
@@ -3910,7 +3954,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     kursevi: ()=> renderRatesScreen(),
     nabavka: ()=> renderShopping(),
     dokumenti: ()=> renderDocuments(),
-    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); renderTgSettings(); }
+    podesavanja: ()=>{ renderBillSettings(); renderAiSettings(); renderTgSettings(); renderPaydaySettings(); }
   };
   const dirtyScreens = new Set(Object.keys(SCREEN_RENDER));
   function invalidate(){
@@ -6129,6 +6173,95 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   if(IS_TEST) window.__renewDocument = renewDocumentNow;
   // Pregled: "Uskoro istice" (uskoro + istekli u poslednjih 30 dana)
+  // ---------- Prognoza do plate ----------
+  function forecastNow(){
+    const today = toISODateLocal(new Date());
+    let start;
+    if(accounts.length){
+      const bal = C.accountBalances(accounts, entries, isExpensePaid, today);
+      start = accounts.filter(a=> a.type !== 'stednja').reduce((s, a)=> s + (bal[a.id] || 0), 0);
+    } else {
+      const past = entries.filter(e=> e.date <= today);
+      start = past.filter(e=> e.type === 'income').reduce((s, e)=> s + e.amount, 0) - past.filter(e=> e.type === 'expense' && isExpensePaid(e)).reduce((s, e)=> s + e.amount, 0) - debtExpenseTotals().paid;
+    }
+    const rec = recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) }));
+    const dailySpend = C.forecastDailySpend(entries, currentMonthKey(), rec, fixedCategories);
+    const f = C.cashForecast({ today, days: 60, startBalance: C.round2(start), recurring: rec, entries, applied, skipped, goals, dailySpend,
+      payday: payday.mode === 'manual' ? payday : null });
+    f.dailySpend = C.round2(dailySpend);
+    f.startBalance = C.round2(start);
+    return f;
+  }
+  const fcDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' }); };
+  function renderForecastCard(){
+    const box = document.getElementById('forecastCard'); if(!box) return;
+    if(!entries.length && !recurring.length){ box.style.display = 'none'; return; }
+    const f = forecastNow(), today = toISODateLocal(new Date());
+    const warn = f.firstNegative && (!f.payday || f.firstNegative.date < f.payday.date);
+    let main, sub = '';
+    if(warn) main = '⚠ ' + t('Oko {0} ulaziš u minus ({1}).', fcDate(f.firstNegative.date), fmt(f.firstNegative.balance));
+    else if(f.payday){
+      main = t('Do plate ({0}) ostaje ~{1}', fcDate(f.payday.date), fmt(f.beforePayday ? f.beforePayday.balance : f.points[0].balance));
+      if(f.daily != null) sub = t('Možeš da trošiš ~{0} dnevno (posle računa i uplata koje dolaze).', fmt(f.daily));
+    } else main = t('Za 60 dana: ~{0}', fmt(f.points[f.points.length - 1].balance));
+    if(!f.payday) sub = t('Plata nije poznata — dodaj ponavljajući prihod ili je upiši u Podešavanjima → Plata.');
+    const expired = payday.mode === 'manual' && payday.date < today;
+    box.classList.toggle('fc-warn', !!warn);
+    box.style.display = '';
+    box.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Do plate'))}</h3><div class="fc-main">${escapeHtml(main)}</div>`
+      + (sub ? `<div class="fc-sub">${escapeHtml(sub)}</div>` : '')
+      + (expired ? `<div class="fc-note">${escapeHtml(t('Plata od {0} je prošla — upiši sledeću ili vrati na automatski (Podešavanja → Plata).', fcDate(payday.date)))}</div>` : '');
+  }
+  document.getElementById('forecastCard').addEventListener('click', ()=> showScreen('prognoza'));
+  document.getElementById('forecastCard').addEventListener('keydown', e=>{ if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); showScreen('prognoza'); } });
+  function renderForecast(){
+    const f = forecastNow(), svg = document.getElementById('forecastChart');
+    const W = 760, H = 220, P = { l: 56, r: 12, t: 14, b: 26 };
+    const vals = f.points.map(p=> p.balance), lo = Math.min(0, ...vals), hi = Math.max(0, ...vals), span = (hi - lo) || 1;
+    const x = i => P.l + i * (W - P.l - P.r) / (f.points.length - 1), y = v => P.t + (hi - v) * (H - P.t - P.b) / span;
+    const idx = new Map(f.points.map((p, i)=> [p.date, i]));
+    const big = Math.max(2000, Math.abs(f.points[0].balance) * 0.03);
+    const dots = f.events.filter(e=> Math.abs(e.amount) >= big).map(e=>{ const i = idx.get(e.date); if(i == null) return '';
+      return `<circle class="${e.amount > 0 ? 'fc-dot-in' : 'fc-dot-out'}" cx="${x(i).toFixed(1)}" cy="${y(f.points[i].balance).toFixed(1)}" r="3.5"><title>${escapeHtml(fcDate(e.date) + ' · ' + (e.desc || (e.kind === 'payday' ? t('Plata') : '')) + ' · ' + fmt(e.amount))}</title></circle>`; }).join('');
+    const pay = f.payday && idx.has(f.payday.date) ? `<line class="fc-pay" x1="${x(idx.get(f.payday.date))}" x2="${x(idx.get(f.payday.date))}" y1="${P.t}" y2="${H - P.b}"/><text class="fc-label" x="${x(idx.get(f.payday.date)) + 4}" y="${P.t + 10}">${escapeHtml(t('Plata'))}</text>` : '';
+    svg.innerHTML = `<line class="fc-zero" x1="${P.l}" x2="${W - P.r}" y1="${y(0)}" y2="${y(0)}"/>`
+      + `<text class="fc-label" x="4" y="${y(hi) + 4}">${escapeHtml(fmt(hi))}</text><text class="fc-label" x="4" y="${y(lo) + 4}">${escapeHtml(fmt(lo))}</text>`
+      + `<text class="fc-label" x="${P.l}" y="${H - 6}">${escapeHtml(fcDate(f.points[0].date))}</text><text class="fc-label" x="${W - P.r - 60}" y="${H - 6}">${escapeHtml(fcDate(f.points[f.points.length - 1].date))}</text>`
+      + pay + `<polyline class="fc-line" points="${f.points.map((p, i)=> x(i).toFixed(1) + ',' + y(p.balance).toFixed(1)).join(' ')}"/>` + dots;
+    const dailySpend = f.dailySpend;
+    document.getElementById('forecastSummary').textContent = [
+      t('Polazno stanje (računi bez štednje): {0}', fmt(f.startBalance)),
+      dailySpend > 0 ? t('svakodnevna potrošnja ~{0} dnevno (prosek 3 meseca)', fmt(dailySpend)) : '',
+      f.payday ? t('plata {0}: {1}', fcDate(f.payday.date), fmt(f.payday.amount)) : t('plata nije poznata'),
+      t('najniže: {0} ({1})', fmt(f.lowest.balance), fcDate(f.lowest.date))
+    ].filter(Boolean).join(' · ');
+    const balOn = new Map(f.points.map(p=> [p.date, p.balance]));
+    document.getElementById('forecastBody').innerHTML = f.events.length ? f.events.map(e=> `<tr class="fc-event${balOn.get(e.date) < 0 ? ' fc-neg' : ''}"><td>${escapeHtml(fcDate(e.date))}</td><td translate="no">${escapeHtml(e.desc || (e.kind === 'payday' ? t('Plata') : ''))}</td><td class="num">${escapeHtml(fmt(e.amount))}</td><td class="num">${escapeHtml(fmt(balOn.get(e.date)))}</td></tr>`).join('')
+      : `<tr><td colspan="4" class="hint">${escapeHtml(t('Nema predstojećih stavki u narednih 60 dana.'))}</td></tr>`;
+  }
+  function renderPaydaySettings(){
+    const rec = C.pickSalary(recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) })), currentMonthKey());
+    document.getElementById('paydayAutoInfo').textContent = rec ? t('Sada: „{0}“, {1}. u mesecu, {2}.', rec.desc, rec.day, fmt(recurringAmountNow(rec))) : t('Nema ponavljajućeg prihoda — dodaj ga u Ponavljajuće ili upiši platu ručno.');
+    document.querySelectorAll('input[name="paydayMode"]').forEach(r=> { r.checked = r.value === payday.mode; });
+    document.getElementById('paydayDate').value = payday.mode === 'manual' ? payday.date : '';
+    document.getElementById('paydayAmount').value = payday.mode === 'manual' ? payday.amount : '';
+  }
+  document.querySelectorAll('input[name="paydayMode"]').forEach(r=> r.addEventListener('change', ()=>{
+    if(r.value === 'auto' && r.checked){ payday = { mode: 'auto' }; savePayday(); document.getElementById('paydayStatus').textContent = t('Plata se uzima iz Ponavljajućih.'); invalidate(); }
+  }));
+  document.getElementById('paydaySave').addEventListener('click', ()=>{
+    const v = cleanPayday({ mode: 'manual', date: document.getElementById('paydayDate').value, amount: parseFloat(document.getElementById('paydayAmount').value) });
+    const st = document.getElementById('paydayStatus');
+    if(v.mode !== 'manual'){ st.textContent = t('Upiši datum i iznos sledeće plate.'); return; }
+    const todayIso = toISODateLocal(new Date()), maxD = new Date(); maxD.setDate(maxD.getDate() + 120);
+    if(v.date < todayIso || v.date > toISODateLocal(maxD)){ st.textContent = t('Datum plate mora biti od danas do 120 dana unapred.'); return; }
+    payday = v; savePayday();
+    document.querySelector('input[name="paydayMode"][value="manual"]').checked = true;
+    st.textContent = t('Sačuvano: plata {0}, {1}.', fcDate(v.date), fmt(v.amount));
+    invalidate();
+  });
+  if(IS_TEST) window.__forecast = ()=> forecastNow();
+  if(IS_TEST) window.__setPayday = v => { payday = cleanPayday(v); savePayday(); renderAll(); };
   function renderDocReminders(){
     const box = dEl('docReminders'); if(!box) return;
     const list = C.documentReminders(documents, docToday(), { includeExpiredDays: 30 });
@@ -10380,7 +10513,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, shopping, locations, billTypes, bills, documents, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, payday, shopping, locations, billTypes, bills, documents, exportedAt: new Date().toISOString() };
   }
   // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
   function downloadBackupJson(){
@@ -10495,6 +10628,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       catRules: Array.isArray(data.catRules) ? data.catRules.filter(r=> isPlainObject(r) && typeof r.keyword === 'string' && typeof r.category === 'string') : [],
       savedScenarios: Array.isArray(data.savedScenarios) ? data.savedScenarios.filter(s=> isPlainObject(s) && typeof s.id === 'string' && typeof s.name === 'string') : [],
       fixedCategories: Array.isArray(data.fixedCategories) ? data.fixedCategories.filter(c=> typeof c === 'string') : [],
+      payday: cleanPayday(data.payday),
       shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
       ...(Array.isArray(data.documents) ? { documents: C.cleanDocuments(data.documents) } : {}),
       ...(()=>{ // kucni racuni: vrste zavise od lokacija, racuni od vrsta
@@ -10546,6 +10680,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         catRules = data.catRules;
         savedScenarios = data.savedScenarios;
         fixedCategories = data.fixedCategories;
+        payday = data.payday || { mode: 'auto' }; savePayday();
         if(data.shopping) shopping = data.shopping;
         if(data.locations){ locations = data.locations; billTypes = data.billTypes; bills = data.bills; saveBillsState(); }
         if(data.documents){ documents = data.documents; saveDocuments(); }

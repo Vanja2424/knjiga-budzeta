@@ -2290,6 +2290,47 @@
       check('test kuke: desktop.info.test je uključen u smoke testu', !!(window.desktop && window.desktop.info && window.desktop.info.test) && typeof window.__undoTop === 'function');
     }
 
+    // Prognoza do plate: kartica na Pregledu, rucna plata u Podesavanjima, istekla plata, podkartica Prognoza, JSON kopija
+    if (window.__forecast) {
+      const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const inDays = n => { const d = new Date(); d.setDate(d.getDate() + n); return iso(d); };
+      window.__setPayday({ mode: 'auto' });
+      go('pregled'); await sleep(200);
+      const f0 = window.__forecast(), card = $('forecastCard');
+      const expect0 = f0.firstNegative && (!f0.payday || f0.firstNegative.date < f0.payday.date) ? /ulaziš u minus/ : (f0.payday ? /Do plate/ : /Za 60 dana/);
+      check('prognoza: kartica na Pregledu odgovara proračunu', !!card && card.style.display !== 'none' && expect0.test(card.textContent), card && card.textContent.slice(0, 120));
+      // rucna plata kroz Podesavanja
+      go('podesavanja'); await sleep(150);
+      const manualRadio = document.querySelector('input[name="paydayMode"][value="manual"]');
+      if (manualRadio) { manualRadio.checked = true; manualRadio.dispatchEvent(new Event('change', { bubbles: true })); }
+      $('paydayDate').value = inDays(10); $('paydayAmount').value = '123456'; $('paydaySave').click(); await sleep(100);
+      const f1 = window.__forecast();
+      check('prognoza: ručna plata iz Podešavanja', !!f1.payday && f1.payday.source === 'manual' && f1.payday.amount === 123456 && f1.payday.date === inDays(10), JSON.stringify(f1.payday));
+      check('prognoza: ručna plata je u prognozi tačno jednom', f1.events.filter(e => e.kind === 'payday').length === 1);
+      go('pregled'); await sleep(150);
+      check('prognoza: kartica prati ručnu platu', /Do plate|ulaziš u minus/.test($('forecastCard').textContent));
+      // istekla rucna plata
+      window.__setPayday({ mode: 'manual', date: inDays(-2), amount: 1000 });
+      go('pregled'); await sleep(150);
+      check('prognoza: istekla ručna plata daje napomenu', /prošla/.test($('forecastCard').textContent), $('forecastCard').textContent.slice(0, 160));
+      window.__setPayday({ mode: 'auto' });
+      // rucna plata sa proslim datumom se ne prihvata
+      go('podesavanja'); await sleep(120);
+      $('paydayDate').value = inDays(-3); $('paydayAmount').value = '5000'; $('paydaySave').click(); await sleep(80);
+      check('prognoza: ručna plata u prošlosti se odbija', window.__forecast().payday === null || window.__forecast().payday.source !== 'manual', $('paydayStatus').textContent);
+      check('prognoza: poruka za pogrešan datum plate', /datum/i.test($('paydayStatus').textContent), $('paydayStatus').textContent);
+      window.__setPayday({ mode: 'auto' });
+      // podkartica Prognoza
+      go('prognoza'); await sleep(250);
+      const f2 = window.__forecast();
+      check('prognoza: grafikon sa linijom stanja', !!document.querySelector('#forecastChart polyline'));
+      check('prognoza: tabela predstojećih stavki', document.querySelectorAll('#forecastBody tr.fc-event').length === f2.events.length, document.querySelectorAll('#forecastBody tr.fc-event').length + ' / ' + f2.events.length);
+      // JSON kopija
+      const san = window.__sanitizeImportedBackup({ entries: [], payday: { mode: 'manual', date: '2026-12-01', amount: 5000 } });
+      const bad = window.__sanitizeImportedBackup({ entries: [], payday: { mode: 'x', date: 'juce', amount: -1 } });
+      check('prognoza: JSON kopija čuva platu', JSON.stringify(san.payday) === JSON.stringify({ mode: 'manual', date: '2026-12-01', amount: 5000 }) && bad.payday.mode === 'auto', JSON.stringify([san.payday, bad.payday]));
+    } else check('prognoza: test kuka __forecast', false);
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
