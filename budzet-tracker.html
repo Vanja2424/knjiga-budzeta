@@ -6185,7 +6185,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       start = past.filter(e=> e.type === 'income').reduce((s, e)=> s + e.amount, 0) - past.filter(e=> e.type === 'expense' && isExpensePaid(e)).reduce((s, e)=> s + e.amount, 0) - debtExpenseTotals().paid;
     }
     const rec = recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) }));
-    const dailySpend = (C.variableAverage(entries, currentMonthKey(), 3, fixedCategories) || 0) / 30.4;
+    const dailySpend = C.forecastDailySpend(entries, currentMonthKey(), rec, fixedCategories);
     const f = C.cashForecast({ today, days: 60, startBalance: C.round2(start), recurring: rec, entries, applied, skipped, goals, dailySpend,
       payday: payday.mode === 'manual' ? payday : null });
     f.dailySpend = C.round2(dailySpend);
@@ -6240,7 +6240,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       : `<tr><td colspan="4" class="hint">${escapeHtml(t('Nema predstojećih stavki u narednih 60 dana.'))}</td></tr>`;
   }
   function renderPaydaySettings(){
-    const rec = recurring.filter(r=> r.type === 'income' && recurringAmountNow(r) > 0).sort((a, b)=> recurringAmountNow(b) - recurringAmountNow(a))[0];
+    const rec = C.pickSalary(recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) })), currentMonthKey());
     document.getElementById('paydayAutoInfo').textContent = rec ? t('Sada: „{0}“, {1}. u mesecu, {2}.', rec.desc, rec.day, fmt(recurringAmountNow(rec))) : t('Nema ponavljajućeg prihoda — dodaj ga u Ponavljajuće ili upiši platu ručno.');
     document.querySelectorAll('input[name="paydayMode"]').forEach(r=> { r.checked = r.value === payday.mode; });
     document.getElementById('paydayDate').value = payday.mode === 'manual' ? payday.date : '';
@@ -6253,6 +6253,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const v = cleanPayday({ mode: 'manual', date: document.getElementById('paydayDate').value, amount: parseFloat(document.getElementById('paydayAmount').value) });
     const st = document.getElementById('paydayStatus');
     if(v.mode !== 'manual'){ st.textContent = t('Upiši datum i iznos sledeće plate.'); return; }
+    const todayIso = toISODateLocal(new Date()), maxD = new Date(); maxD.setDate(maxD.getDate() + 120);
+    if(v.date < todayIso || v.date > toISODateLocal(maxD)){ st.textContent = t('Datum plate mora biti od danas do 120 dana unapred.'); return; }
     payday = v; savePayday();
     document.querySelector('input[name="paydayMode"][value="manual"]').checked = true;
     st.textContent = t('Sačuvano: plata {0}, {1}.', fcDate(v.date), fmt(v.amount));

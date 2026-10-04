@@ -2059,3 +2059,51 @@ test('prognoza: ponavljajuci rashod vec upisan rucno u tekucem mesecu (isti nazi
   assert.ok(ev.includes('2026-10-04 Internet'));     // nije upisan
   assert.ok(ev.includes('2026-11-01 Kirija'));       // sledeci mesec ostaje
 });
+
+test('prognoza posle pregleda: uparivanje upisanih stavki sa ponavljajucim (prihodi, buduci meseci, jedna stavka = jedna pojava, datum blizu roka)', () => {
+  const base = { today: '2026-10-04', startBalance: 100000, goals: [], applied: {}, skipped: {} };
+  // A) plata stigla kao "Zarada" (iznos isti, kategorija ista) -> ne dodaje se ponovo danas
+  const salary = { id: 'p', type: 'income', desc: 'Plata', amount: 100000, category: 'Plata', day: 1 };
+  const a = C.cashForecast(Object.assign({}, base, { recurring: [salary], entries: [{ id: 'z', type: 'income', desc: 'Zarada', amount: 100000, category: 'Plata', date: '2026-10-01' }] }));
+  assert.ok(!a.events.some(e => e.date === '2026-10-04' && e.amount === 100000), JSON.stringify(a.events));
+  // B) unapred upisana novembarska kirija -> novembarska ponavljajuca se ne racuna
+  const rent = { id: 'k', type: 'expense', desc: 'Kirija', amount: 40000, category: 'Stan', day: 28 };
+  const b = C.cashForecast(Object.assign({}, base, { recurring: [rent], entries: [{ id: 'kn', type: 'expense', desc: 'Kirija', amount: 40000, category: 'Stan', date: '2026-11-27' }] }));
+  assert.deepEqual(b.events.filter(e => e.desc === 'Kirija').map(e => e.date), ['2026-10-28', '2026-11-27']);
+  // C) Infostan i Struja u istoj kategiji: placen Infostan ne sakriva Struju
+  const rs = [{ id: 's', type: 'expense', desc: 'Struja', amount: 5000, category: 'Režije', day: 2 }, { id: 'i', type: 'expense', desc: 'Infostan', amount: 4800, category: 'Režije', day: 3 }];
+  const c = C.cashForecast(Object.assign({}, base, { recurring: rs, entries: [{ id: 'x', type: 'expense', desc: 'Infostan', amount: 4800, category: 'Režije', date: '2026-10-03' }] }));
+  assert.ok(c.events.some(e => e.desc === 'Struja' && e.date === '2026-10-04'));
+  assert.ok(!c.events.some(e => e.desc === 'Infostan' && e.date === '2026-10-04'));
+  // D) kirija za septembar placena kasno (1. oktobra) ne sakriva oktobarsku sa rokom 28.
+  const d = C.cashForecast(Object.assign({}, base, { recurring: [rent], entries: [{ id: 'ks', type: 'expense', desc: 'Kirija septembar', amount: 40000, category: 'Stan', date: '2026-10-01' }] }));
+  assert.ok(d.events.some(e => e.desc === 'Kirija' && e.date === '2026-10-28'));
+  // E) placeno par dana ranije (pre roka) se uparuje
+  const e5 = C.cashForecast(Object.assign({}, base, { recurring: [rent], entries: [{ id: 'kr', type: 'expense', desc: 'kirija', amount: 40000, category: 'Stan', date: '2026-10-02' }] , today: '2026-10-25' }));
+  assert.ok(!e5.events.some(e => e.desc === 'Kirija' && e.date === '2026-10-28'));
+});
+
+test('prognoza posle pregleda: plata — rucna ranije u mesecu zamenjuje mesecnu; automatska samo aktivna mesecna; rucna posle 60 dana produzava prozor', () => {
+  const base = { today: '2026-10-04', startBalance: 1000, goals: [], entries: [] };
+  const sal = { id: 'p', type: 'income', desc: 'Plata', amount: 100000, day: 10 };
+  const m = C.cashForecast(Object.assign({}, base, { recurring: [sal], payday: { date: '2026-10-07', amount: 100000 } }));
+  assert.deepEqual(m.events.filter(e => e.amount === 100000).map(e => e.date), ['2026-10-07', '2026-11-10']);
+  const old = { id: 'o', type: 'income', desc: 'Stara plata', amount: 150000, day: 5, until: '2026-06' };
+  const bonus = { id: 'b', type: 'income', desc: 'Bonus', amount: 300000, day: 15, frequency: 'yearly', anchorMonth: 12 };
+  const cur = { id: 'c', type: 'income', desc: 'Plata', amount: 120000, day: 20 };
+  const a = C.cashForecast(Object.assign({}, base, { recurring: [old, bonus, cur] }));
+  assert.deepEqual(a.payday, { date: '2026-10-20', amount: 120000, source: 'recurring', desc: 'Plata' });
+  assert.equal(C.pickSalary([old, bonus, cur], '2026-10').id, 'c');
+  const far = C.cashForecast(Object.assign({}, base, { recurring: [sal], payday: { date: '2026-12-20', amount: 90000 } }));
+  assert.ok(far.points.length >= 78 && far.beforePayday && far.beforePayday.date === '2026-12-19');
+});
+
+test('prognoza posle pregleda: svakodnevna potrosnja bez rucno upisanih racuna koji su ponavljajuci', () => {
+  const rec = [{ id: 'k', type: 'expense', desc: 'Kirija', amount: 40000, category: 'Stan', day: 28 }];
+  const entries = [];
+  ['2026-07', '2026-08', '2026-09'].forEach(m => {
+    entries.push({ id: 'k' + m, type: 'expense', desc: 'Kirija', amount: 40000, category: 'Stan', date: m + '-28', paid: true });
+    entries.push({ id: 'h' + m, type: 'expense', desc: 'Maxi', amount: 30400, category: 'Hrana', date: m + '-10', paid: true });
+  });
+  assert.equal(C.forecastDailySpend(entries, '2026-10', rec, []), 1000); // 30.400 / 30,4
+});

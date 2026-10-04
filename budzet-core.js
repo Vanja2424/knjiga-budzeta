@@ -2097,31 +2097,66 @@
   // mesecne uplate u ciljeve i svakodnevna potrosnja (prosek promenljivih troskova). Plata: najveci ponavljajuci
   // prihod, ili rucno zadata (zamenjuje ga do svog datuma, da se ne racuna dvaput).
   const isoOfDay = n => { const d = new Date(n * 86400000); return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()); };
+  // Plata za prognozu: najveci AKTIVAN mesecni ponavljajuci prihod (ne godisnji bonus, ne zavrsena stavka)
+  function pickSalary(recurring, mKey){
+    return (recurring || []).filter(r => r && r.type === 'income' && r.amount > 0 && (!r.frequency || r.frequency === 'monthly') && (!r.until || r.until >= mKey))
+      .reduce((m, r) => (!m || r.amount > m.amount) ? r : m, null);
+  }
+  // Uparivanje upisane stavke sa ponavljajucom (stavka upisana rucno, botom ili uvozom, a ponavljajuca nije stiklirana)
+  const MONTH_WORDS = ['januar', 'februar', 'mart', 'april', 'maj', 'jun', 'jul', 'avgust', 'septembar', 'oktobar', 'novembar', 'decembar'];
+  const fcName = t => foldText(t || '').replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const fcNameMatch = (e, r) => { const a = fcName(e.desc), b = fcName(r.desc); return !!b && (a === b || a.startsWith(b + ' ')); };
+  const fcAmountClose = (e, r) => Math.abs(e.amount - r.amount) <= Math.max(1, r.amount * 0.05);
+  // Rashod koji odgovara nekom ponavljajucem (isti naziv, ili ista kategorija i iznos +-5%) — za prosek svakodnevne potrosnje
+  const fcLooksRecurring = (e, recurring) => (recurring || []).some(r => r.type === e.type && (fcNameMatch(e, r) || (e.category && e.category === r.category && fcAmountClose(e, r))));
+  // Svakodnevna potrosnja za prognozu: prosek promenljivih troskova (3 meseca) bez fiksnih i bez rucno upisanih ponavljajucih, po danu
+  function forecastDailySpend(entries, mKey, recurring, fixedCategories){
+    const rec = (recurring || []).filter(r => r && r.type === 'expense');
+    const st = periodStats(entries || [], analysisPeriod(mKey, 3), e => !isFixedEntry(e, fixedCategories) && !fcLooksRecurring(e, rec));
+    return round2((st.avg || 0) / 30.4);
+  }
   function cashForecast(o){
-    const today = o.today, days = o.days || 60, t0 = dayNumber(today), tEnd = t0 + days, end = isoOfDay(tEnd);
-    const recurring = o.recurring || [], entries = o.entries || [];
-    const incomes = recurring.filter(r => r.type === 'income' && r.amount > 0);
-    const salary = incomes.reduce((m, r) => (!m || r.amount > m.amount) ? r : m, null);
+    const today = o.today, t0 = dayNumber(today);
     const manual = o.payday && /^\d{4}-\d{2}-\d{2}$/.test(o.payday.date || '') && o.payday.date >= today && o.payday.amount > 0 ? o.payday : null;
+    // rucna plata posle 60 dana: prozor se produzava do nje (inace bi "do plate" bilo racunato bez podataka)
+    const days = Math.max(o.days || 60, manual ? dayNumber(manual.date) - t0 + 1 : 0), tEnd = t0 + days, end = isoOfDay(tEnd);
+    const recurring = o.recurring || [], entries = o.entries || [];
+    const salary = pickSalary(recurring, today.slice(0, 7));
     const events = [];
     const add = (date, desc, amount, kind) => { const d = date < today ? today : date; if(d <= end && amount) events.push({ date: d, desc: desc || '', amount: round2(amount), kind }); };
     const ids = new Set(entries.map(e => e.id));
-    // ponavljajuci rashod tekuceg meseca koji je korisnik vec upisao rucno (bot, brzi unos) a nije stiklirao:
-    // rashod ovog meseca istog naziva (pocinje istim recima) ili iste kategorije i iznosa +-10%
-    const thisMonth = entries.filter(e => e && e.type === 'expense' && String(e.date || '').slice(0, 7) === today.slice(0, 7));
-    const enteredByHand = r => r.type === 'expense' && thisMonth.some(e => {
-      const a = foldText(e.desc || '').trim(), b = foldText(r.desc || '').trim();
-      return (b && (a === b || a.startsWith(b + ' '))) || (e.category && e.category === r.category && Math.abs(e.amount - r.amount) <= r.amount * 0.1);
-    });
+    const occ = [];
     monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
       recurring.forEach(r => {
         if(!isDueInMonth(r, mKey) || isRecurringPaid(o.applied, r, mKey) || isRecurringSkipped(o.skipped, r, mKey) || ids.has(recurringEntryId(r, mKey))) return;
-        if(mKey === today.slice(0, 7) && enteredByHand(r)) return;
         const date = dueDateFor(r, mKey);
-        if(manual && salary && r.id === salary.id && date <= manual.date) return; // zamenjeno rucnom platom
-        add(date, r.desc, r.type === 'income' ? r.amount : -r.amount, 'recurring');
+        // rucna plata zamenjuje platu iz Ponavljajucih do svog datuma i u svom mesecu (i kad stize ranije)
+        if(manual && salary && r.id === salary.id && (date <= manual.date || date.slice(0, 7) === manual.date.slice(0, 7))) return;
+        occ.push({ r, mKey, date });
       });
     });
+    occ.sort((a, b) => a.date.localeCompare(b.date));
+    // upisane stavke "pokrivaju" pojave ponavljajucih: svaka stavka najvise jednu; datum u istom mesecu ili od 15 dana
+    // pre do 20 dana posle roka; stavka koja pominje drugi mesec ("Kirija septembar") ne pokriva ovaj mesec
+    const cands = entries.filter(e => e && (e.type === 'income' || e.type === 'expense') && !/^rec-/.test(e.id || '') && /^\d{4}-\d{2}-\d{2}$/.test(e.date || ''));
+    const used = new Set();
+    const near = (e, x) => {
+      if(e.type !== x.r.type) return false;
+      const words = fcName(e.desc).split(' ');
+      const other = MONTH_WORDS.some((w, i) => words.includes(w) && pad2(i + 1) !== x.mKey.slice(5, 7));
+      if(other) return false;
+      const dd = dayNumber(e.date) - dayNumber(x.date);
+      return e.date.slice(0, 7) === x.mKey || (dd >= -15 && dd <= 20);
+    };
+    const covered = new Set();
+    occ.forEach((x, i) => { const e = cands.find(c => !used.has(c.id) && near(c, x) && fcNameMatch(c, x.r)); if(e){ used.add(e.id); covered.add(i); } });
+    occ.forEach((x, i) => {
+      if(covered.has(i)) return;
+      const e = cands.find(c => !used.has(c.id) && near(c, x) && c.category && c.category === x.r.category && fcAmountClose(c, x.r)
+        && !recurring.some(o2 => o2 !== x.r && o2.type === c.type && fcNameMatch(c, o2)));
+      if(e){ used.add(e.id); covered.add(i); }
+    });
+    occ.forEach((x, i) => { if(!covered.has(i)) add(x.date, x.r.desc, x.r.type === 'income' ? x.r.amount : -x.r.amount, 'recurring'); });
     entries.forEach(e => {
       if(!e || e.type === 'transfer') return;
       if(e.type === 'expense' && (e.paid === false || e.date > today)) add(e.date, e.desc, -e.amount, 'entry');
@@ -2213,7 +2248,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });

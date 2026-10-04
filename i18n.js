@@ -675,7 +675,7 @@
     'Stanje na kraju dana': 'End-of-day balance',
     'Za prognozu do plate (Pregled i Izveštaji → Prognoza).': 'For the forecast until payday (Overview and Reports → Forecast).',
     'Automatski — najveći ponavljajući prihod': 'Automatic — largest recurring income',
-    'Ručno — sledeća plata:': 'Manual — next pay:',
+    'Ručno — sledeća plata:': 'Manual — next pay:',    'Datum plate mora biti od danas do 120 dana unapred.': 'The payday must be between today and 120 days ahead.',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

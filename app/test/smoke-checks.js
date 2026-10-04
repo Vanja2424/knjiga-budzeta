@@ -2314,6 +2314,12 @@
       go('pregled'); await sleep(150);
       check('prognoza: istekla ručna plata daje napomenu', /prošla/.test($('forecastCard').textContent), $('forecastCard').textContent.slice(0, 160));
       window.__setPayday({ mode: 'auto' });
+      // rucna plata sa proslim datumom se ne prihvata
+      go('podesavanja'); await sleep(120);
+      $('paydayDate').value = inDays(-3); $('paydayAmount').value = '5000'; $('paydaySave').click(); await sleep(80);
+      check('prognoza: ručna plata u prošlosti se odbija', window.__forecast().payday === null || window.__forecast().payday.source !== 'manual', $('paydayStatus').textContent);
+      check('prognoza: poruka za pogrešan datum plate', /datum/i.test($('paydayStatus').textContent), $('paydayStatus').textContent);
+      window.__setPayday({ mode: 'auto' });
       // podkartica Prognoza
       go('prognoza'); await sleep(250);
       const f2 = window.__forecast();
