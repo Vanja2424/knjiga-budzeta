@@ -1924,6 +1924,21 @@
     const obs = [].concat(...hs.map(h => h.obs)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return { key: itemKey(item.name), name: String(item.name), obs };
   }
+  // Nabavka -> Cene: istorija starog imena (alias preimenovane stavke liste) ide pod trenutno ime; stavka koja se bas tako zove ima prednost
+  function mergePriceHistoryAliases(history, shoppingItems){
+    const out = new Map(history || []);
+    const owners = aliasOwners(shoppingItems, itemKey);
+    if(!owners.size) return out;
+    const groups = new Map();
+    owners.forEach((item, k) => { if(!out.has(k)) return; const key = itemKey(item.name); if(!key || key === k) return; if(!groups.has(key)) groups.set(key, { item, keys: [] }); groups.get(key).keys.push(k); });
+    groups.forEach(({ item, keys }, key) => {
+      const hs = (out.has(key) ? [out.get(key)] : []).concat(keys.map(k => out.get(k)));
+      keys.forEach(k => out.delete(k));
+      const obs = [].concat(...hs.map(h => h.obs)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      out.set(key, { key, name: String(item.name), obs });
+    });
+    return out;
+  }
   function estimateShoppingItem(item, history, preferredStore){
     const h = itemPriceHistory(item, history);
     if(h && h.obs.length){
@@ -2124,7 +2139,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
