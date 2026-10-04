@@ -1979,3 +1979,62 @@ test('fiskalni racun: link iz teksta, stranica, stavke iz JSON-a i iz zurnala, c
   assert.deepEqual(C.cleanReceiptCategories('{"kategorije":["hrana","Nepostoji"]}', ['Hrana', 'Higijena'], 2), ['Hrana', '']);
   assert.deepEqual(C.cleanReceiptCategories('nije json', ['Hrana'], 2), ['', '']);
 });
+
+test('prognoza: stanje po danu, ponavljajuce (placeno/preskoceno/upisano), dospelo danas, kvartalno, cilj, plata, minus', () => {
+  const rec = [
+    { id: 'plata', type: 'income', desc: 'Plata', amount: 100000, day: 20 },
+    { id: 'honorar', type: 'income', desc: 'Honorar', amount: 5000, day: 5 },
+    { id: 'kirija', type: 'expense', desc: 'Kirija', amount: 40000, day: 1 },
+    { id: 'struja', type: 'expense', desc: 'Struja', amount: 6000, day: 15 },
+    { id: 'osig', type: 'expense', desc: 'Osiguranje', amount: 12000, day: 10, frequency: 'quarterly', anchorMonth: 1 },
+    { id: 'god', type: 'expense', desc: 'Registracija', amount: 30000, day: 3, frequency: 'yearly', anchorMonth: 3 },
+    { id: 'staro', type: 'expense', desc: 'Telefon', amount: 2000, day: 2, until: '2026-09' }
+  ];
+  const base = { today: '2026-10-04', days: 60, startBalance: 50000, recurring: rec, entries: [], applied: { '2026-10': ['kirija'] }, skipped: { '2026-11': ['struja'] }, goals: [], dailySpend: 0 };
+  const f = C.cashForecast(base);
+  assert.equal(f.points.length, 61);
+  assert.deepEqual(f.points[0], { date: '2026-10-04', balance: 50000 });
+  const ev = f.events.map(e => e.date + ' ' + e.desc + ' ' + e.amount);
+  assert.ok(ev.includes('2026-10-05 Honorar 5000'));
+  assert.ok(!ev.some(e => /2026-10-01 Kirija/.test(e)));          // placeno
+  assert.ok(ev.includes('2026-11-01 Kirija -40000'));
+  assert.ok(ev.includes('2026-10-15 Struja -6000'));
+  assert.ok(!ev.some(e => /2026-11-15 Struja/.test(e)));          // preskoceno
+  assert.ok(ev.includes('2026-10-10 Osiguranje -12000'));         // kvartalno: jan/apr/jul/okt
+  assert.ok(!ev.some(e => /Registracija|Telefon/.test(e)));       // godisnje u martu; zavrseno
+  assert.deepEqual(f.payday, { date: '2026-10-20', amount: 100000, source: 'recurring', desc: 'Plata' });
+  assert.deepEqual(f.beforePayday, { date: '2026-10-19', balance: 37000 }); // 50000 + 5000 - 12000 - 6000
+  assert.equal(f.daily, Math.round(37000 / 16 * 100) / 100);       // 16 dana: 4. do 19.
+  // vec upisano: rec-<id>-<mesec> se ne racuna ponovo; neplacen upisan rashod iz proslosti ide danas
+  const g = C.cashForecast(Object.assign({}, base, { entries: [
+    { id: 'rec-struja-2026-10', type: 'expense', amount: 6000, date: '2026-10-15', paid: false },
+    { id: 'x1', type: 'expense', desc: 'Servis', amount: 3000, date: '2026-09-28', paid: false },
+    { id: 'x2', type: 'income', desc: 'Povracaj', amount: 700, date: '2026-10-12' },
+    { id: 'x3', type: 'expense', desc: 'Kafa', amount: 200, date: '2026-10-03' }
+  ] }));
+  const gev = g.events.map(e => e.date + ' ' + e.desc + ' ' + e.amount);
+  assert.ok(gev.includes('2026-10-04 Servis -3000'));
+  assert.ok(gev.includes('2026-10-12 Povracaj 700'));
+  assert.equal(gev.filter(e => /2026-10-15/.test(e)).length, 1);   // upisana struja, ne i ponavljajuca
+  assert.ok(!gev.some(e => /Kafa/.test(e)));                       // placeno u proslosti je vec u stanju
+  // svakodnevna potrosnja i prvi minus
+  const m = C.cashForecast(Object.assign({}, base, { startBalance: 10000, dailySpend: 1000 }));
+  assert.equal(m.points[1].balance, 14000);                        // 10000 + 5000 honorar - 1000
+  assert.equal(m.firstNegative.date, '2026-10-10');                 // 14000 -1000*5 -12000 = -3000 na 10.
+  assert.ok(m.lowest.balance <= m.firstNegative.balance);
+  assert.equal(C.cashForecast(Object.assign({}, base, { startBalance: 1000, recurring: rec.filter(r => r.id !== 'honorar') })).daily, 0);
+  // rucna plata: zamenjuje najveci ponavljajuci prihod do svog datuma (bez duplog racunanja)
+  const r = C.cashForecast(Object.assign({}, base, { payday: { date: '2026-10-25', amount: 90000 } }));
+  assert.deepEqual(r.payday, { date: '2026-10-25', amount: 90000, source: 'manual', desc: '' });
+  assert.ok(!r.events.some(e => e.date === '2026-10-20'));
+  assert.ok(r.events.some(e => e.date === '2026-11-20' && e.amount === 100000));
+  assert.ok(r.events.some(e => e.date === '2026-10-25' && e.amount === 90000 && e.kind === 'payday'));
+  // rucna plata koja je prosla se ne koristi
+  assert.equal(C.cashForecast(Object.assign({}, base, { payday: { date: '2026-10-01', amount: 1 } })).payday.source, 'recurring');
+  // cilj: mesecna uplata dok se ne ispuni
+  const c = C.cashForecast(Object.assign({}, base, { recurring: [], goals: [{ id: 'g', target: 15000, current: 5000, monthly: { amount: 6000, day: 10, since: '2026-09', last: '2026-09' } }] }));
+  assert.deepEqual(c.events.map(e => [e.date, e.amount, e.kind]), [['2026-10-10', -6000, 'goal'], ['2026-11-10', -4000, 'goal']]);
+  // bez ponavljajucih i bez plate
+  const e0 = C.cashForecast({ today: '2026-10-04', startBalance: 0, recurring: [], entries: [], goals: [] });
+  assert.equal(e0.payday, null); assert.equal(e0.daily, null); assert.equal(e0.firstNegative, null); assert.equal(e0.points.length, 61);
+});

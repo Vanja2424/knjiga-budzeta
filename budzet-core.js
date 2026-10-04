@@ -2092,6 +2092,72 @@
     return Array.from({ length: n }, (_, i) => cats.find(c => foldText(c) === foldText(list[i] || '')) || '');
   }
 
+  // ---------- Prognoza do plate: stanje po danu za narednih N dana ----------
+  // Ulazi: pocetno stanje (racuni bez stednje), ponavljajuce (iznos vec u RSD), upisane neplacene i buduce stavke,
+  // mesecne uplate u ciljeve i svakodnevna potrosnja (prosek promenljivih troskova). Plata: najveci ponavljajuci
+  // prihod, ili rucno zadata (zamenjuje ga do svog datuma, da se ne racuna dvaput).
+  const isoOfDay = n => { const d = new Date(n * 86400000); return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate()); };
+  function cashForecast(o){
+    const today = o.today, days = o.days || 60, t0 = dayNumber(today), tEnd = t0 + days, end = isoOfDay(tEnd);
+    const recurring = o.recurring || [], entries = o.entries || [];
+    const incomes = recurring.filter(r => r.type === 'income' && r.amount > 0);
+    const salary = incomes.reduce((m, r) => (!m || r.amount > m.amount) ? r : m, null);
+    const manual = o.payday && /^\d{4}-\d{2}-\d{2}$/.test(o.payday.date || '') && o.payday.date >= today && o.payday.amount > 0 ? o.payday : null;
+    const events = [];
+    const add = (date, desc, amount, kind) => { const d = date < today ? today : date; if(d <= end && amount) events.push({ date: d, desc: desc || '', amount: round2(amount), kind }); };
+    const ids = new Set(entries.map(e => e.id));
+    monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
+      recurring.forEach(r => {
+        if(!isDueInMonth(r, mKey) || isRecurringPaid(o.applied, r, mKey) || isRecurringSkipped(o.skipped, r, mKey) || ids.has(recurringEntryId(r, mKey))) return;
+        const date = dueDateFor(r, mKey);
+        if(manual && salary && r.id === salary.id && date <= manual.date) return; // zamenjeno rucnom platom
+        add(date, r.desc, r.type === 'income' ? r.amount : -r.amount, 'recurring');
+      });
+    });
+    entries.forEach(e => {
+      if(!e || e.type === 'transfer') return;
+      if(e.type === 'expense' && e.paid === false) add(e.date, e.desc, -e.amount, 'entry');
+      else if(e.type === 'income' && e.date > today) add(e.date, e.desc, e.amount, 'entry');
+    });
+    (o.goals || []).forEach(g => {
+      const p = g && g.monthly, amount = p ? Number(p.amount) : 0;
+      if(!p || !(amount > 0) || !/^\d{4}-\d{2}$/.test(p.since || '')) return;
+      let left = round2((Number(g.target) || 0) - (Number(g.current) || 0));
+      monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
+        if(left <= 0 || mKey < p.since || (p.last && mKey <= p.last)) return;
+        const date = mKey + '-' + pad2(effectiveDay(p.day, mKey));
+        if(date < today) return;
+        const a = Math.min(amount, left); left = round2(left - a);
+        add(date, g.name || g.desc || '', -a, 'goal');
+      });
+    });
+    let payday = null;
+    if(manual){ payday = { date: manual.date, amount: round2(manual.amount), source: 'manual', desc: '' }; add(manual.date, '', manual.amount, 'payday'); }
+    else if(salary){
+      const next = events.filter(e => e.kind === 'recurring' && e.amount === round2(salary.amount) && e.desc === (salary.desc || '') && e.date > today).sort((a, b) => a.date.localeCompare(b.date))[0];
+      if(next) payday = { date: next.date, amount: next.amount, source: 'recurring', desc: salary.desc || '' };
+    }
+    events.sort((a, b) => a.date.localeCompare(b.date) || b.amount - a.amount);
+    const byDay = new Map();
+    events.forEach(e => byDay.set(e.date, round2((byDay.get(e.date) || 0) + e.amount)));
+    const spend = Number(o.dailySpend) > 0 ? Number(o.dailySpend) : 0;
+    const points = [];
+    let bal = round2(Number(o.startBalance) || 0), fixedBal = bal, lowestFixed = null;
+    for(let n = t0; n <= tEnd; n++){
+      const date = isoOfDay(n), delta = byDay.get(date) || 0;
+      bal = round2(bal + delta - (n > t0 ? spend : 0));
+      fixedBal = round2(fixedBal + delta);
+      points.push({ date, balance: bal });
+      if(payday && date < payday.date) lowestFixed = lowestFixed == null ? fixedBal : Math.min(lowestFixed, fixedBal);
+    }
+    const lowest = points.reduce((m, p) => p.balance < m.balance ? p : m, points[0]);
+    const firstNegative = points.find(p => p.balance < 0) || null;
+    const beforePayday = payday ? points.find(p => p.date === isoOfDay(dayNumber(payday.date) - 1)) || null : null;
+    const daysTo = payday ? dayNumber(payday.date) - t0 : 0;
+    const daily = payday && daysTo > 0 ? (lowestFixed > 0 ? round2(lowestFixed / daysTo) : 0) : null;
+    return { points, events, payday, beforePayday, daily, lowest, firstNegative };
+  }
+
   // ---------- Provera Excel fajla i fajla kopije ----------
   // Da li Excel izgleda kao izvoz Knjige budzeta (pre nego sto zameni sve podatke). Prazan list Stavke = izvoz bez stavki.
   const WORKBOOK_SHEETS = ['Stavke', 'Kategorije'];
@@ -2106,7 +2172,7 @@
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
   const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
     'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-telegram-cekanje-v1', 'budzet-dokumenti-v1'];
-  const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1'];
+  const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1', 'budzet-plata-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
     if(!Object.keys(data).some(k => k.startsWith('budzet-'))) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -2139,7 +2205,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
