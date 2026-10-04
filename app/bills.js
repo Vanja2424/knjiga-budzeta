@@ -11,7 +11,12 @@ const TIMEOUT_MS = 60000;
 const TRASH = '.obrisano';
 const ALLOWED_EXT = /\.(pdf|jpe?g|png|webp|heic)$/i; // prilog je samo racun (PDF ili slika) — nikad nesto sto se pokrece
 
-const MAX_WAIT_S = 30; // 429 sa kracim cekanjem: saceka se jednom i pokusa ponovo
+const MAX_WAIT_S = 30;
+// Fiskalni racun: samo stranica Poreske uprave (link iz QR koda), bez ikakvih drugih adresa
+const FISCAL_URL_RE = /^https:\/\/suf\.purs\.gov\.rs\/v\/\?vl=[A-Za-z0-9%+\/=_-]+$/;
+const FISCAL_SPEC_URL = 'https://suf.purs.gov.rs/specifications';
+const FISCAL_TIMEOUT_MS = 20000;
+const FISCAL_MAX = 2 * 1024 * 1024; // 429 sa kracim cekanjem: saceka se jednom i pokusa ponovo
 
 function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)) }) {
   const s = () => getSettings();
@@ -167,7 +172,32 @@ function createBills({ fetch, safeStorage, getSettings, saveSettings, dataDir, n
     });
     return n;
   }
-  return { keyInfo, setKey, setOptions, read, testKey, saveFile, filePath, readFile, deleteFile, restoreFile, purgeTrash, mirrorTo };
+  // Fiskalni racun: stranica (zaglavlje + zurnal) i spisak stavki (JSON) sa suf.purs.gov.rs; stranica sama parsira
+  async function fiscal(url) {
+    url = String(url || '').trim();
+    if (!FISCAL_URL_RE.test(url)) return { ok: false, kind: 'url' };
+    const get = async (u, opts) => {
+      const ctrl = new AbortController(), timer = setTimeout(() => ctrl.abort(), FISCAL_TIMEOUT_MS);
+      try { return await fetch(u, Object.assign({ signal: ctrl.signal }, opts || {})); } finally { clearTimeout(timer); }
+    };
+    let html;
+    try {
+      const res = await get(url, { method: 'GET', headers: { 'Accept-Language': 'sr' } });
+      if (!res.ok) return { ok: false, kind: 'http', status: res.status };
+      html = String(await res.text()).slice(0, FISCAL_MAX);
+    } catch (e) { return { ok: false, kind: 'network' }; }
+    const num = /viewModel\.InvoiceNumber\('([^']*)'\)/.exec(html), tok = /viewModel\.Token\('([^']*)'\)/.exec(html);
+    let spec = null;
+    if (num && tok) {
+      try {
+        const res = await get(FISCAL_SPEC_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8' },
+          body: 'invoiceNumber=' + encodeURIComponent(num[1]) + '&token=' + encodeURIComponent(tok[1]) });
+        if (res.ok) { const j = await res.json(); if (j && j.success) spec = j; }
+      } catch (e) { spec = null; } // zurnal sa stranice je rezerva
+    }
+    return { ok: true, html, spec };
+  }
+  return { keyInfo, setKey, setOptions, read, testKey, saveFile, filePath, readFile, fiscal, deleteFile, restoreFile, purgeTrash, mirrorTo };
 }
 
 function registerBillsIpc(ipcMain, api, shell) {
@@ -181,6 +211,7 @@ function registerBillsIpc(ipcMain, api, shell) {
   ipcMain.handle('bills:delete-file', (_e, name) => api.deleteFile(name));
   ipcMain.handle('bills:restore-file', (_e, name) => api.restoreFile(name));
   ipcMain.handle('bills:read-file', (_e, name) => api.readFile(name));
+  ipcMain.handle('bills:fiscal', (_e, url) => api.fiscal(url));
 }
 
 module.exports = { createBills, registerBillsIpc, DEFAULT_MODEL, GROQ_URL };

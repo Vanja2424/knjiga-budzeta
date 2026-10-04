@@ -194,3 +194,32 @@ test('prilozi: readFile vraca bajtove samo za ime iz Priloga (bez putanje), ne i
   api.deleteFile(saved.name);
   assert.equal(api.readFile(saved.name).ok, false);
 });
+
+test('fiskalni racun: samo https://suf.purs.gov.rs, stranica + spisak stavki (POST sa brojem i tokenom), greske', async () => {
+  const html = "<script>viewModel.InvoiceNumber('AB-CD-1'); viewModel.Token('tok-123');</script><span id=\"totalAmountLabel\">10,00</span>";
+  const spec = { success: true, items: [{ name: 'X (E)/kom', quantity: 1, total: 10 }] };
+  const seen = [];
+  const { api } = setup(async (url, opts) => {
+    seen.push({ url, method: (opts && opts.method) || 'GET', body: opts && opts.body });
+    if (/\/specifications$/.test(url)) return { ok: true, status: 200, json: async () => spec, text: async () => JSON.stringify(spec) };
+    return { ok: true, status: 200, text: async () => html };
+  });
+  const url = 'https://suf.purs.gov.rs/v/?vl=AbC%2B1%3D';
+  const r = await api.fiscal(url);
+  assert.equal(r.ok, true); assert.equal(r.html, html); assert.deepEqual(r.spec, spec);
+  assert.equal(seen[0].url, url);
+  assert.equal(seen[1].method, 'POST'); assert.match(String(seen[1].body), /invoiceNumber=AB-CD-1/); assert.match(String(seen[1].body), /token=tok-123/);
+  seen.length = 0;
+  assert.equal((await api.fiscal('https://evil.com/v/?vl=1')).ok, false);
+  assert.equal((await api.fiscal('http://suf.purs.gov.rs/v/?vl=1')).ok, false);
+  assert.equal(seen.length, 0);
+  const bad = setup(async () => ({ ok: false, status: 404, text: async () => '' }));
+  const b = await bad.api.fiscal(url);
+  assert.deepEqual([b.ok, b.kind], [false, 'http']);
+  const off = setup(async () => { throw new Error('getaddrinfo ENOTFOUND'); });
+  assert.equal((await off.api.fiscal(url)).kind, 'network');
+  // spisak stavki ne radi -> stranica i dalje (zurnal je rezerva)
+  const half = setup(async (u) => /specifications/.test(u) ? { ok: false, status: 500, json: async () => ({}) } : { ok: true, status: 200, text: async () => html });
+  const h = await half.api.fiscal(url);
+  assert.equal(h.ok, true); assert.equal(h.spec, null);
+});
