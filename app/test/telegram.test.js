@@ -239,3 +239,22 @@ test('telegram: ime bota ispred koda i poruke (@bot 482100, @bot kafa 250) se pr
   await api.pollOnce();
   assert.deepEqual(handled.map(p => p.text), ['kafa 250', 'kafa 300', '/ponisti@knjiga_test_bot']);
 });
+
+test('telegram: QR na slici (glavni proces) -> link Poreske uprave u payload; drugi QR i PDF se ne citaju kao fiskalni', async () => {
+  const decoded = [];
+  const qrText = { big: 'https://suf.purs.gov.rs/v/?vl=AbC%2B1%3D', other: 'K:PR|V:01|R:845000000040484987' };
+  const { api, settings, queue, reply, handled } = setup({ settings: { telegramChatId: 77 }, extra: { decodeQr: async buf => { decoded.push(buf.length); return qrText[buf.toString()] || null; } } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  const file = (id, name) => reply('getFile', { file_path: 'f/' + id, file_size: 3 });
+  const bytes = txt => ({ ok: true, status: 200, arrayBuffer: async () => new Uint8Array(Buffer.from(txt)).buffer });
+  queue.getFile = [file('a'), file('b'), file('c')];
+  queue.FILE = [bytes('big'), bytes('other'), bytes('big')];
+  queue.getUpdates = [reply('getUpdates', [
+    upd(110, { photo: [{ file_id: 'p1', file_size: 3, width: 9, height: 9 }] }),
+    upd(111, { photo: [{ file_id: 'p2', file_size: 3, width: 9, height: 9 }] }),
+    upd(112, { document: { file_id: 'd1', file_name: 'r.pdf', mime_type: 'application/pdf', file_size: 3 } })
+  ])];
+  await api.pollOnce();
+  assert.deepEqual(handled.map(p => p.fiscalUrl || null), ['https://suf.purs.gov.rs/v/?vl=AbC%2B1%3D', null, null]);
+  assert.equal(decoded.length, 2); // PDF se ne salje citacu slika
+});

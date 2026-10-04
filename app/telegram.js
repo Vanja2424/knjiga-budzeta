@@ -12,10 +12,11 @@ const MAX_PAIR_TRIES = 5;        // pogresni kodovi iz nepovezanih chatova pre n
 const HANDLE_TIMEOUT_MS = 180000;
 const DOWNLOAD_TIMEOUT_MS = 60000;
 const LINKABLE = ['private', 'group', 'supergroup']; // kanal se ne povezuje
+const FISCAL_URL_RE = /https:\/\/suf\.purs\.gov\.rs\/v\/\?vl=[A-Za-z0-9%+\/=_-]+/; // QR fiskalnog racuna (Poreska uprava)
 const MIME_EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, onStatus = () => {}, T = s => s,
-  now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = Math.random, autoStart = true, handleTimeoutMs = HANDLE_TIMEOUT_MS }) {
+  now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = Math.random, autoStart = true, handleTimeoutMs = HANDLE_TIMEOUT_MS, decodeQr = async () => null }) {
   const s = () => getSettings();
   const encryption = () => { try { return !!safeStorage.isEncryptionAvailable(); } catch { return false; } };
   const getToken = () => {
@@ -182,6 +183,12 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
           const prog = await safe(() => api('sendMessage', { chat_id: chatId, text: T('⏳ Čitam…') }));
           p.progressMessageId = prog && prog.message_id;
           try { p.file = await downloadFile(f); } catch (e) { p.fileError = e.kind === 'size' ? 'size' : 'download'; }
+          // slika: QR fiskalnog racuna cita se ovde (ZXing), pa stranica uzima tacne podatke Poreske uprave
+          if (p.file && /^image\//.test(p.file.mime)) {
+            const txt = await safe(() => decodeQr(Buffer.from(p.file.base64, 'base64')));
+            const m = FISCAL_URL_RE.exec(String(txt || ''));
+            if (m) p.fiscalUrl = m[0];
+          }
         }
       } else if (typeof msg.text === 'string') Object.assign(p, { kind: 'text', text: stripMention(msg.text) });
       else return; // sistemske poruke (novi clan, promena imena...) — bez odgovora

@@ -8,6 +8,7 @@ const os = require('os');
 const { pathToFileURL } = require('url');
 const { createBills, registerBillsIpc } = require('./bills');
 const { createTelegram, registerTelegramIpc } = require('./telegram');
+const { createQrReader } = require('./qr');
 // Azuriranja postoje samo u instaliranoj verziji (portable i razvojno pokretanje ih nemaju).
 const IS_MAC = process.platform === 'darwin';
 // Na Mac-u aplikacija nije potpisana (nema Apple developer naloga), pa samo-azuriranje ne radi —
@@ -984,7 +985,19 @@ function init() {
     if (r === '__notready') throw Object.assign(new Error('stranica nije spremna'), { notReady: true });
     return r;
   };
-  telegramApi = createTelegram({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, T,
+  // QR (ZXing): slika -> pikseli preko nativeImage (JPG/PNG), velika slika se smanji na 3000 px
+  const qrReader = createQrReader({ toRgba: buf => {
+    let img = nativeImage.createFromBuffer(buf);
+    if (img.isEmpty()) return null;
+    const sz = img.getSize();
+    if (Math.max(sz.width, sz.height) > 3000) img = img.resize(sz.width >= sz.height ? { width: 3000, quality: 'best' } : { height: 3000, quality: 'best' });
+    const { width, height } = img.getSize();
+    const bgra = img.toBitmap(), rgba = new Uint8ClampedArray(bgra.length);
+    for (let i = 0; i < bgra.length; i += 4) { rgba[i] = bgra[i + 2]; rgba[i + 1] = bgra[i + 1]; rgba[i + 2] = bgra[i]; rgba[i + 3] = 255; }
+    return { data: rgba, width, height };
+  } });
+  ipcMain.handle('bills:decode-qr', (_e, bytes) => qrReader.decode(bytes));
+  telegramApi = createTelegram({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, T, decodeQr: buf => qrReader.decode(buf),
     handle: p => runTelegramBridge('handle', p), tick: () => runTelegramBridge('tick'), onStatus: st => sendToMain('telegram:status', st) });
   registerTelegramIpc(ipcMain, telegramApi);
   setTimeout(() => billsApi.purgeTrash(30), 60 * 1000);
