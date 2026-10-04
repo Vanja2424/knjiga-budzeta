@@ -172,11 +172,11 @@ test('telegram: obrada koja ne zavrsi na vreme ne pomera offset', async () => {
   assert.equal(settings.telegramOffset || 0, 0);
 });
 
-test('telegram: povezivanje samo iz privatnog chata, kod pada posle 5 pogresnih, dugme od drugog korisnika se ignorise', async () => {
+test('telegram: kanal se ne povezuje, kod pada posle 5 pogresnih, dugme od drugog korisnika se ignorise (privatni chat)', async () => {
   const { api, settings, queue, reply, handled } = setup();
   await api.setToken(TOKEN);
   api.startPairing();
-  const grp = { update_id: 80, message: { message_id: 80, chat: { id: -100, type: 'group' }, from: { id: 9 }, text: '482100' } };
+  const grp = { update_id: 80, message: { message_id: 80, chat: { id: -100, type: 'channel' }, from: { id: 9 }, text: '482100' } };
   queue.getUpdates = [reply('getUpdates', [grp])]; await api.pollOnce();
   assert.equal(settings.telegramChatId, undefined);
   const wrong = [81, 82, 83, 84, 85].map(id => ({ update_id: id, message: { message_id: id, chat: { id: 55, type: 'private' }, from: { id: 55 }, text: String(100000 + id) } }));
@@ -190,4 +190,38 @@ test('telegram: povezivanje samo iz privatnog chata, kod pada posle 5 pogresnih,
   queue.getUpdates = [reply('getUpdates', [{ update_id: 88, callback_query: { id: 'c', from: { id: 999 }, data: 's:x', message: { message_id: 1, chat: { id: 77 } } } }])];
   await api.pollOnce();
   assert.equal(handled.length, 0);
+});
+
+test('telegram: grupa — povezivanje kodom iz grupe, svi clanovi, ime posiljaoca, druga grupa se ignorise, prelazak u supergrupu', async () => {
+  const { api, settings, queue, reply, handled, calls } = setup();
+  await api.setToken(TOKEN);
+  api.startPairing();
+  const g = (id, chat, from, extra) => ({ update_id: id, message: Object.assign({ message_id: id, chat, from }, extra) });
+  const kuca = { id: -200, type: 'group', title: 'Kuća' };
+  queue.getUpdates = [reply('getUpdates', [g(90, kuca, { id: 5, first_name: 'Ana' }, { text: '482100' })])];
+  await api.pollOnce();
+  assert.equal(settings.telegramChatId, -200);
+  assert.equal(settings.telegramUserId, undefined);
+  assert.equal(settings.telegramChatTitle, 'Kuća');
+  assert.equal(api.status().chatTitle, 'Kuća');
+  assert.ok(calls.some(c => c.method === 'sendMessage' && c.body.chat_id === -200 && /Povezano/.test(c.body.text)));
+  queue.getUpdates = [reply('getUpdates', [
+    g(91, kuca, { id: 6, first_name: 'Vanja', last_name: 'C' }, { text: 'kafa 250' }),
+    g(92, { id: -300, type: 'group', title: 'Druga' }, { id: 6, first_name: 'Vanja' }, { text: 'kafa 999' }),
+    g(93, kuca, { id: 5, first_name: 'Ana' }, { new_chat_members: [{ id: 7 }] }),
+    g(94, kuca, { id: 5, first_name: 'Ana' }, { migrate_to_chat_id: -100200 }),
+    g(95, { id: -100200, type: 'supergroup', title: 'Kuća' }, { id: 5, first_name: 'Ana' }, { text: 'hleb 80' })
+  ])];
+  await api.pollOnce();
+  assert.deepEqual(handled.map(p => [p.update_id, p.text, p.group, p.from && p.from.name]), [[91, 'kafa 250', true, 'Vanja'], [95, 'hleb 80', true, 'Ana']]);
+  assert.equal(settings.telegramChatId, -100200);
+  assert.equal(settings.telegramOffset, 96);
+});
+
+test('telegram: privatni chat — payload nije grupni', async () => {
+  const { api, settings, queue, reply, handled } = setup({ settings: { telegramChatId: 77 } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.getUpdates = [reply('getUpdates', [upd(96, { text: 'kafa 250', from: { id: 77, first_name: 'Vanja' } })])];
+  await api.pollOnce();
+  assert.equal(handled[0].group, false);
 });
