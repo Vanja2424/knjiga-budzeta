@@ -1656,6 +1656,16 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-row{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto auto auto; gap:0.7em; align-items:center; padding:0.45em 0; border-bottom:1px solid var(--paper-line); }
 .shop-name{ min-width:0; overflow-wrap:anywhere; }
 .shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.yc-summary{ margin:0.6em 0 1em; }
+.yc-summary .yc-big{ font-size:18px; font-weight:600; }
+.yc-summary .yc-sub{ font-size:12.5px; color:var(--ink-soft); margin-top:0.2em; }
+.yc-strip{ display:grid; grid-template-columns:repeat(auto-fill, minmax(150px, 1fr)); gap:0.6em; }
+.yc-month{ border:1px solid var(--paper-line); border-radius:10px; padding:0.55em 0.7em; font-size:12.5px; min-height:64px; }
+.yc-month.yc-empty{ color:var(--ink-tertiary); }
+.yc-month.heavy{ border-color:var(--warn); background:color-mix(in srgb, var(--warn) 10%, transparent); }
+.yc-month .yc-mname{ font-weight:600; margin-bottom:0.25em; }
+.yc-month .yc-total{ margin-top:0.25em; font-weight:600; font-variant-numeric:tabular-nums; }
+.yc-month .yc-item{ display:flex; justify-content:space-between; gap:0.4em; color:var(--ink-soft); } .yc-month .yc-item span:last-child{ white-space:nowrap; font-variant-numeric:tabular-nums; }
 .forecast-card{ cursor:default; }
 .forecast-card .fc-main{ font-size:15px; }
 .forecast-card.fc-warn .fc-main{ color:var(--neg-text); font-weight:600; }
@@ -2517,6 +2527,25 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <tbody id="forecastBody"></tbody>
       </table></div>
     </div>
+  </div>
+
+  <div class="screen" id="screen-godisnji">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.6em;">
+        <h3 style="margin:0;">Veliki godišnji troškovi</h3>
+        <button class="btn-secondary" id="ycAdd">Dodaj godišnji trošak</button>
+      </div>
+      <div id="yearlySummary" class="yc-summary"></div>
+      <div id="yearlyStrip" class="yc-strip"></div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;">
+      <h3 style="margin-top:0;">Stavke</h3>
+      <div class="table-scroll"><table class="forecast-table">
+        <thead><tr><th>Naziv</th><th class="num">Iznos</th><th>Učestalost</th><th>Sledeći put</th><th class="num">Meseci do tada</th><th class="num">Odvoji mesečno</th><th></th></tr></thead>
+        <tbody id="yearlyBody"></tbody>
+      </table></div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;" id="yearlyFundPanel"></div>
   </div>
 
   <div class="screen" id="screen-pitaj">
@@ -3924,7 +3953,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     transakcije: [['rashodi', 'Rashodi'], ['prihodi', 'Prihodi'], ['ponavljajuce', 'Ponavljajuće'], ['racuni', 'Računi i prenosi'], ['pretraga', 'Pretraga']],
     budzet: [['kategorije', 'Budžet i kategorije']],
     ciljevi: [['ciljevi', 'Ciljevi štednje'], ['dugovi', 'Dugovi i pozajmice']],
-    izvestaji: [['analiza', 'Analiza'], ['prognoza', 'Prognoza'], ['pitaj', 'Pitaj'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
+    izvestaji: [['analiza', 'Analiza'], ['prognoza', 'Prognoza'], ['godisnji', 'Godišnji troškovi'], ['pitaj', 'Pitaj'], ['rezije', 'Kućni računi'], ['izvestaj', 'Izveštaj za štampu'], ['uporedi', 'Uporedi'], ['scenario', 'Scenario „šta ako“']],
     kursevi: [['kursevi', 'Kursevi']],
     nabavka: [['nabavka', 'Nabavka']],
     dokumenti: [['dokumenti', 'Dokumenti']],
@@ -3946,6 +3975,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     dugovi: ()=> renderDebts(),
     analiza: ()=> renderAnaliza(),
     prognoza: ()=> renderForecast(),
+    godisnji: ()=> renderYearly(),
     rezije: ()=> renderRezije(),
     pitaj: ()=> renderAsk(),
     izvestaj: ()=> renderReport(),
@@ -6186,10 +6216,17 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
     const rec = recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) }));
     const dailySpend = C.forecastDailySpend(entries, currentMonthKey(), rec, fixedCategories);
+    const fundGoal = goals.find(g=> g.yearlyFund);
+    const fundAcc = fundGoal && accounts.find(a=> a.id === fundGoal.accountId);
+    // novac fonda bez racuna stednje stoji na tekucem racunu: rezervisan je, pa nije raspoloziv za trosenje
+    if(fundGoal && !(fundAcc && fundAcc.type === 'stednja')) start -= Number(fundGoal.current) || 0;
+    // iz fonda se placa samo "Plati iz fonda"; stavke sa automatskim placanjem idu sa svog racuna
+    const fund = fundGoal ? { goalId: fundGoal.id, current: fundGoal.current, itemIds: rec.filter(r=> r.type === 'expense' && !r.autoPay && (r.frequency === 'yearly' || r.frequency === 'quarterly')).map(r=> r.id) } : null;
     const f = C.cashForecast({ today, days: 60, startBalance: C.round2(start), recurring: rec, entries, applied, skipped, goals, dailySpend,
-      payday: payday.mode === 'manual' ? payday : null });
+      payday: payday.mode === 'manual' ? payday : null, fund });
     f.dailySpend = C.round2(dailySpend);
     f.startBalance = C.round2(start);
+    f.fundItemIds = fund ? fund.itemIds : [];
     return f;
   }
   const fcDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' }); };
@@ -6206,6 +6243,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     } else main = t('Za 60 dana: ~{0}', fmt(f.points[f.points.length - 1].balance));
     if(!f.payday) sub = t('Plata nije poznata — dodaj ponavljajući prihod ili je upiši u Podešavanjima → Plata.');
     const expired = payday.mode === 'manual' && payday.date < today;
+    const soon = C.yearlyReminders(recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) })), today, { applied, skipped }).slice(0, 3);
+    if(soon.length) sub += (sub ? ' ' : '') + t('Uskoro: {0}.', soon.map(x=> `${x.desc} ${fmt(x.amount)} (${fcDate(x.date)})`).join(', '));
     box.classList.toggle('fc-warn', !!warn);
     box.style.display = '';
     box.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Do plate'))}</h3><div class="fc-main">${escapeHtml(main)}</div>`
@@ -6239,6 +6278,110 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     document.getElementById('forecastBody').innerHTML = f.events.length ? f.events.map(e=> `<tr class="fc-event${balOn.get(e.date) < 0 ? ' fc-neg' : ''}"><td>${escapeHtml(fcDate(e.date))}</td><td translate="no">${escapeHtml(e.desc || (e.kind === 'payday' ? t('Plata') : ''))}</td><td class="num">${escapeHtml(fmt(e.amount))}</td><td class="num">${escapeHtml(fmt(balOn.get(e.date)))}</td></tr>`).join('')
       : `<tr><td colspan="4" class="hint">${escapeHtml(t('Nema predstojećih stavki u narednih 60 dana.'))}</td></tr>`;
   }
+  // ---------- Veliki godisnji troskovi ----------
+  const yearlyFundGoal = () => goals.find(g=> g.yearlyFund) || null;
+  function yearlyNow(){
+    const g = yearlyFundGoal();
+    return C.yearlyCosts(recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) })), toISODateLocal(new Date()), { applied, skipped, fundBalance: g ? g.current : 0 });
+  }
+  const ycMonthName = i => new Date(2026, i, 1).toLocaleDateString(LOCALE, { month: 'long' });
+  const ycMonthShort = mKey => { const [y, m] = mKey.split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: 'short', year: 'numeric' }); };
+  function renderYearly(){
+    const y = yearlyNow(), g = yearlyFundGoal(), today = toISODateLocal(new Date());
+    const soonLimit = (()=>{ const d = new Date(); d.setDate(d.getDate() + 30); return toISODateLocal(d); })();
+    document.getElementById('yearlySummary').innerHTML = y.items.length
+      ? `<div class="yc-big">${escapeHtml(t('Mesečno odvajanje: ~{0}', fmt(y.recommended)))}</div><div class="yc-sub">${escapeHtml(t('dugoročno ~{0} · da sve stigne na vreme ~{1}', fmt(y.steady), fmt(y.catchUp)))}</div>`
+      : `<div class="yc-sub">${escapeHtml(t('Nema godišnjih ni tromesečnih troškova. Dodaj registraciju, osiguranje, porez na imovinu ili godišnju pretplatu.'))}</div>`;
+    document.getElementById('yearlyStrip').innerHTML = y.months.map(m=> `<div class="yc-month${m.total ? '' : ' yc-empty'}${y.heavy.includes(m.mKey) ? ' heavy' : ''}"><div class="yc-mname">${escapeHtml(ycMonthShort(m.mKey))}</div>`
+      + m.items.map(i=> `<div class="yc-item"><span translate="no">${escapeHtml(i.desc)}</span><span>${escapeHtml(fmt(i.amount))}</span></div>`).join('')
+      + (m.total ? `<div class="yc-total">${escapeHtml(fmt(m.total))}</div>` : '') + '</div>').join('');
+    const freq = f => f === 'quarterly' ? t('tromesečno') : t('godišnje');
+    document.getElementById('yearlyBody').innerHTML = y.items.length ? y.items.map(i=> `<tr data-id="${i.id}"><td translate="no">${escapeHtml(i.desc)}</td><td class="num">${escapeHtml(fmt(i.amount))}</td><td>${escapeHtml(freq(i.frequency))}</td>`
+      + `<td>${i.next ? escapeHtml(fmtDocDate(i.next)) : ''}</td><td class="num">${i.monthsLeft}</td><td class="num">${escapeHtml(fmt(i.perMonth))}</td>`
+      + `<td>${g && i.next && i.next <= soonLimit ? `<button class="btn-secondary yc-pay" data-id="${i.id}">${escapeHtml(t('Plati iz fonda'))}</button>` : ''}</td></tr>`).join('')
+      : `<tr><td colspan="7" class="hint">${escapeHtml(t('Još nema stavki.'))}</td></tr>`;
+    document.querySelectorAll('#yearlyBody .yc-pay').forEach(b=> b.addEventListener('click', ()=> payYearlyFromFund(b.dataset.id)));
+    const fp = document.getElementById('yearlyFundPanel');
+    if(!g){
+      fp.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Fond za godišnje troškove'))}</h3><div class="import-status" style="margin-top:0;">${escapeHtml(t('Napravi cilj štednje sa automatskom mesečnom uplatom predloženog iznosa, pa troškove plaćaj iz njega kad stignu.'))}</div>`
+        + `<div class="file-row"><button class="btn-secondary" id="ycFundCreate"${y.recommended > 0 ? '' : ' disabled'}>${escapeHtml(t('Napravi cilj „Godišnji troškovi“'))}</button></div>`;
+      document.getElementById('ycFundCreate').addEventListener('click', createYearlyFund);
+    } else {
+      const off = g.monthly && Math.abs(g.monthly.amount - y.recommended) >= 100;
+      fp.innerHTML = `<h3 style="margin-top:0;">${escapeHtml(t('Fond za godišnje troškove'))}</h3><div class="import-status" style="margin-top:0;">${escapeHtml(t('U fondu: {0} od {1}.', fmt(g.current), fmt(g.target)))} ${escapeHtml(g.monthly ? t('Mesečna uplata: {0} ({1}. u mesecu).', fmt(g.monthly.amount), g.monthly.day) : t('Nema mesečne uplate.'))}</div>`
+        + (off ? `<div class="import-status">${escapeHtml(t('Predlog je sada {0} mesečno.', fmt(y.recommended)))}</div>` : '')
+        + `<div class="file-row"><button class="btn-secondary" id="ycFundSync"${off || !g.monthly ? '' : ' disabled'}>${escapeHtml(t('Uskladi plan'))}</button><button class="btn-secondary" id="ycFundOpen">${escapeHtml(t('Otvori Ciljeve'))}</button></div>`;
+      document.getElementById('ycFundSync').addEventListener('click', ()=>{
+        const cur = yearlyNow();
+        g.monthly = cleanGoalPlan({ amount: cur.recommended, day: g.monthly ? g.monthly.day : 1, since: (g.monthly && g.monthly.since) || yearlyPlanSince(1), last: g.monthly && g.monthly.last });
+        g.target = Math.max(g.target, cur.yearTotal);
+        saveGoals(); renderAll();
+      });
+      document.getElementById('ycFundOpen').addEventListener('click', ()=> showScreen('ciljevi'));
+    }
+  }
+  document.getElementById('ycAdd').addEventListener('click', ()=>{
+    const months = Array.from({ length: 12 }, (_, i)=> ycMonthName(i));
+    openEditModal(t('Dodaj godišnji trošak'), [
+      { key: 'desc', label: t('Naziv (npr. Registracija auta)'), type: 'text', value: '' },
+      { key: 'amount', label: t('Iznos (RSD)'), type: 'number', value: '' },
+      { key: 'month', label: t('Mesec'), type: 'select', value: months[new Date().getMonth()], options: months },
+      { key: 'day', label: t('Dan u mesecu'), type: 'number', value: 1 },
+      { key: 'category', label: t('Kategorija'), type: 'select', value: expenseCats[0] || '', options: expenseCats }
+    ], vals=>{
+      const desc = String(vals.desc || '').trim(), amount = Number(vals.amount);
+      if(!desc || !(amount > 0)){ appAlert(t('Upiši naziv i iznos.')); return false; }
+      const rec = { id: newId(), desc, amount: C.round2(amount), category: expenseCats.includes(vals.category) ? vals.category : (expenseCats[0] || 'Ostalo'), type: 'expense',
+        day: C.clampRecurringDay(vals.day), frequency: 'yearly', anchorMonth: Math.max(1, months.indexOf(vals.month) + 1), isSubscription: false, autoPay: false };
+      if(accounts.length) rec.accountId = defaultAccountId();
+      recurring.push(rec); saveRecurring(); renderAll();
+    });
+  });
+  // Prva mesecna uplata: ovog meseca ako dan uplate jos nije prosao, inace od sledeceg (bez uplate unazad)
+  const yearlyPlanSince = day => C.clampRecurringDay(day) >= new Date().getDate() ? currentMonthKey() : C.addMonths(currentMonthKey(), 1);
+  function createYearlyFund(){
+    const y = yearlyNow(), NONE = t('— bez računa —');
+    const accs = accounts.filter(a=> a.type === 'stednja');
+    openEditModal(t('Napravi cilj „Godišnji troškovi“'), [
+      { key: 'account', label: t('Račun na koji ide novac (opciono)'), type: 'select', value: accs.length && accs[0].type === 'stednja' ? accs[0].name : NONE, options: [NONE].concat(accs.map(a=> a.name)) },
+      { key: 'day', label: t('Dan mesečne uplate'), type: 'number', value: 1 }
+    ], vals=>{
+      if(yearlyFundGoal()) return;
+      const acc = accs.find(a=> a.name === vals.account);
+      const goal = { id: newId(), name: t('Godišnji troškovi'), target: Math.max(1, y.yearTotal), current: 0, deadline: '', yearlyFund: true,
+        monthly: cleanGoalPlan({ amount: y.recommended, day: vals.day, since: yearlyPlanSince(vals.day) }) };
+      if(acc) goal.accountId = acc.id;
+      goals.push(goal); saveGoals(); renderAll();
+    });
+  }
+  function payYearlyFromFund(id){
+    const g = yearlyFundGoal(), r = recurring.find(x=> x.id === id);
+    const item = yearlyNow().items.find(i=> i.id === id);
+    if(!g || !r || !item || !item.next) return;
+    const mKey = item.next.slice(0, 7), amount = recurringAmountNow(r);
+    const prev = { applied: (applied[mKey] || []).slice(), skipped: (skipped[mKey] || []).slice(), current: g.current };
+    const covered = C.round2(Math.min(Math.max(0, g.current), amount)), rest = C.round2(amount - covered);
+    const entryId = markRecurringPaid(r, mKey, covered > 0 ? covered : amount);
+    if(!entryId) return;
+    const today = toISODateLocal(new Date());
+    // placeno danas (ne na dan dospeca), da se ne vrati u prognozu kao buduci trosak
+    const e = entries.find(x=> x.id === entryId);
+    if(e){ e.date = today; if(covered > 0 && g.accountId) e.accountId = g.accountId; }
+    // razlika koju fond ne pokriva: poseban rashod sa podrazumevanog racuna
+    let restId = null;
+    if(covered > 0 && rest > 0){
+      const extra = { id: newId(), type: 'expense', desc: r.desc, amount: rest, category: r.category, date: today, paid: true, tags: [] };
+      if(accounts.length) extra.accountId = accountById(r.accountId) ? r.accountId : defaultAccountId();
+      entries.push(extra); restId = extra.id;
+    }
+    g.current = C.round2(g.current - covered);
+    saveApplied(); saveSkipped(); saveEntries(); saveGoals(); renderAll();
+    showUndoToast(t('Plaćeno iz fonda: {0} ({1})', r.desc, fmt(amount)), ()=>{
+      applied[mKey] = prev.applied; skipped[mKey] = prev.skipped; entries = entries.filter(x=> x.id !== entryId && x.id !== restId); g.current = prev.current;
+      saveApplied(); saveSkipped(); saveEntries(); saveGoals(); renderAll();
+    });
+  }
+  if(IS_TEST) window.__yearly = ()=> yearlyNow();
   function renderPaydaySettings(){
     const rec = C.pickSalary(recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) })), currentMonthKey());
     document.getElementById('paydayAutoInfo').textContent = rec ? t('Sada: „{0}“, {1}. u mesecu, {2}.', rec.desc, rec.day, fmt(recurringAmountNow(rec))) : t('Nema ponavljajućeg prihoda — dodaj ga u Ponavljajuće ili upiši platu ručno.');
@@ -10577,7 +10720,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       current: Math.max(0, Number(g.current) || 0),
       deadline: (typeof g.deadline === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(g.deadline)) ? g.deadline : '',
       accountId: typeof g.accountId === 'string' ? g.accountId : undefined,
-      monthly: cleanGoalPlan(g.monthly)
+      monthly: cleanGoalPlan(g.monthly),
+      ...(g.yearlyFund === true ? { yearlyFund: true } : {})
     })).filter(g => g.name && g.target > 0);
     const cleanDebts = (Array.isArray(data.debts) ? data.debts.filter(isPlainObject) : []).map(d=>({
       id: (typeof d.id === 'string' && d.id) ? d.id : newId(),
@@ -10890,7 +11034,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(billTypes.length ? billTypes.map(x=>({ID:x.id, LokacijaID:x.locationId, Naziv:x.name, Kategorija:x.category, Merenja: JSON.stringify(x.metrics)})) : [{ID:'', LokacijaID:'', Naziv:'', Kategorija:'', Merenja:''}]), 'VrsteRacuna');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bills.length ? bills.map(b=>({ID:b.id, VrstaID:b.billTypeId, Mesec:b.month, Iznos:b.amount, Valuta:b.currency, MesecRashoda:b.expenseMonth||'', Vrednosti: JSON.stringify(b.values), OdDatuma:b.periodFrom||'', DoDatuma:b.periodTo||'', Rok:b.dueDate||'', StavkaID:b.entryId||'', PonavljajucaID:b.recurringId||'', Prilog:b.file||'', Izvor:b.source, PrimalacRacun:b.payee?b.payee.account:'', PrimalacNaziv:b.payee?b.payee.name:'', Model:b.payee?b.payee.model:'', PozivNaBroj:b.payee?b.payee.reference:''})) : [{ID:'', VrstaID:'', Mesec:'', Iznos:'', Valuta:'', MesecRashoda:'', Vrednosti:'', OdDatuma:'', DoDatuma:'', Rok:'', StavkaID:'', PonavljajucaID:'', Prilog:'', Izvor:'', PrimalacRacun:'', PrimalacNaziv:'', Model:'', PozivNaBroj:''}]), 'KucniRacuni');
     }
-    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):'', RacunID:g.accountId||''})));
+    const wsCilj = XLSX.utils.json_to_sheet(goals.map(g=>({ID:g.id, Naziv:g.name, Cilj:g.target, Trenutno:g.current, Rok:g.deadline||'', GodisnjiFond: g.yearlyFund ? 'da' : '', MesecnaUplata:g.monthly?g.monthly.amount:'', DanUplate:g.monthly?g.monthly.day:'', UplataOd:g.monthly?g.monthly.since:'', PoslednjaUplata:g.monthly?(g.monthly.last||''):'', RacunID:g.accountId||''})));
     XLSX.utils.book_append_sheet(wb, wsCilj, 'Ciljevi');
     const paidRows = [];
     Object.keys(applied).forEach(mKey=>{ (applied[mKey]||[]).forEach(rid=> paidRows.push({Mesec:mKey, RecurringID:rid})); });
@@ -10955,7 +11099,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       current: Number(r.Trenutno) || 0,
       deadline: r.Rok ? normalizeDateCell(r.Rok) : '',
       monthly: cleanGoalPlan(Number(r.MesecnaUplata) > 0 ? { amount: r.MesecnaUplata, day: r.DanUplate, since: String(r.UplataOd || ''), last: String(r.PoslednjaUplata || '') } : null),
-      ...(String(r.RacunID || '').trim() ? { accountId: String(r.RacunID).trim() } : {})
+      ...(String(r.RacunID || '').trim() ? { accountId: String(r.RacunID).trim() } : {}),
+      ...(String(r.GodisnjiFond || '').trim().toLowerCase() === 'da' ? { yearlyFund: true } : {})
     }));
   }
   if(IS_TEST) window.__goalsFromWorkbook = goalsFromWorkbook;

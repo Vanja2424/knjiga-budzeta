@@ -2331,6 +2331,93 @@
       check('prognoza: JSON kopija čuva platu', JSON.stringify(san.payday) === JSON.stringify({ mode: 'manual', date: '2026-12-01', amount: 5000 }) && bad.payday.mode === 'auto', JSON.stringify([san.payday, bad.payday]));
     } else check('prognoza: test kuka __forecast', false);
 
+    // Godisnji troskovi: traka i tabela, precica, fond, placanje iz fonda + ponistavanje, podsetnik, JSON i Excel
+    if (window.__yearly) {
+      const now = new Date(), cm = monthKey(now), today = now.getDate();
+      const fld = k => document.querySelector('#editModalOverlay [data-field="' + k + '"]');
+      go('godisnji'); await sleep(200);
+      check('godišnji: traka za 12 meseci', document.querySelectorAll('#yearlyStrip .yc-month').length === 12, document.querySelectorAll('#yearlyStrip .yc-month').length);
+      // precica: trosak ovog meseca (za placanje iz fonda) i jedan za sledeci mesec
+      const addCost = async (desc, amount, monthIdx, day) => {
+        $('ycAdd').click(); await sleep(120);
+        fld('desc').value = desc; fld('amount').value = String(amount); fld('month').value = fld('month').options[monthIdx].value; fld('day').value = String(day);
+        $('editModalSave').click(); await sleep(150);
+        return window.__recurringRaw.list().find(x => x.desc === desc);
+      };
+      const r1 = await addCost('Smoke registracija', 36000, now.getMonth(), Math.min(28, today));
+      const r2 = await addCost('Smoke osiguranje', 24000, (now.getMonth() + 1) % 12, 10);
+      check('godišnji: prečica pravi godišnju ponavljajuću', !!r1 && r1.frequency === 'yearly' && r1.anchorMonth === now.getMonth() + 1 && r1.amount === 36000 && !!r2, JSON.stringify(r1));
+      check('godišnji: stavka u tabeli', !!(r1 && document.querySelector('#yearlyBody tr[data-id="' + r1.id + '"]')));
+      // fond
+      $('ycFundCreate').click(); await sleep(120); $('editModalSave').click(); await sleep(200);
+      const g = (window.__goals() || []).find(x => x.yearlyFund);
+      check('godišnji: „Napravi cilj“ pravi fond sa mesečnim planom', !!g && !!g.monthly && g.monthly.amount === window.__yearly().recommended && g.target > 0, JSON.stringify(g));
+      if (g && r1) {
+        g.current = 50000; window.__saveGoals(); go('godisnji'); await sleep(150);
+        const btn = document.querySelector('.yc-pay[data-id="' + r1.id + '"]');
+        check('godišnji: dugme „Plati iz fonda“ za trošak ovog meseca', !!btn);
+        if (btn) { btn.click(); await sleep(150); }
+        const paidId = 'rec-' + r1.id + '-' + cm;
+        const g2 = window.__goals().find(x => x.yearlyFund);
+        check('godišnji: plaćeno iz fonda (rashod, plaćeno, fond umanjen)', entries().some(e => e.id === paidId) && (window.__recurringRaw.applied()[cm] || []).includes(r1.id) && g2.current === 14000, JSON.stringify({ cur: g2.current }));
+        window.__undoTop(); await sleep(150);
+        const g3 = window.__goals().find(x => x.yearlyFund);
+        check('godišnji: poništavanje vraća rashod, oznaku i fond', !entries().some(e => e.id === paidId) && !(window.__recurringRaw.applied()[cm] || []).includes(r1.id) && g3.current === 50000, JSON.stringify({ cur: g3.current }));
+        go('pregled'); await sleep(150);
+        check('godišnji: podsetnik na Pregledu', /Uskoro/.test($('forecastCard').textContent) && /Smoke registracija/.test($('forecastCard').textContent), $('forecastCard').textContent.slice(0, 200));
+        const xr = XLSX.utils.sheet_to_json(window.__buildWorkbook().Sheets['Ciljevi'], { defval: '' }).find(x => x.ID === g.id);
+        check('godišnji: Excel kolona GodisnjiFond', !!xr && xr.GodisnjiFond === 'da');
+        const back = window.__goalsFromWorkbook(window.__buildWorkbook()).find(x => x.id === g.id);
+        check('godišnji: Excel čita fond nazad', !!back && back.yearlyFund === true);
+      }
+      const san = window.__sanitizeImportedBackup({ entries: [], goals: [{ id: 'gf', name: 'Fond', target: 1000, current: 0, yearlyFund: true }, { id: 'go', name: 'Drugo', target: 5, current: 0, yearlyFund: 'x' }] });
+      check('godišnji: JSON kopija čuva oznaku fonda', san.goals[0].yearlyFund === true && !san.goals[1].yearlyFund);
+      // ciscenje
+      const list = window.__recurringRaw.list();
+      [r1, r2].filter(Boolean).forEach(r => { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); });
+      window.__recurringRaw.save();
+      const gl = window.__goals(); const gi = gl.findIndex(x => x.yearlyFund); if (gi >= 0) gl.splice(gi, 1); window.__saveGoals();
+    } else check('godišnji: test kuka __yearly', false);
+
+    // Godisnji troskovi posle pregleda: fond bez racuna u prognozi, placanje kad fonda nema dovoljno, datum danas,
+    // automatsko placanje van fonda, cilj fonda = godisnji zbir, prva uplata ne unazad
+    if (window.__yearly && window.__forecast) {
+      const now = new Date(), cm = monthKey(now), todayIso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      const fld = k => document.querySelector('#editModalOverlay [data-field="' + k + '"]');
+      const list = window.__recurringRaw.list();
+      const rA = { id: 'smk-y-a', type: 'expense', desc: 'Smoke Y kasko', amount: 36000, category: expenseCatsFirst(), day: Math.min(28, now.getDate()), frequency: 'yearly', anchorMonth: now.getMonth() + 1 };
+      const rAuto = { id: 'smk-y-auto', type: 'expense', desc: 'Smoke Y auto', amount: 8000, category: expenseCatsFirst(), day: 28, frequency: 'yearly', anchorMonth: ((now.getMonth() + 1) % 12) + 1, autoPay: true };
+      function expenseCatsFirst(){ return (window.__recurringRaw.list()[0] || {}).category || 'Ostalo'; }
+      list.push(rA, rAuto); window.__recurringRaw.save();
+      go('godisnji'); await sleep(150);
+      $('ycFundCreate').click(); await sleep(120);
+      fld('day').value = '1'; $('editModalSave').click(); await sleep(200);
+      const g = window.__goals().find(x => x.yearlyFund);
+      const y = window.__yearly();
+      check('godišnji fix: cilj fonda je godišnji zbir', !!g && g.target === Math.max(1, y.yearTotal), JSON.stringify({ t: g && g.target, y: y.yearTotal }));
+      const next = (() => { const [yy, mm] = cm.split('-').map(Number); return mm === 12 ? (yy + 1) + '-01' : yy + '-' + String(mm + 1).padStart(2, '0'); })();
+      check('godišnji fix: prva uplata nije unazad (dan prošao -> od sledećeg meseca)', !!g && g.monthly && g.monthly.since === (now.getDate() > 1 ? next : cm), JSON.stringify(g && g.monthly));
+      if (g) {
+        // (1) fond bez racuna: novac je i dalje na tekucem -> polazno stanje prognoze ga ne racuna kao raspolozivo
+        const accSaved = g.accountId; delete g.accountId; g.current = 0; window.__saveGoals(); const f0 = window.__forecast();
+        g.current = 30000; window.__saveGoals(); const f1 = window.__forecast();
+        check('godišnji fix: fond bez računa umanjuje raspoloživo u prognozi', Math.round(f0.startBalance - f1.startBalance) === 30000, f0.startBalance + ' / ' + f1.startBalance);
+        check('godišnji fix: stavka sa automatskim plaćanjem nije iz fonda', !f1.fundItemIds.includes('smk-y-auto') && f1.fundItemIds.includes('smk-y-a'), JSON.stringify(f1.fundItemIds));
+        if (accSaved) { g.accountId = accSaved; g.current = 30000; window.__saveGoals(); const f2 = window.__forecast(); check("godišnji fix: fond na računu štednje ne umanjuje raspoloživo", Math.round(f2.startBalance - f0.startBalance) === 0, f2.startBalance + " / " + f0.startBalance); }
+        // (2)(3) fond 10000 < racun 36000: deo iz fonda + razlika, oba danas; ponistavanje vraca sve
+        g.current = 10000; window.__saveGoals(); go('godisnji'); await sleep(150);
+        const before = entries().length;
+        const btn = document.querySelector('.yc-pay[data-id="smk-y-a"]'); if (btn) { btn.click(); await sleep(150); }
+        const made = entries().slice(before);
+        const g2 = window.__goals().find(x => x.yearlyFund);
+        check('godišnji fix: fond bez dovoljno novca — deo iz fonda, razlika posebno, oba danas', made.length === 2 && made.map(e => e.amount).sort((a, b) => a - b).join(',') === '10000,26000' && made.every(e => e.date === todayIso) && g2.current === 0, JSON.stringify(made.map(e => [e.amount, e.date])));
+        window.__undoTop(); await sleep(150);
+        check('godišnji fix: poništavanje vraća oba rashoda i fond', entries().length === before && window.__goals().find(x => x.yearlyFund).current === 10000);
+      }
+      const gl = window.__goals(); const gi = gl.findIndex(x => x.yearlyFund); if (gi >= 0) gl.splice(gi, 1); window.__saveGoals();
+      [rA, rAuto].forEach(r => { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); }); window.__recurringRaw.save();
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

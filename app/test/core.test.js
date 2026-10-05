@@ -2107,3 +2107,73 @@ test('prognoza posle pregleda: svakodnevna potrosnja bez rucno upisanih racuna k
   });
   assert.equal(C.forecastDailySpend(entries, '2026-10', rec, []), 1000); // 30.400 / 30,4
 });
+
+test('godisnji troskovi: traka 12 meseci, sledeci put, meseci do tada, mesecno odvajanje, teski meseci', () => {
+  const rec = [
+    { id: 'reg', type: 'expense', desc: 'Registracija', amount: 38000, day: 20, frequency: 'yearly', anchorMonth: 11 },
+    { id: 'osig', type: 'expense', desc: 'Osiguranje', amount: 24000, day: 5, frequency: 'yearly', anchorMonth: 3 },
+    { id: 'kv', type: 'expense', desc: 'Komunalna', amount: 6000, day: 10, frequency: 'quarterly', anchorMonth: 1 },
+    { id: 'porez', type: 'expense', desc: 'Porez', amount: 12000, day: 2, frequency: 'yearly', anchorMonth: 10 },
+    { id: 'staro', type: 'expense', desc: 'Staro', amount: 9999, day: 1, frequency: 'yearly', anchorMonth: 12, until: '2026-06' },
+    { id: 'mes', type: 'expense', desc: 'Kirija', amount: 40000, day: 1 },
+    { id: 'pr', type: 'income', desc: 'Bonus', amount: 50000, day: 1, frequency: 'yearly', anchorMonth: 12 }
+  ];
+  const y = C.yearlyCosts(rec, '2026-10-05', { applied: { '2026-10': ['porez'] }, skipped: {} });
+  assert.equal(y.months.length, 12);
+  assert.equal(y.months[0].mKey, '2026-10');
+  assert.deepEqual(y.items.map(i => i.id).sort(), ['kv', 'osig', 'porez', 'reg']);
+  const byId = Object.fromEntries(y.items.map(i => [i.id, i]));
+  assert.equal(byId.reg.next, '2026-11-20'); assert.equal(byId.reg.monthsLeft, 2); assert.equal(byId.reg.perMonth, 19000);
+  assert.equal(byId.porez.next, '2027-10-02');                       // placen ovog meseca -> za godinu dana
+  assert.equal(byId.kv.next, '2026-10-10'); assert.equal(byId.kv.monthsLeft, 1);
+  assert.equal(byId.osig.next, '2027-03-05'); assert.equal(byId.osig.monthsLeft, 6);
+  // kvartalna: okt, jan, apr, jul u 12 meseci
+  assert.equal(y.months.reduce((n, m) => n + m.items.filter(i => i.id === 'kv').length, 0), 4);
+  assert.equal(y.months.find(m => m.mKey === '2026-10').items.some(i => i.id === 'porez'), false);
+  assert.equal(y.steady, Math.round((38000 / 12 + 24000 / 12 + 6000 / 3 + 12000 / 12) * 100) / 100);
+  // catchUp: okt 6000 (1 mes) / nov 6000+38000 (2 mes) = 22000 ...
+  assert.equal(y.catchUp, 22000);
+  assert.equal(y.recommended, 22000);
+  assert.deepEqual(y.heavy, ['2026-11', '2027-03']);
+  // fond koji pokriva sve -> catchUp 0, preporuka = dugorocno (zaokruzeno navise na 100)
+  const f = C.yearlyCosts(rec, '2026-10-05', { applied: {}, skipped: {}, fundBalance: 1000000 });
+  assert.equal(f.catchUp, 0);
+  assert.equal(f.recommended, Math.ceil(f.steady / 100) * 100);
+  // bez godisnjih stavki
+  const e = C.yearlyCosts([], '2026-10-05', {});
+  assert.deepEqual([e.items.length, e.steady, e.catchUp, e.recommended, e.heavy.length], [0, 0, 0, 0, 0]);
+});
+
+test('godisnji troskovi: podsetnici 30 dana unapred (prag iznosa, placeno/preskoceno, dospelo ovog meseca)', () => {
+  const rec = [
+    { id: 'reg', type: 'expense', desc: 'Registracija', amount: 38000, day: 20, frequency: 'yearly', anchorMonth: 11 },
+    { id: 'mali', type: 'expense', desc: 'Domen', amount: 1500, day: 15, frequency: 'yearly', anchorMonth: 10 },
+    { id: 'kv', type: 'expense', desc: 'Komunalna', amount: 6000, day: 2, frequency: 'quarterly', anchorMonth: 1 },
+    { id: 'pres', type: 'expense', desc: 'Pretplata', amount: 9000, day: 25, frequency: 'yearly', anchorMonth: 10 }
+  ];
+  const r = C.yearlyReminders(rec, '2026-10-25', { skipped: { '2026-10': ['pres'] }, applied: {} });
+  assert.deepEqual(r.map(x => x.id + ' ' + x.date), ['kv 2026-10-02', 'reg 2026-11-20']);
+});
+
+test('prognoza sa fondom godisnjih troskova: pokriveno iz fonda, delimicno, fond raste uplatama', () => {
+  const rec = [{ id: 'reg', type: 'expense', desc: 'Registracija', amount: 38000, day: 20, frequency: 'yearly', anchorMonth: 11 },
+    { id: 'osig', type: 'expense', desc: 'Osiguranje', amount: 30000, day: 25, frequency: 'yearly', anchorMonth: 11 }];
+  const goal = { id: 'g', name: 'Godišnji troškovi', target: 68000, current: 20000, yearlyFund: true, monthly: { amount: 10000, day: 1, since: '2026-10', last: '2026-10' } };
+  const f = C.cashForecast({ today: '2026-10-05', startBalance: 100000, recurring: rec, entries: [], goals: [goal], fund: { goalId: 'g', current: 20000, itemIds: ['reg', 'osig'] } });
+  const ev = f.events.map(e => e.date + ' ' + e.desc + ' ' + e.amount);
+  assert.ok(ev.includes('2026-11-01 Godišnji troškovi -10000'));     // uplata u fond i dalje smanjuje raspolozivo
+  assert.ok(ev.includes('2026-11-20 Registracija -8000'), JSON.stringify(ev));   // fond 20000 + 10000 pokriva 30000 od 38000
+  assert.ok(ev.includes('2026-11-25 Osiguranje -30000'));                       // fond je potrosen
+});
+
+test('godisnji troskovi posle pregleda: zavrsena stavka bez preostale pojave se ne racuna; godisnji zbir za cilj fonda', () => {
+  const rec = [
+    { id: 'kraj', type: 'expense', desc: 'Osiguranje', amount: 24000, day: 5, frequency: 'yearly', anchorMonth: 3, until: '2026-12' },
+    { id: 'plac', type: 'expense', desc: 'Porez', amount: 60000, day: 2, frequency: 'yearly', anchorMonth: 10 },
+    { id: 'kv', type: 'expense', desc: 'Komunalna', amount: 3000, day: 10, frequency: 'quarterly', anchorMonth: 1 }
+  ];
+  const y = C.yearlyCosts(rec, '2026-10-05', { applied: { '2026-10': ['plac', 'kv'] }, skipped: {} });
+  assert.deepEqual(y.items.map(i => i.id).sort(), ['kv', 'plac']);
+  assert.equal(y.steady, Math.round((60000 / 12 + 3000 / 3) * 100) / 100);
+  assert.equal(y.yearTotal, 72000);                                   // 60000 + 4 x 3000 (i kad je placen ovog meseca)
+});
