@@ -2104,7 +2104,7 @@
       const sb = (q1.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data));
       if (sb) await B.handle({ update_id: 900602, kind: 'callback', data: sb.data, messageId: 91 });
       const qe = ents().find(e => e.desc === 'Smoke qr');
-      check('QR iz bota: sačuvan račun ima i sliku', !!qe && qe.amount === 259.98 && (qe.attachments || []).length === 1, JSON.stringify(qe));
+      check('QR iz bota: sačuvan račun ima link ka Poreskoj umesto slike', !!qe && qe.amount === 259.98 && !(qe.attachments || []).length && qe.fiscalUrl === 'https://suf.purs.gov.rs/v/?vl=SMOKE%2B3%3D', JSON.stringify(qe));
       window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke qr').map(e => e.id));
       window.__fakeFiscal = null; window.__fakeFiscalCategories = null; window.__fakeReceiptReading = null;
     }
@@ -2416,6 +2416,49 @@
       }
       const gl = window.__goals(); const gi = gl.findIndex(x => x.yearlyFund); if (gi >= 0) gl.splice(gi, 1); window.__saveGoals();
       [rA, rAuto].forEach(r => { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); }); window.__recurringRaw.save();
+    }
+
+    // Fiskalni racun: artikli u rashodu (rasklopivo, sa cenama), link ka Poreskoj umesto slike
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge;
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
+      const d0 = new Date(), dLabel = d0.getDate() + '.' + (d0.getMonth() + 1) + '.' + d0.getFullYear() + '.';
+      const html = ["<script>viewModel.InvoiceNumber('SMK-L'); viewModel.Token('t');</script>", '<span id="shopFullNameLabel">1-SMOKE LINK RACUN</span>',
+        '<span id="totalAmountLabel">1.249,98</span>', '<span id="sdcDateTimeLabel">' + dLabel + ' 10:00:00</span>'].join('\n');
+      const spec = { success: true, items: [{ name: 'MLEKO SVEZE 2.8% 1L (Е)/kom', quantity: 2, total: 259.98 }, { name: 'SIR GAUDA NAREZAK (Ђ)/kg ', quantity: 0.9, total: 990 }] };
+      window.__fakeFiscal = () => ({ ok: true, html, spec });
+      window.__fakeFiscalCategories = () => ({ ok: true, content: '{"kategorije":["Hrana","Hrana"]}' });
+      const save = async (out, upd, msg) => { const sb = (out.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data)); if (sb) await B.handle({ update_id: upd, kind: 'callback', data: sb.data, messageId: msg }); };
+      // 1) link botu
+      const url1 = 'https://suf.purs.gov.rs/v/?vl=SMOKELINK%2B1%3D';
+      await save(await B.handle({ update_id: 900801, kind: 'text', text: url1 }), 900802, 1);
+      const e1 = ents().find(e => e.desc === 'Smoke link racun' && e.fiscalUrl === url1);
+      check('fiskalni link: rashod pamti link Poreske uprave, bez slike', !!e1 && !(e1.attachments || []).length && (e1.items || []).length === 2, JSON.stringify(e1 && { a: e1.attachments, f: e1.fiscalUrl }));
+      // 2) slika sa QR kodom: slika se ne cuva (podaci su sa Poreske)
+      const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40);
+      const url2 = 'https://suf.purs.gov.rs/v/?vl=SMOKELINK%2B2%3D';
+      const p2 = await B.handle({ update_id: 900803, kind: 'file', caption: '', progressMessageId: 96, fiscalUrl: url2, file: { base64: c.toDataURL('image/png').split(',')[1], name: 'telegram.jpg', mime: 'image/png' } });
+      const pp = pend().find(p => p.messageId === 96);
+      check('fiskalni link: slika sa QR-om se ne čuva u Prilozima', !!pp && !pp.file, JSON.stringify(pp));
+      await save(p2, 900804, 96);
+      const e2 = ents().find(e => e.fiscalUrl === url2);
+      check('fiskalni link: račun sa slike ima link, bez priloga', !!e2 && !(e2.attachments || []).length);
+      // 3) Rashodi: dugme za Poresku i rasklopivi artikli sa cenama
+      go('rashodi'); await sleep(200);
+      const row = e1 && document.querySelector('#expenseBody tr[data-row-id="' + e1.id + '"]');
+      check('fiskalni link: u Rashodima dugme za račun na sajtu Poreske, bez 📎', !!row && !!row.querySelector('.fiscal-btn') && !row.querySelector('.att-btn:not(.fiscal-btn)'), row && row.querySelector('.row-actions') && row.querySelector('.row-actions').innerHTML.slice(0, 200));
+      const det = row && row.querySelector('details.entry-items-details');
+      check('rashod: artikli se otvaraju jedan po jedan sa cenama', !!det && det.querySelectorAll('li').length === 2 && /259,98/.test(det.textContent) && /990/.test(det.textContent), det && det.textContent.slice(0, 200));
+      // 4) JSON i Excel
+      const san = window.__sanitizeImportedBackup({ entries: [
+        { id: 'fl1', type: 'expense', desc: 'x', amount: 1, date: '2026-10-01', fiscalUrl: url1 },
+        { id: 'fl2', type: 'expense', desc: 'y', amount: 1, date: '2026-10-01', fiscalUrl: 'https://evil.com/v/?vl=1' }] });
+      check('fiskalni link: JSON kopija čuva samo ispravan link', san.entries[0].fiscalUrl === url1 && !san.entries[1].fiscalUrl);
+      const xr = e1 && XLSX.utils.sheet_to_json(window.__buildWorkbook().Sheets['Stavke'], { defval: '' }).find(r => r.ID === e1.id);
+      check('fiskalni link: Excel kolona FiskalniLink', !!xr && xr.FiskalniLink === url1);
+      window.__fakeFiscal = null; window.__fakeFiscalCategories = null;
+      window.__deleteEntriesById(ents().filter(e => e.fiscalUrl === url1 || e.fiscalUrl === url2).map(e => e.id));
     }
 
     // Cuvanje u fajl
