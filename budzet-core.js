@@ -2122,7 +2122,9 @@
   // Traka za 12 meseci, sledeci put po stavci, mesecno odvajanje (dugorocno i "da sve stigne na vreme") i teski meseci
   function yearlyCosts(recurring, today, opts){
     const o = opts || {}, cur = today.slice(0, 7);
-    const { items, list } = yearlyOccurrences(recurring, today, o, 24);
+    const occ = yearlyOccurrences(recurring, today, o, 24), list = occ.list;
+    // samo stavke koje jos imaju pojavu (zavrsena stavka bez sledeceg puta ne ulazi u odvajanje)
+    const items = occ.items.filter(r => list.some(x => x.r === r));
     const months = Array.from({ length: 12 }, (_, k) => {
       const mKey = addMonths(cur, k);
       const its = list.filter(x => x.mKey === mKey).map(x => ({ id: x.r.id, desc: x.r.desc || '', amount: round2(x.r.amount), date: x.date }));
@@ -2142,7 +2144,9 @@
     const withCost = months.filter(m => m.total > 0);
     const avg = withCost.length ? withCost.reduce((sum, m) => sum + m.total, 0) / withCost.length : 0;
     const heavy = months.filter(m => m.total >= 10000 && m.total > avg * 1.5).map(m => m.mKey);
-    return { months, items: out, steady, catchUp, recommended, heavy };
+    // godisnji zbir (cilj fonda): godisnje 1x, tromesecne 4x — i kad je stavka placena ovog meseca
+    const yearTotal = round2(items.reduce((sum, r) => sum + (r.frequency === 'quarterly' ? r.amount * 4 : r.amount), 0));
+    return { months, items: out, steady, catchUp, recommended, heavy, yearTotal };
   }
   // Podsetnik: godisnji/tromesecni trosak od bar minAmount koji dospeva u narednih `days` dana (ili je dospeo ovog meseca, a nije placen)
   function yearlyReminders(recurring, today, opts){

@@ -2379,6 +2379,45 @@
       const gl = window.__goals(); const gi = gl.findIndex(x => x.yearlyFund); if (gi >= 0) gl.splice(gi, 1); window.__saveGoals();
     } else check('godišnji: test kuka __yearly', false);
 
+    // Godisnji troskovi posle pregleda: fond bez racuna u prognozi, placanje kad fonda nema dovoljno, datum danas,
+    // automatsko placanje van fonda, cilj fonda = godisnji zbir, prva uplata ne unazad
+    if (window.__yearly && window.__forecast) {
+      const now = new Date(), cm = monthKey(now), todayIso = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
+      const fld = k => document.querySelector('#editModalOverlay [data-field="' + k + '"]');
+      const list = window.__recurringRaw.list();
+      const rA = { id: 'smk-y-a', type: 'expense', desc: 'Smoke Y kasko', amount: 36000, category: expenseCatsFirst(), day: Math.min(28, now.getDate()), frequency: 'yearly', anchorMonth: now.getMonth() + 1 };
+      const rAuto = { id: 'smk-y-auto', type: 'expense', desc: 'Smoke Y auto', amount: 8000, category: expenseCatsFirst(), day: 28, frequency: 'yearly', anchorMonth: ((now.getMonth() + 1) % 12) + 1, autoPay: true };
+      function expenseCatsFirst(){ return (window.__recurringRaw.list()[0] || {}).category || 'Ostalo'; }
+      list.push(rA, rAuto); window.__recurringRaw.save();
+      go('godisnji'); await sleep(150);
+      $('ycFundCreate').click(); await sleep(120);
+      fld('day').value = '1'; $('editModalSave').click(); await sleep(200);
+      const g = window.__goals().find(x => x.yearlyFund);
+      const y = window.__yearly();
+      check('godišnji fix: cilj fonda je godišnji zbir', !!g && g.target === Math.max(1, y.yearTotal), JSON.stringify({ t: g && g.target, y: y.yearTotal }));
+      const next = (() => { const [yy, mm] = cm.split('-').map(Number); return mm === 12 ? (yy + 1) + '-01' : yy + '-' + String(mm + 1).padStart(2, '0'); })();
+      check('godišnji fix: prva uplata nije unazad (dan prošao -> od sledećeg meseca)', !!g && g.monthly && g.monthly.since === (now.getDate() > 1 ? next : cm), JSON.stringify(g && g.monthly));
+      if (g) {
+        // (1) fond bez racuna: novac je i dalje na tekucem -> polazno stanje prognoze ga ne racuna kao raspolozivo
+        const accSaved = g.accountId; delete g.accountId; g.current = 0; window.__saveGoals(); const f0 = window.__forecast();
+        g.current = 30000; window.__saveGoals(); const f1 = window.__forecast();
+        check('godišnji fix: fond bez računa umanjuje raspoloživo u prognozi', Math.round(f0.startBalance - f1.startBalance) === 30000, f0.startBalance + ' / ' + f1.startBalance);
+        check('godišnji fix: stavka sa automatskim plaćanjem nije iz fonda', !f1.fundItemIds.includes('smk-y-auto') && f1.fundItemIds.includes('smk-y-a'), JSON.stringify(f1.fundItemIds));
+        if (accSaved) { g.accountId = accSaved; g.current = 30000; window.__saveGoals(); const f2 = window.__forecast(); check("godišnji fix: fond na računu štednje ne umanjuje raspoloživo", Math.round(f2.startBalance - f0.startBalance) === 0, f2.startBalance + " / " + f0.startBalance); }
+        // (2)(3) fond 10000 < racun 36000: deo iz fonda + razlika, oba danas; ponistavanje vraca sve
+        g.current = 10000; window.__saveGoals(); go('godisnji'); await sleep(150);
+        const before = entries().length;
+        const btn = document.querySelector('.yc-pay[data-id="smk-y-a"]'); if (btn) { btn.click(); await sleep(150); }
+        const made = entries().slice(before);
+        const g2 = window.__goals().find(x => x.yearlyFund);
+        check('godišnji fix: fond bez dovoljno novca — deo iz fonda, razlika posebno, oba danas', made.length === 2 && made.map(e => e.amount).sort((a, b) => a - b).join(',') === '10000,26000' && made.every(e => e.date === todayIso) && g2.current === 0, JSON.stringify(made.map(e => [e.amount, e.date])));
+        window.__undoTop(); await sleep(150);
+        check('godišnji fix: poništavanje vraća oba rashoda i fond', entries().length === before && window.__goals().find(x => x.yearlyFund).current === 10000);
+      }
+      const gl = window.__goals(); const gi = gl.findIndex(x => x.yearlyFund); if (gi >= 0) gl.splice(gi, 1); window.__saveGoals();
+      [rA, rAuto].forEach(r => { const i = list.indexOf(r); if (i >= 0) list.splice(i, 1); }); window.__recurringRaw.save();
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));

@@ -2165,3 +2165,15 @@ test('prognoza sa fondom godisnjih troskova: pokriveno iz fonda, delimicno, fond
   assert.ok(ev.includes('2026-11-20 Registracija -8000'), JSON.stringify(ev));   // fond 20000 + 10000 pokriva 30000 od 38000
   assert.ok(ev.includes('2026-11-25 Osiguranje -30000'));                       // fond je potrosen
 });
+
+test('godisnji troskovi posle pregleda: zavrsena stavka bez preostale pojave se ne racuna; godisnji zbir za cilj fonda', () => {
+  const rec = [
+    { id: 'kraj', type: 'expense', desc: 'Osiguranje', amount: 24000, day: 5, frequency: 'yearly', anchorMonth: 3, until: '2026-12' },
+    { id: 'plac', type: 'expense', desc: 'Porez', amount: 60000, day: 2, frequency: 'yearly', anchorMonth: 10 },
+    { id: 'kv', type: 'expense', desc: 'Komunalna', amount: 3000, day: 10, frequency: 'quarterly', anchorMonth: 1 }
+  ];
+  const y = C.yearlyCosts(rec, '2026-10-05', { applied: { '2026-10': ['plac', 'kv'] }, skipped: {} });
+  assert.deepEqual(y.items.map(i => i.id).sort(), ['kv', 'plac']);
+  assert.equal(y.steady, Math.round((60000 / 12 + 3000 / 3) * 100) / 100);
+  assert.equal(y.yearTotal, 72000);                                   // 60000 + 4 x 3000 (i kad je placen ovog meseca)
+});

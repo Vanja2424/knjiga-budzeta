@@ -6217,11 +6217,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const rec = recurring.map(r=> Object.assign({}, r, { amount: recurringAmountNow(r) }));
     const dailySpend = C.forecastDailySpend(entries, currentMonthKey(), rec, fixedCategories);
     const fundGoal = goals.find(g=> g.yearlyFund);
-    const fund = fundGoal ? { goalId: fundGoal.id, current: fundGoal.current, itemIds: rec.filter(r=> r.type === 'expense' && (r.frequency === 'yearly' || r.frequency === 'quarterly')).map(r=> r.id) } : null;
+    const fundAcc = fundGoal && accounts.find(a=> a.id === fundGoal.accountId);
+    // novac fonda bez racuna stednje stoji na tekucem racunu: rezervisan je, pa nije raspoloziv za trosenje
+    if(fundGoal && !(fundAcc && fundAcc.type === 'stednja')) start -= Number(fundGoal.current) || 0;
+    // iz fonda se placa samo "Plati iz fonda"; stavke sa automatskim placanjem idu sa svog racuna
+    const fund = fundGoal ? { goalId: fundGoal.id, current: fundGoal.current, itemIds: rec.filter(r=> r.type === 'expense' && !r.autoPay && (r.frequency === 'yearly' || r.frequency === 'quarterly')).map(r=> r.id) } : null;
     const f = C.cashForecast({ today, days: 60, startBalance: C.round2(start), recurring: rec, entries, applied, skipped, goals, dailySpend,
       payday: payday.mode === 'manual' ? payday : null, fund });
     f.dailySpend = C.round2(dailySpend);
     f.startBalance = C.round2(start);
+    f.fundItemIds = fund ? fund.itemIds : [];
     return f;
   }
   const fcDate = iso => { const [y, m, d] = iso.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString(LOCALE, { day: 'numeric', month: 'short' }); };
@@ -6308,8 +6313,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         + `<div class="file-row"><button class="btn-secondary" id="ycFundSync"${off || !g.monthly ? '' : ' disabled'}>${escapeHtml(t('Uskladi plan'))}</button><button class="btn-secondary" id="ycFundOpen">${escapeHtml(t('Otvori Ciljeve'))}</button></div>`;
       document.getElementById('ycFundSync').addEventListener('click', ()=>{
         const cur = yearlyNow();
-        g.monthly = cleanGoalPlan({ amount: cur.recommended, day: g.monthly ? g.monthly.day : 1, since: (g.monthly && g.monthly.since) || currentMonthKey(), last: g.monthly && g.monthly.last });
-        g.target = Math.max(g.target, C.round2(cur.months.reduce((sum, m)=> sum + m.total, 0)));
+        g.monthly = cleanGoalPlan({ amount: cur.recommended, day: g.monthly ? g.monthly.day : 1, since: (g.monthly && g.monthly.since) || yearlyPlanSince(1), last: g.monthly && g.monthly.last });
+        g.target = Math.max(g.target, cur.yearTotal);
         saveGoals(); renderAll();
       });
       document.getElementById('ycFundOpen').addEventListener('click', ()=> showScreen('ciljevi'));
@@ -6332,17 +6337,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       recurring.push(rec); saveRecurring(); renderAll();
     });
   });
+  // Prva mesecna uplata: ovog meseca ako dan uplate jos nije prosao, inace od sledeceg (bez uplate unazad)
+  const yearlyPlanSince = day => C.clampRecurringDay(day) >= new Date().getDate() ? currentMonthKey() : C.addMonths(currentMonthKey(), 1);
   function createYearlyFund(){
     const y = yearlyNow(), NONE = t('— bez računa —');
-    const accs = accounts.filter(a=> a.type === 'stednja').concat(accounts.filter(a=> a.type !== 'stednja'));
+    const accs = accounts.filter(a=> a.type === 'stednja');
     openEditModal(t('Napravi cilj „Godišnji troškovi“'), [
       { key: 'account', label: t('Račun na koji ide novac (opciono)'), type: 'select', value: accs.length && accs[0].type === 'stednja' ? accs[0].name : NONE, options: [NONE].concat(accs.map(a=> a.name)) },
       { key: 'day', label: t('Dan mesečne uplate'), type: 'number', value: 1 }
     ], vals=>{
       if(yearlyFundGoal()) return;
       const acc = accs.find(a=> a.name === vals.account);
-      const goal = { id: newId(), name: t('Godišnji troškovi'), target: Math.max(1, C.round2(y.months.reduce((sum, m)=> sum + m.total, 0))), current: 0, deadline: '', yearlyFund: true,
-        monthly: cleanGoalPlan({ amount: y.recommended, day: vals.day, since: currentMonthKey() }) };
+      const goal = { id: newId(), name: t('Godišnji troškovi'), target: Math.max(1, y.yearTotal), current: 0, deadline: '', yearlyFund: true,
+        monthly: cleanGoalPlan({ amount: y.recommended, day: vals.day, since: yearlyPlanSince(vals.day) }) };
       if(acc) goal.accountId = acc.id;
       goals.push(goal); saveGoals(); renderAll();
     });
@@ -6353,14 +6360,24 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!g || !r || !item || !item.next) return;
     const mKey = item.next.slice(0, 7), amount = recurringAmountNow(r);
     const prev = { applied: (applied[mKey] || []).slice(), skipped: (skipped[mKey] || []).slice(), current: g.current };
-    const entryId = markRecurringPaid(r, mKey, amount);
+    const covered = C.round2(Math.min(Math.max(0, g.current), amount)), rest = C.round2(amount - covered);
+    const entryId = markRecurringPaid(r, mKey, covered > 0 ? covered : amount);
     if(!entryId) return;
+    const today = toISODateLocal(new Date());
+    // placeno danas (ne na dan dospeca), da se ne vrati u prognozu kao buduci trosak
     const e = entries.find(x=> x.id === entryId);
-    if(e && g.accountId && g.current >= amount) e.accountId = g.accountId; // novac iz fonda; ako ga nema dovoljno, sa podrazumevanog racuna
-    g.current = C.round2(Math.max(0, g.current - amount));
+    if(e){ e.date = today; if(covered > 0 && g.accountId) e.accountId = g.accountId; }
+    // razlika koju fond ne pokriva: poseban rashod sa podrazumevanog racuna
+    let restId = null;
+    if(covered > 0 && rest > 0){
+      const extra = { id: newId(), type: 'expense', desc: r.desc, amount: rest, category: r.category, date: today, paid: true, tags: [] };
+      if(accounts.length) extra.accountId = accountById(r.accountId) ? r.accountId : defaultAccountId();
+      entries.push(extra); restId = extra.id;
+    }
+    g.current = C.round2(g.current - covered);
     saveApplied(); saveSkipped(); saveEntries(); saveGoals(); renderAll();
     showUndoToast(t('Plaćeno iz fonda: {0} ({1})', r.desc, fmt(amount)), ()=>{
-      applied[mKey] = prev.applied; skipped[mKey] = prev.skipped; entries = entries.filter(x=> x.id !== entryId); g.current = prev.current;
+      applied[mKey] = prev.applied; skipped[mKey] = prev.skipped; entries = entries.filter(x=> x.id !== entryId && x.id !== restId); g.current = prev.current;
       saveApplied(); saveSkipped(); saveEntries(); saveGoals(); renderAll();
     });
   }
