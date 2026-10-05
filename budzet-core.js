@@ -2092,6 +2092,67 @@
     return Array.from({ length: n }, (_, i) => cats.find(c => foldText(c) === foldText(list[i] || '')) || '');
   }
 
+  // Mesecne uplate u cilj (plan g.monthly) od danas do kraja prozora, dok cilj nije ispunjen
+  function goalDeposits(g, today, end){
+    const p = g && g.monthly, amount = p ? Number(p.amount) : 0;
+    if(!p || !(amount > 0) || !/^\d{4}-\d{2}$/.test(p.since || '')) return [];
+    let left = round2((Number(g.target) || 0) - (Number(g.current) || 0));
+    const out = [];
+    monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
+      if(left <= 0 || mKey < p.since || (p.last && mKey <= p.last)) return;
+      const date = mKey + '-' + pad2(effectiveDay(p.day, mKey));
+      if(date < today || date > end) return;
+      const a = Math.min(amount, left); left = round2(left - a);
+      out.push({ date, amount: round2(a) });
+    });
+    return out;
+  }
+  // ---------- Veliki godisnji troskovi: godisnje i tromesecne ponavljajuce stavke ----------
+  const monthsBetween = (a, b) => { const [ya, ma] = a.split('-').map(Number), [yb, mb] = b.split('-').map(Number); return (yb - ya) * 12 + (mb - ma); };
+  function yearlyOccurrences(recurring, today, o, months){
+    const cur = today.slice(0, 7);
+    const items = (recurring || []).filter(r => r && r.type === 'expense' && r.amount > 0 && (r.frequency === 'yearly' || r.frequency === 'quarterly') && (!r.until || r.until >= cur));
+    const list = [];
+    for(let k = 0; k < months; k++){
+      const mKey = addMonths(cur, k);
+      items.forEach(r => { if(isDueInMonth(r, mKey) && !isRecurringPaid(o.applied, r, mKey) && !isRecurringSkipped(o.skipped, r, mKey)) list.push({ r, mKey, date: dueDateFor(r, mKey) }); });
+    }
+    return { items, list };
+  }
+  // Traka za 12 meseci, sledeci put po stavci, mesecno odvajanje (dugorocno i "da sve stigne na vreme") i teski meseci
+  function yearlyCosts(recurring, today, opts){
+    const o = opts || {}, cur = today.slice(0, 7);
+    const { items, list } = yearlyOccurrences(recurring, today, o, 24);
+    const months = Array.from({ length: 12 }, (_, k) => {
+      const mKey = addMonths(cur, k);
+      const its = list.filter(x => x.mKey === mKey).map(x => ({ id: x.r.id, desc: x.r.desc || '', amount: round2(x.r.amount), date: x.date }));
+      return { mKey, items: its, total: round2(its.reduce((sum, i) => sum + i.amount, 0)) };
+    });
+    const out = items.map(r => {
+      const n = list.find(x => x.r.id === r.id);
+      const monthsLeft = n ? Math.max(1, monthsBetween(cur, n.mKey) + 1) : 12;
+      return { id: r.id, desc: r.desc || '', amount: round2(r.amount), frequency: r.frequency, next: n ? n.date : null, monthsLeft, perMonth: round2(r.amount / monthsLeft) };
+    }).sort((a, b) => String(a.next).localeCompare(String(b.next)));
+    const steady = round2(items.reduce((sum, r) => sum + monthlyEquivalent(r), 0));
+    const fundBal = Math.max(0, Number(o.fundBalance) || 0);
+    let cum = 0, catchUp = 0;
+    months.forEach((m, k) => { cum += m.total; catchUp = Math.max(catchUp, (cum - fundBal) / (k + 1)); });
+    catchUp = round2(Math.max(0, catchUp));
+    const recommended = items.length ? Math.ceil(Math.max(steady, catchUp) / 100) * 100 : 0;
+    const withCost = months.filter(m => m.total > 0);
+    const avg = withCost.length ? withCost.reduce((sum, m) => sum + m.total, 0) / withCost.length : 0;
+    const heavy = months.filter(m => m.total >= 10000 && m.total > avg * 1.5).map(m => m.mKey);
+    return { months, items: out, steady, catchUp, recommended, heavy };
+  }
+  // Podsetnik: godisnji/tromesecni trosak od bar minAmount koji dospeva u narednih `days` dana (ili je dospeo ovog meseca, a nije placen)
+  function yearlyReminders(recurring, today, opts){
+    const o = opts || {}, days = o.days || 30, min = o.minAmount == null ? 5000 : o.minAmount;
+    const limit = isoOfDay(dayNumber(today) + days), monthStart = today.slice(0, 7) + '-01';
+    return yearlyOccurrences(recurring, today, o, 3).list
+      .filter(x => x.date >= monthStart && x.date <= limit && x.r.amount >= min)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map(x => ({ id: x.r.id, desc: x.r.desc || '', amount: round2(x.r.amount), date: x.date }));
+  }
   // ---------- Prognoza do plate: stanje po danu za narednih N dana ----------
   // Ulazi: pocetno stanje (racuni bez stednje), ponavljajuce (iznos vec u RSD), upisane neplacene i buduce stavke,
   // mesecne uplate u ciljeve i svakodnevna potrosnja (prosek promenljivih troskova). Plata: najveci ponavljajuci
@@ -2156,24 +2217,24 @@
         && !recurring.some(o2 => o2 !== x.r && o2.type === c.type && fcNameMatch(c, o2)));
       if(e){ used.add(e.id); covered.add(i); }
     });
-    occ.forEach((x, i) => { if(!covered.has(i)) add(x.date, x.r.desc, x.r.type === 'income' ? x.r.amount : -x.r.amount, 'recurring'); });
+    const fund = o.fund && Array.isArray(o.fund.itemIds) ? o.fund : null;
+    const deps = fund ? goalDeposits((o.goals || []).find(g => g && g.id === fund.goalId), today, end) : [];
+    let fundBal = fund ? Math.max(0, Number(fund.current) || 0) : 0, di = 0;
+    occ.forEach((x, i) => {
+      if(covered.has(i)) return;
+      let amt = x.r.amount;
+      if(fund && x.r.type === 'expense' && fund.itemIds.includes(x.r.id)){
+        while(di < deps.length && deps[di].date <= x.date) fundBal = round2(fundBal + deps[di++].amount);
+        const c = Math.min(fundBal, amt); fundBal = round2(fundBal - c); amt = round2(amt - c);
+      }
+      if(amt > 0) add(x.date, x.r.desc, x.r.type === 'income' ? amt : -amt, 'recurring');
+    });
     entries.forEach(e => {
       if(!e || e.type === 'transfer') return;
       if(e.type === 'expense' && (e.paid === false || e.date > today)) add(e.date, e.desc, -e.amount, 'entry');
       else if(e.type === 'income' && e.date > today) add(e.date, e.desc, e.amount, 'entry');
     });
-    (o.goals || []).forEach(g => {
-      const p = g && g.monthly, amount = p ? Number(p.amount) : 0;
-      if(!p || !(amount > 0) || !/^\d{4}-\d{2}$/.test(p.since || '')) return;
-      let left = round2((Number(g.target) || 0) - (Number(g.current) || 0));
-      monthRange(today.slice(0, 7), end.slice(0, 7)).forEach(mKey => {
-        if(left <= 0 || mKey < p.since || (p.last && mKey <= p.last)) return;
-        const date = mKey + '-' + pad2(effectiveDay(p.day, mKey));
-        if(date < today) return;
-        const a = Math.min(amount, left); left = round2(left - a);
-        add(date, g.name || g.desc || '', -a, 'goal');
-      });
-    });
+    (o.goals || []).forEach(g => goalDeposits(g, today, end).forEach(d => add(d.date, g.name || g.desc || '', -d.amount, 'goal')));
     let payday = null;
     if(manual){ payday = { date: manual.date, amount: round2(manual.amount), source: 'manual', desc: '' }; add(manual.date, '', manual.amount, 'payday'); }
     else if(salary){
@@ -2248,7 +2309,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
