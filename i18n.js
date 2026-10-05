@@ -703,7 +703,7 @@
     'Stavke': 'Items',
     'Sledeći put': 'Next time',
     'Meseci do tada': 'Months until then',
-    'Odvoji mesečno': 'Set aside monthly',
+    'Odvoji mesečno': 'Set aside monthly',    'Otvori račun na sajtu Poreske uprave': 'Open the receipt on the Tax Administration website',
   };
 
   // Spajanja teksta koja nisu kroz t() (prefiks + vrednost)

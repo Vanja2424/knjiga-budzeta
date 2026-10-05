@@ -1656,6 +1656,14 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-row{ display:grid; grid-template-columns:22px minmax(0,1fr) auto auto auto auto; gap:0.7em; align-items:center; padding:0.45em 0; border-bottom:1px solid var(--paper-line); }
 .shop-name{ min-width:0; overflow-wrap:anywhere; }
 .shop-meta{ font-size:12.5px; color:var(--ink-soft); font-variant-numeric:tabular-nums; }
+.entry-items-details{ font-size:12px; color:var(--ink-soft); margin-top:0.15em; }
+.entry-items-details summary{ cursor:default; list-style:none; }
+.entry-items-details summary::-webkit-details-marker{ display:none; }
+.entry-items-details summary::before{ content:'▸ '; }
+.entry-items-details[open] summary::before{ content:'▾ '; }
+.entry-items-details ul{ margin:0.3em 0 0.2em 1em; padding:0; list-style:none; }
+.entry-items-details li{ display:flex; justify-content:space-between; gap:1em; max-width:28em; padding:0.1em 0; border-bottom:1px dotted var(--paper-line); }
+.entry-items-details li span:last-child{ font-variant-numeric:tabular-nums; white-space:nowrap; }
 .yc-summary{ margin:0.6em 0 1em; }
 .yc-summary .yc-big{ font-size:18px; font-weight:600; }
 .yc-summary .yc-sub{ font-size:12.5px; color:var(--ink-soft); margin-top:0.2em; }
@@ -3488,6 +3496,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return (tags || []).map(t=>`<span class="tag-chip">#${escapeHtml(t)}</span>`).join('');
   }
   // "Mleko (2 kom), Hleb, Jaja +3" — ceo spisak u tooltip-u
+  // Artikli rashoda koji se otvaraju klikom: svaki artikal sa cenom (ako je poznata)
+  function itemsDetailsHtml(e){
+    const items = Array.isArray(e.items) ? e.items : [];
+    if(!items.length) return '';
+    const prices = Array.isArray(e.itemPrices) && e.itemPrices.length === items.length ? e.itemPrices : [];
+    const shown = items.slice(0, 3).join(', ') + (items.length > 3 ? ' +' + (items.length - 3) : '');
+    return `<details class="entry-items-details" translate="no"><summary>${escapeHtml(shown)}</summary><ul>`
+      + items.map((it, i)=> `<li><span>${escapeHtml(it)}</span>${typeof prices[i] === 'number' ? `<span>${escapeHtml(fmtNum(prices[i], 2))}</span>` : ''}</li>`).join('')
+      + '</ul></details>';
+  }
   function itemsSummaryHtml(items){
     if(!Array.isArray(items) || !items.length) return '';
     const shown = items.slice(0, 3).join(', ') + (items.length > 3 ? ' +' + (items.length - 3) : '');
@@ -5404,6 +5422,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const items = C.sufItems(res.spec) || C.sufJournalItems(page.journal);
     if(!items.length && page.total == null) return fail(t('nema podataka o računu'));
     const reading = C.sufReading(page, items);
+    reading.fiscalUrl = url;
     await fiscalCategories(reading);
     return { reading };
   }
@@ -5473,7 +5492,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function mergedReceiptState(parts){
     const merged = C.mergeReceiptParts(parts.map(p=> p.reading)) || { store: '', date: '', total: null, items: [] };
     const items = receiptItemsWithCategories(merged.items);
-    return { items: items.length ? items : [emptyReceiptItem()], store: merged.store || '', date: merged.date || toISODateLocal(new Date()), total: merged.total };
+    const fiscalUrl = parts.map(p=> p.reading && p.reading.fiscalUrl).find(Boolean) || '';
+    return { items: items.length ? items : [emptyReceiptItem()], store: merged.store || '', date: merged.date || toISODateLocal(new Date()), total: merged.total, fiscalUrl };
   }
   function rebuildReceiptItems(){
     const st = mergedReceiptState(receipt.parts);
@@ -5481,6 +5501,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!receipt.storeTouched) receipt.store = st.store;
     if(!receipt.dateTouched) receipt.date = st.date;
     if(!receipt.totalTouched) receipt.total = st.total;
+    receipt.fiscalUrl = st.fiscalUrl;
   }
   function renderReceipt(){
     const p = receipt.parts[receipt.page];
@@ -5598,10 +5619,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!d.confirmed && total > 0 && C.findReceiptDuplicate(entries, date, total) && !(await appConfirm(t('Ovaj račun je možda već unet ({0}). Ipak dodati?', date)))) return { ok: false, cancelled: true };
     const r = { parts: d.parts || [] };
     // prilozi: sve slike delova; neuspeh priloga ne blokira rashode
-    const attachments = (d.attachments || []).filter(Boolean).concat(r.parts.filter(p=> p.savedName).map(p=> p.savedName));
+    // racun sa Poreske uprave (QR/link): bez slike u Prilozima — rashod pamti link ka racunu
+    const fiscalUrl = C.fiscalUrlFrom(d.fiscalUrl || '');
+    const attachments = fiscalUrl ? [] : (d.attachments || []).filter(Boolean).concat(r.parts.filter(p=> p.savedName).map(p=> p.savedName));
     let photoFailed = 0, photoTotal = 0;
     const saveFile = fakeSaveFile || (window.desktop && window.desktop.bills && window.desktop.bills.saveFile);
-    if(saveFile){
+    if(saveFile && !fiscalUrl){
       for(let i = 0; i < r.parts.length; i++){
         const pr = r.parts[i].prep; if(r.parts[i].savedName || !pr || !pr.bytes) continue;
         photoTotal++;
@@ -5618,6 +5641,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const qtyLabel = i => { const u = C.normUnit(i.unit) || i.unit || 'kom'; return (i.qty > 1 || (u !== 'kom' && i.unit)) ? `${fmtNum(i.qty, 3)} ${u}` : ''; };
     const made = rows.map(row=>{
       const e = { id: newId(), type: 'expense', desc: store || t('Nabavka'), amount: row.amount, category: row.category, date, paid: true, tags: ['nabavka'], receiptId };
+      if(fiscalUrl) e.fiscalUrl = fiscalUrl;
       // nazivi se cuvaju na srpskom (red razlike, stavka bez naziva), bez obzira na jezik aplikacije
       if(row.items.length) Object.assign(e, {
         items: row.items.map(i=> C.purchaseItemLabel({ name: C.canonicalItemName(i.name) || i.raw || 'Stavka', qty: qtyLabel(i) })),
@@ -5649,7 +5673,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!receipt || receipt.busy) return;
     const r = receipt;
     rEl('receiptSave').disabled = true;
-    const res = await saveReceiptData({ items: r.items, store: rEl('receiptStore').value, date: rEl('receiptDate').value, total: rEl('receiptTotal').value, parts: r.parts });
+    const res = await saveReceiptData({ items: r.items, store: rEl('receiptStore').value, date: rEl('receiptDate').value, total: rEl('receiptTotal').value, parts: r.parts, fiscalUrl: r.fiscalUrl });
     if(receipt !== r) return;
     if(!res.ok){ rEl('receiptSave').disabled = false; if(res.error) rEl('receiptStatus').textContent = res.error; return; }
     closeReceipt(true);
@@ -5804,6 +5828,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(p.fiscalUrl){
       const f = await readFiscal(p.fiscalUrl);
       if(f.reading){
+        if(pend.file && window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); // podaci su sa Poreske, slika ne treba
+        delete pend.file;
         Object.assign(pend, { kind: 'receipt', fiscal: true, state: mergedReceiptState([{ reading: f.reading }]) });
         tgPendingPut(pend);
         return tgReply(tgReceiptSummary(pend.state, pend), Object.assign({}, edit, { buttons: tgButtons(pend, [{ text: '✓ ' + t('Sačuvaj'), data: 's:' + pend.id }]) }));
@@ -5824,6 +5850,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const part = { prep: await prepareBillFile(file, receiptPrepOpts) };
       await readReceiptPart(part, 0);
       pend.fiscal = !!(part.reading && part.reading.source === 'fiscal');
+      if(pend.fiscal && pend.file){ if(window.desktop && window.desktop.bills) window.desktop.bills.deleteFile(pend.file); delete pend.file; }
       if(part.errorKind === 'limit') return busyRetry();
       if(part.error) return fail(part.error);
       pend.state = mergedReceiptState([part]);
@@ -9136,6 +9163,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(Array.isArray(copy.items)) copy.items = copy.items.slice();
     if(Array.isArray(copy.itemPrices)) copy.itemPrices = copy.itemPrices.slice();
     if(Array.isArray(copy.itemQty)) copy.itemQty = copy.itemQty.map(q=> Object.assign({}, q));
+    delete copy.fiscalUrl;
     entries.push(copy);
     newEntryId = copy.id;
     saveEntries(); renderAll();
@@ -9170,9 +9198,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         return `<tr data-row-id="${e.id}" class="${newEntryId===e.id?'row-enter':''} ${!paid?'expense-pending':''}">
           <td class="paid-check"><input type="checkbox" class="row-select" data-id="${e.id}" ${selectedExpenseIds.has(e.id)?'checked':''} title="Izaberi"></td>
           <td class="paid-check"><input type="checkbox" data-paid-id="${e.id}" ${paid?'checked':''} title="Plaćeno"></td>
-          <td>${d}</td><td>${escapeHtml(e.desc)}${itemsSummaryHtml(e.items)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
+          <td>${d}</td><td>${escapeHtml(e.desc)}${itemsDetailsHtml(e)}</td><td>${catTagHtml(e.category)}${!paid?'<span class="pending-inline-tag">na čekanju</span>':''}${tagsHtml(e.tags)}${accountTag(e)}${spreadTag(e)}</td>
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
-          <td class="row-actions">${e.attachments && e.attachments.length && window.desktop ? (isSlipAttachment(e.attachments[0])
+          <td class="row-actions">${e.fiscalUrl ? `<button class="att-btn fiscal-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun na sajtu Poreske uprave'))}">🧾</button>` : ''}${!e.fiscalUrl && e.attachments && e.attachments.length && window.desktop ? (isSlipAttachment(e.attachments[0])
             ? `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori uplatnicu'))}">📎</button>`
             : `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button><button class="btn-link warranty-btn" data-id="${e.id}" title="${escapeHtml(t('Dodaj garanciju za ovu kupovinu'))}">${escapeHtml(t('+ garancija'))}</button>`) : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
@@ -9200,7 +9228,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       body.querySelectorAll('.warranty-btn').forEach(b=>{
         b.addEventListener('click', ()=>{ const entry = entries.find(e=> e.id === b.dataset.id); if(entry) openWarrantyFromEntry(entry); });
       });
-      body.querySelectorAll('.att-btn').forEach(b=>{
+      body.querySelectorAll('.fiscal-btn').forEach(b=>{
+        b.addEventListener('click', ()=>{ const entry = entries.find(e=> e.id === b.dataset.id); const url = entry && C.fiscalUrlFrom(entry.fiscalUrl); if(url) window.open(url); });
+      });
+      body.querySelectorAll('.att-btn:not(.fiscal-btn)').forEach(b=>{
         b.addEventListener('click', async ()=>{
           const entry = entries.find(e=>e.id === b.dataset.id);
           if(!entry || !entry.attachments || !window.desktop || !window.desktop.bills) return;
@@ -10687,6 +10718,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     ).map(e => { const o = Object.assign({}, e, { desc: String(e.desc == null ? '' : e.desc), category: String(e.category || 'Ostalo'), tags: Array.isArray(e.tags) ? e.tags.map(String) : [] });
       if(Array.isArray(e.items)) o.items = e.items.map(String); else delete o.items;
       if(typeof e.receiptId === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(e.receiptId)) o.receiptId = e.receiptId; else delete o.receiptId;
+      if(typeof e.fiscalUrl === 'string' && C.fiscalUrlFrom(e.fiscalUrl) === e.fiscalUrl) o.fiscalUrl = e.fiscalUrl; else delete o.fiscalUrl;
       const att = Array.isArray(e.attachments) ? e.attachments.filter(C.isAttachmentName) : [];
       if(att.length) o.attachments = att; else delete o.attachments;
       if(Array.isArray(o.items) && Array.isArray(e.itemPrices) && e.itemPrices.length === o.items.length) o.itemPrices = e.itemPrices.map(p=> (typeof p === 'number' && isFinite(p) && p >= 0) ? p : null); else delete o.itemPrices;
@@ -11013,7 +11045,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   function buildWorkbook(dataTimestamp){
     const wb = XLSX.utils.book_new();
-    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), CeneStavki: Array.isArray(e.itemPrices) ? JSON.stringify(e.itemPrices) : '', Kolicine: Array.isArray(e.itemQty) ? JSON.stringify(e.itemQty) : '', DugID: e.debtId || '', RacunID: e.receiptId || '', Prilozi: (e.attachments || []).join('; ')})));
+    const wsStavke = XLSX.utils.json_to_sheet(entries.filter(e=> e.type === 'income' || e.type === 'expense').map(e=>({ID:e.id, Datum:e.date, Opis:e.desc, Kategorija:e.category, Tip:e.type, Iznos:e.amount, Placeno: e.type==='expense' ? (isExpensePaid(e)?'da':'ne') : '', Oznake:(e.tags||[]).join(', '), Racun: e.accountId ? accountName(e.accountId) : '', Valuta: e.currency || '', IznosUValuti: e.origAmount || '', Kurs: e.rate || '', PokrivaMeseci: isSpread(e) ? parseInt(e.spreadMonths, 10) : '', OdMeseca: isSpread(e) ? (e.spreadStart || '') : '', Kupljeno: C.itemsToCell(e.items), CeneStavki: Array.isArray(e.itemPrices) ? JSON.stringify(e.itemPrices) : '', Kolicine: Array.isArray(e.itemQty) ? JSON.stringify(e.itemQty) : '', DugID: e.debtId || '', RacunID: e.receiptId || '', FiskalniLink: e.fiscalUrl || '', Prilozi: (e.attachments || []).join('; ')})));
     XLSX.utils.book_append_sheet(wb, wsStavke, 'Stavke');
     if(accounts.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accounts.map(a=>({ID:a.id, Naziv:a.name, Vrsta:a.type, PocetnoStanje:a.openingBalance||0}))), 'Racuni');
@@ -11128,6 +11160,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         ...itemArraysFromCells(C.cellToItems(r.Kupljeno).length, r.CeneStavki, r.Kolicine),
         ...(r.DugID ? { debtId: String(r.DugID) } : {}),
         ...(/^[A-Za-z0-9_-]{1,64}$/.test(String(r.RacunID || '')) ? { receiptId: String(r.RacunID) } : {}),
+        ...(C.fiscalUrlFrom(String(r.FiskalniLink || '')) ? { fiscalUrl: C.fiscalUrlFrom(String(r.FiskalniLink)) } : {}),
         ...((att => att.length ? { attachments: att } : {})(String(r.Prilozi || '').split(';').map(x=> x.trim()).filter(C.isAttachmentName)))
       };
     });
