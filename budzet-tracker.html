@@ -5732,15 +5732,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const set = new Set(item.ids), gone = entries.filter(e=> set.has(e.id));
     gone.forEach(e=>{ if(e.type === 'expense') unapplyRoundUpSaving(e.amount); });
     if(gone.length){ entries = entries.filter(e=> !set.has(e.id)); saveEntries(); }
-    (item.shopping || []).forEach(b=>{ const it = shopping.items.find(x=> x.id === b.id); if(it){ it.needed = b.needed; it.checked = b.checked; it.price = b.price; } });
+    (item.shopping || []).forEach(b=>{ const it = shopping.items.find(x=> x.id === b.id); if(it){ it.needed = b.needed; it.checked = b.checked; it.price = b.price; if('qty' in b) it.qty = b.qty; } });
     if((item.shopping || []).length) saveShopping();
     // radnja iz naredbe: vrati tacno prethodno stanje
     const a = item.act;
-    if(a && a.kind === 'recPaid'){ applied[a.mKey] = a.prev.applied; skipped[a.mKey] = a.prev.skipped; entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries(); }
+    if(a && a.kind === 'recPaid'){
+      applied[a.mKey] = (applied[a.mKey] || []).filter(id=> id !== a.id);
+      if(a.wasSkipped){ if(!skipped[a.mKey]) skipped[a.mKey] = []; if(!skipped[a.mKey].includes(a.id)) skipped[a.mKey].push(a.id); }
+      entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
+    }
     if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; saveEntries(); } }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
-    if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = a.prev; saveDebts(); syncDebtInstallments(); } }
-    if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = a.prev; saveGoals(); } }
+    if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = Math.max(0, C.round2((d.paidAmount || 0) - a.amount)); saveDebts(); syncDebtInstallments(); } }
+    if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = Math.max(0, C.round2(g.current - a.amount)); saveGoals(); } }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
     if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id)){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
@@ -5768,7 +5772,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   async function tgText(text, p){
     const fiscalUrl = C.fiscalUrlFrom(text);
-    if(fiscalUrl) return tgFiscalLink(fiscalUrl, p);
+    if(fiscalUrl){ tgAwait = null; return tgFiscalLink(fiscalUrl, p); }
     const intent = C.telegramIntent(text);
     const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS ? tgAwait : null;
     if(intent.kind === 'command'){
@@ -5881,7 +5885,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   function tgFillTarget(x, c, a){
     x.targetId = c.id; x.targetKind = c.targetKind; x.label = c.name; x.needAmount = false;
-    if(x.kind === 'paid' || x.kind === 'skip') x.amount = (x.kind === 'paid' && a.amount) || c.amount;
+    const rec = c.targetKind === 'recurring' ? recurring.find(r=> r.id === c.id) : null;
+    if(x.kind === 'paid' || x.kind === 'skip'){ x.userAmount = x.kind === 'paid' && !!a.amount; x.amount = x.userAmount ? a.amount : rec ? suggestedPayAmount(rec) : c.amount; }
     if(x.kind === 'debtPay'){ x.rest = c.amount; if(a.amount) x.amount = Math.min(a.amount, c.amount); else x.needAmount = true; }
     if(x.kind === 'goalPay' && !a.amount) x.needAmount = true;
     if(x.kind === 'editLast'){ x.oldAmount = c.amount; if(a.amount) x.amount = a.amount; else { x.amount = null; x.newDesc = a.target; } }
@@ -5912,7 +5917,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       else m = C.matchActionTarget(a.target, cands);
       // "poslednji": medju jednako dobrim pogocima uzmi najnoviji
       if(last && m.choices){ const ids = m.choices.map(c=> c.id); m = { match: cands.filter(c=> ids.includes(c.id)).pop() }; }
-      if(m.none && a.kind === 'paid'){ cands = tgCandidates('paidAll'); m = C.matchActionTarget(a.target, cands); }
+      if(a.kind === 'paid'){ const ids = new Set(cands.map(c=> c.id)); cands = cands.concat(tgCandidates('paidAll').filter(c=> !ids.has(c.id))); m = C.matchActionTarget(a.target, cands); }
       if(m.none) return tgReply(last ? t('Nema unosa iz bota u poslednja 24 sata.') : t('Nisam našao „{0}“.', a.target));
       if(m.choices){
         x.choices = m.choices.map(c=> cands.find(k=> k.id === c.id)); x.req = { amount: a.amount, target: a.target };
@@ -5932,7 +5937,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     tgPropPut(x);
     return tgReply(tgProposalText(x), { buttons: tgConfirmButtons(x) });
   }
-  const shopSnap = list => list.map(it=> ({ id: it.id, needed: it.needed, checked: it.checked, price: it.price }));
+  const shopSnap = list => list.map(it=> ({ id: it.id, needed: it.needed, checked: it.checked, price: it.price, qty: it.qty }));
   // Izvrsenje potvrdjenog predloga; stanje se proverava ponovo (moglo je da se promeni u aplikaciji)
   function tgExecute(x){
     const mKey = currentMonthKey();
@@ -5945,12 +5950,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'paid' && x.targetKind === 'recurring'){
       const r = recurring.find(y=> y.id === x.targetId);
       if(!r || isPaid(r, mKey)) return { already: true };
-      const prev = { applied: (applied[mKey] || []).slice(), skipped: (skipped[mKey] || []).slice() };
-      const id = markRecurringPaid(r, mKey, x.amount);
+      const wasSkipped = isSkipped(r, mKey);
+      const id = markRecurringPaid(r, mKey, x.userAmount ? x.amount : undefined);
       if(!id) return { already: true };
       saveApplied(); saveSkipped(); saveEntries();
       const e = entries.find(y=> y.id === id);
-      return { text: t('{0} plaćeno ({1})', r.desc, fmt(e ? e.amount : x.amount)), ids: [], act: { kind: 'recPaid', mKey, entryId: id, prev } };
+      return { text: t('{0} plaćeno ({1})', r.desc, fmt(e ? e.amount : x.amount)), ids: [], act: { kind: 'recPaid', mKey, id: r.id, entryId: id, wasSkipped } };
     }
     if(x.kind === 'paid'){
       const e = entries.find(y=> y.id === x.targetId);
@@ -5970,19 +5975,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'debtPay'){
       const d = debts.find(y=> y.id === x.targetId), rem = d ? debtRemaining(d) : 0;
       if(!d || rem <= 0) return { already: true };
-      const amt = Math.min(x.amount, rem), prev = d.paidAmount || 0;
-      d.paidAmount = C.round2(prev + amt); saveDebts();
+      const amt = Math.min(x.amount, rem);
+      d.paidAmount = C.round2((d.paidAmount || 0) + amt); saveDebts();
       if(debtRemaining(d) <= 0) syncDebtInstallments();
-      return { text: t('Uplata {0} na dug {1}, ostaje {2}', fmt(amt), d.person, fmt(debtRemaining(d))), ids: [], act: { kind: 'debt', id: d.id, prev } };
+      return { text: t('Uplata {0} na dug {1}, ostaje {2}', fmt(amt), d.person, fmt(debtRemaining(d))), ids: [], act: { kind: 'debt', id: d.id, amount: amt } };
     }
     if(x.kind === 'goalPay'){
       const g = goals.find(y=> y.id === x.targetId);
       if(!g) return { already: true };
-      const prev = g.current, trId = contributeToGoal(g, x.amount);
-      return { text: t('Uplaćeno {0} u cilj {1}', fmt(x.amount), g.name), ids: trId ? [trId] : [], act: { kind: 'goal', id: g.id, prev } };
+      const trId = contributeToGoal(g, x.amount);
+      return { text: t('Uplaćeno {0} u cilj {1}', fmt(x.amount), g.name), ids: trId ? [trId] : [], act: { kind: 'goal', id: g.id, amount: x.amount } };
     }
     if(x.kind === 'shopAdd'){
-      const before = shopSnap(shopping.items), created = [];
+      const before = shopSnap(x.items.map(n=> C.findShoppingItem(shopping.items, C.parseShoppingInput(n).name)).filter(Boolean)), created = [];
       x.items.forEach(n=>{ const r = addShoppingFromInput(n); if(r && r.created) created.push(r.item.id); });
       return { text: t('Na spisku: {0}', x.items.join(', ')), ids: [], shopping: before, act: { kind: 'shopAdd', created } };
     }
@@ -6051,7 +6056,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     let out = { replies: [] };
     if(p.kind === 'text') out = await tgText(p.text, p);
     else if(p.kind === 'callback') out = await tgCallback(p);
-    else if(p.kind === 'file') out = await tgFile(p); // Task 5
+    else if(p.kind === 'file'){ tgAwait = null; out = await tgFile(p); } // Task 5
     tgSave(TG_DONE_KEY, tgLoad(TG_DONE_KEY).concat(p.update_id).slice(-500));
     if(window.__desktopBridge && window.__desktopBridge.flush){ try{ await window.__desktopBridge.flush(); } catch(e){ /* sledece cuvanje */ } }
     return out;
@@ -6783,7 +6788,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!plan){ addAskCard(question, t('AI odgovor nije mogao da se pročita.'), [req1.prompt], null, true); return; }
       if(plan.offTopic){ addAskCard(question, t('Mogu da odgovorim samo na pitanja o tvom budžetu.'), [req1.prompt], plan.notes); return; }
       if(!plan.calls.length){ addAskCard(question, t('Za ovo pitanje nema podataka u knjizi.'), [req1.prompt], plan.notes); return; }
-      const results = C.runAskTools(plan.calls, { entries, recurring, today: toISODateLocal(new Date()) });
+      const results = C.runAskTools(plan.calls, { entries, recurring, today: toISODateLocal(new Date()), snapshot: tgSnapshot() });
       const req2 = { images: [], text: '', prompt: C.askAnswerPrompt({ question, today: toISODateLocal(new Date()), results, lang: askLangOverride || I18N.lang }) };
       const r2 = await askCall(req2, 2);
       if(!r2 || !r2.ok){ addAskCard(question, askErr(r2), [req1.prompt, req2.prompt], plan.notes, true); return; }

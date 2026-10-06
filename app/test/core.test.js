@@ -2286,3 +2286,8 @@ test('pendingForMonth: spisak stavki i dugova za bota', () => {
   assert.deepEqual(p.items, [{ kind: 'expense', id: 'a', desc: 'Drva', amount: 56160, date: '2026-10-01' }, { kind: 'recurring', id: 'p', desc: 'Porez', amount: 8000, day: 1 }]);
   assert.deepEqual(p.debtItems, [{ id: 'g', person: 'Gabo', rest: 1000 }]);
 });
+
+test('matchActionTarget posle pregleda: kratke reci (na, za, u) se ne broje', () => {
+  assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }]), { none: true });
+  assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }, { id: 'p', name: 'Porez na imovinu' }]), { match: { id: 'p', name: 'Porez na imovinu' } });
+});

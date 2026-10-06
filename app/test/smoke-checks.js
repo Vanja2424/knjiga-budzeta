@@ -2627,6 +2627,71 @@
       act({ kind: 'paid', target: 'nepostojeca stavka xyz' });
       const nf = await send('platila sam xyz');
       check('naredba: nepoznata meta', /Nisam našao/.test(txt(nf)), txt(nf));
+      // posle pregleda: iznos sa racuna, pogodak medju svim stavkama, Ponisti samo svoje promene, /nov pa fajl
+      go('ponavljajuce'); await sleep(50);
+      for (const [d, a] of [['Smoke cmd voda', '1000'], ['Smoke cmd gas', '2000'], ['Smoke cmd imovina', '3000']]) {
+        setVal('recDesc', d); setVal('recAmount', a); setVal('recDay', '1'); $('recAutoPay').checked = false;
+        $('recurringForm').requestSubmit(); await sleep(100);
+      }
+      const recV = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke cmd voda');
+      const recG = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke cmd gas');
+      const recI = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke cmd imovina');
+      const bs = window.__bills();
+      const bill = { id: 'smkbill1', locationId: (bs.locations[0] || {}).id, billTypeId: (bs.billTypes[0] || {}).id, month: curM, amount: 1234, recurringId: recV.id };
+      bs.bills.push(bill);
+      act({ kind: 'paid', target: 'smoke cmd voda' });
+      const pv = await send('platila sam smoke cmd vodu');
+      check('pregled: plaćanje predlaže iznos sa vezanog računa', /1[.,]234/.test(txt(pv)), txt(pv));
+      await click(btn(pv, /^n:/).data);
+      bs.bills.splice(bs.bills.indexOf(bill), 1);
+      window.__markRecurringPaid(recI.id);
+      act({ kind: 'paid', target: 'smoke cmd imovina' });
+      const pi = await send('platila sam smoke cmd imovina');
+      check('pregled: tačan pogodak među svim stavkama pobeđuje slab u Za plaćanje', /imovina/.test(txt(pi)) && !/Na šta/.test(txt(pi)), txt(pi));
+      if (btn(pi, /^n:/)) await click(btn(pi, /^n:/).data);
+      // Ponisti prve radnje ne brise drugu
+      act({ kind: 'paid', target: 'smoke cmd voda' });
+      const ua = await click(btn(await send('platila sam vodu'), /^c:/).data);
+      act({ kind: 'paid', target: 'smoke cmd gas' });
+      await click(btn(await send('platila sam gas'), /^c:/).data);
+      await click(btn(ua, /^u:/).data);
+      check('pregled: Poništi plaćanja ne dira kasnije plaćeno', !isApplied(recV.id) && isApplied(recG.id), JSON.stringify(O('budzet-primenjeno-v1')[curM]));
+      act({ kind: 'debtPay', target: 'smoke rale', amount: 5000 });
+      const da = await click(btn(await send('vratila sam raletu 5000'), /^c:/).data);
+      act({ kind: 'debtPay', target: 'smoke rale', amount: 3000 });
+      const db = await click(btn(await send('vratila sam raletu 3000'), /^c:/).data);
+      await click(btn(da, /^u:/).data);
+      check('pregled: Poništi uplate na dug ne briše kasniju uplatu', debt('Smoke Rale')[0].paidAmount === 3000, JSON.stringify(debt('Smoke Rale')));
+      await click(btn(db, /^u:/).data);
+      const gg0 = goal().current;
+      act({ kind: 'goalPay', target: 'smoke letovanje', amount: 1000 });
+      const ga = await click(btn(await send('stavi 1000 u letovanje'), /^c:/).data);
+      act({ kind: 'goalPay', target: 'smoke letovanje', amount: 2000 });
+      const gb = await click(btn(await send('stavi 2000 u letovanje'), /^c:/).data);
+      await click(btn(ga, /^u:/).data);
+      check('pregled: Poništi uplate u cilj ne briše kasniju uplatu', goal().current === gg0 + 2000, JSON.stringify(goal()));
+      await click(btn(gb, /^u:/).data);
+      act({ kind: 'shopAdd', items: ['Smoke s0'] });
+      await click(btn(await send('dodaj smoke s0'), /^c:/).data);
+      act({ kind: 'shopAdd', items: ['Smoke s1'] });
+      const sa = await click(btn(await send('dodaj smoke s1'), /^c:/).data);
+      window.__shopping().items.find(it => it.name === 'Smoke s0').checked = true;
+      await click(btn(sa, /^u:/).data);
+      check('pregled: Poništi dodavanja ne dira ostale stavke spiska', window.__shopping().items.find(it => it.name === 'Smoke s0').checked === true && !window.__shopping().items.some(it => it.name === 'Smoke s1'));
+      // /nov pa fajl: sledeca poruka vise nije unos bez potvrde
+      await send('/nov');
+      await B.handle({ update_id: ++uid, kind: 'file', caption: '', fileError: 'size' });
+      window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: null, offTopic: true }) });
+      await send('Smoke cmd sok 99');
+      check('pregled: posle fajla /nov više ne čeka unos', !L('budzet-stavke-v2').some(e => e.desc === 'Smoke cmd sok'));
+      [recV.id, recG.id, recI.id].forEach(id => recP && (window.__deleteEntriesById(['rec-' + id + '-' + curM])));
+      { const R = window.__recurringRaw; const list = R.list(); [recV.id, recG.id, recI.id].forEach(id => { const i = list.findIndex(r => r.id === id); if (i >= 0) list.splice(i, 1); const ap = R.applied(); if (ap[curM]) ap[curM] = ap[curM].filter(x => x !== id); }); R.save(); }
+      // Pitaj ekran: novi proracuni imaju podatke
+      let askP = [];
+      window.__fakeAsk = async (req, step) => { askP.push(req.prompt); return step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'toPay' }] }) } : { ok: true, content: JSON.stringify({ odgovor: 'ok' }) }; };
+      go('pitaj'); await sleep(50);
+      setVal('askInput', 'šta treba da platimo?'); $('askBtn').click(); await sleep(400);
+      check('pregled: Pitaj ekran dobija Za plaćanje (nije null)', /"tool":"toPay"/.test(askP[1] || '') && /"total"/.test(askP[1] || ''), (askP[1] || '').slice(-300));
       // pocisti
       window.__fakeAsk = null; window.__fakeTgCategory = null;
       window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke cmd/.test(e.desc) || e.id === 'rec-' + recP.id + '-' + curM).map(e => e.id));

@@ -2090,7 +2090,8 @@
   // Naredbe iz bota: ime iz poruke ("Raletu", "letovanje") -> stavka aplikacije, bez AI-ja (imena ne idu AI-ju)
   const ACTION_SUFFIXES = ['ima', 'ama', 'ovi', 'ove', 'ova', 'om', 'em', 'u', 'a', 'e', 'i', 'o'];
   const stemWord = w => { for(const s of ACTION_SUFFIXES) if(w.length - s.length >= 3 && w.endsWith(s)) return w.slice(0, -s.length); return w; };
-  const stemWords = s => foldText(s).split(/[^a-z0-9]+/).filter(Boolean).map(stemWord);
+  // reci krace od 3 slova (na, za, u) se ne broje — osim kad je ime samo od njih (npr. "TV")
+  const stemWords = s => { const w = foldText(s).split(/[^a-z0-9]+/).filter(Boolean); const long = w.filter(x => x.length >= 3); return (long.length ? long : w).map(stemWord); };
   const wordHit = (a, b) => a === b || (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a)));
   function matchActionTarget(text, candidates){
     const tw = stemWords(text);
