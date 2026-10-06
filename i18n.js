@@ -277,7 +277,7 @@
     // ---- Poruke sa vrednostima (I18N.t) ----
     '{0} (+{1} još na čekanju)': '{0} (+{1} more pending)', 'prekoračeno {0}': 'over by {0}', 'preostalo {0}': '{0} left',
     'Prebaci preostali budžet ({0}) u cilj': 'Move remaining budget ({0}) to a goal', '{0}% više nego mesec ranije': '{0}% more than last month', '{0}% manje nego mesec ranije': '{0}% less than last month',
-    'očekuje se +{0}': 'expected +{0}', '{0} stavka': '{0} item', '{0} stavki': '{0} items', 'ništa neplaćeno': 'nothing unpaid', 'sve plaćeno': 'all paid',
+    'očekuje se +{0}': 'expected +{0}', 'dugovi: {0} ({1})': 'debts: {0} ({1})', '{0} stavka': '{0} item', '{0} stavki': '{0} items', 'ništa neplaćeno': 'nothing unpaid', 'sve plaćeno': 'all paid',
     'Na računima: {0}': 'In accounts: {0}', 'Ukupno stanje: {0}': 'Overall balance: {0}', 'Budžet — {0}': 'Budget — {0}', 'Kalendar — {0}': 'Calendar — {0}',
     'Poslednje stavke — {0}': 'Recent items — {0}', 'Rashodi po kategorijama — {0}': 'Expenses by category — {0}',
     'kurs NBS {0}': 'NBS rate {0}', ' — po {0} mesečno': ' — {0} per month', '{0} – {1}': '{0} – {1}', '. Na račun se ceo iznos računa na dan uplate.': '. The full amount counts toward the account on the payment date.',

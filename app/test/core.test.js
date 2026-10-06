@@ -2177,3 +2177,47 @@ test('godisnji troskovi posle pregleda: zavrsena stavka bez preostale pojave se 
   assert.equal(y.steady, Math.round((60000 / 12 + 3000 / 3) * 100) / 100);
   assert.equal(y.yearTotal, 72000);                                   // 60000 + 4 x 3000 (i kad je placen ovog meseca)
 });
+
+test('pendingForMonth: tekuci mesec — dospeli rashodi odvojeno od ostatka mojih dugova, rata se ne broji duplo', () => {
+  const recurring = [
+    { id: 'p', desc: 'Porez', amount: 8000, type: 'expense', frequency: 'monthly' },
+    { id: 'y', desc: 'Yettel', amount: 9500, type: 'expense', frequency: 'monthly' },
+    { id: 's', desc: 'Plata', amount: 100000, type: 'income', frequency: 'monthly' },
+    { id: 'r', desc: 'Rata: Gabo', amount: 6000, type: 'expense', frequency: 'monthly', debtId: 'g' }
+  ];
+  const entries = [
+    { id: 'a', type: 'expense', date: '2026-10-01', amount: 56160, paid: false },
+    { id: 'b', type: 'expense', date: '2026-09-20', amount: 1000, paid: false },
+    { id: 'c', type: 'expense', date: '2026-10-02', amount: 500 },
+    { id: 'd', type: 'expense', date: '2026-11-02', amount: 700, paid: false },
+    { id: 'e', type: 'expense', date: '2026-08-01', amount: 24000, debtId: 'g' }
+  ];
+  const debts = [
+    { id: 'g', direction: 'i_owe', person: 'Gabo', amount: 48000 },
+    { id: 'j', direction: 'i_owe', person: 'Jovica', amount: 12000 },
+    { id: 'k', direction: 'i_owe', person: 'Kaca', amount: 6000, paidAmount: 6000 },
+    { id: 'm', direction: 'owed_to_me', person: 'Mika', amount: 9000 }
+  ];
+  const p = C.pendingForMonth({ entries, recurring, applied: { '2026-10': ['y'] }, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
+  // rashodi: 56160 + 1000 (zakasneo iz septembra) + Porez 8000 + rata 6000; Yettel placen, novembar ne
+  assert.equal(p.expense, 71160);
+  assert.equal(p.count, 4);
+  assert.equal(p.income, 100000);
+  // dugovi: Gabo 48000-24000-6000 (rata je vec gore) = 18000, Jovica 12000; Kaca vracen, Mika nije moj dug
+  assert.equal(p.debt, 30000);
+  assert.equal(p.debtCount, 2);
+});
+
+test('pendingForMonth: drugi meseci bez dugova; rata koja pokriva ceo ostatak ne ostavlja dug', () => {
+  const recurring = [{ id: 'r', desc: 'Rata', amount: 5000, type: 'expense', frequency: 'monthly', debtId: 'g' }];
+  const debts = [{ id: 'g', direction: 'i_owe', person: 'Gabo', amount: 3000 }];
+  const entries = [{ id: 'a', type: 'expense', date: '2026-11-03', amount: 200, paid: false }, { id: 'b', type: 'expense', date: '2026-10-03', amount: 300, paid: false }];
+  const next = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-11', currentMonth: '2026-10' });
+  assert.deepEqual(next, { expense: 5200, income: 0, count: 2, debt: 0, debtCount: 0 });
+  const past = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-09', currentMonth: '2026-10' });
+  assert.deepEqual(past, { expense: 0, income: 0, count: 0, debt: 0, debtCount: 0 });
+  const cur = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
+  assert.equal(cur.expense, 5300);
+  assert.equal(cur.debt, 0);
+  assert.equal(cur.debtCount, 0);
+});

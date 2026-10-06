@@ -821,6 +821,28 @@
     const linked = (entries || []).reduce((s, e) => (e.type === 'expense' && e.paid !== false && e.debtId === d.id) ? s + e.amount : s, 0);
     return round2((d.paidAmount || 0) + linked);
   }
+  // "Za placanje" za mesec: expense = neplaceni rashodi tog meseca (tekuci mesec: i raniji, kasne) +
+  // ponavljajuci rashodi koji tek dospevaju (i rate). debt = (samo tekuci mesec) ostatak mojih dugova
+  // bez rata koje su vec u expense — zasebno, jer se dug ne vraca nuzno ovog meseca.
+  function pendingForMonth(o){
+    const { entries = [], recurring = [], applied, skipped, debts = [], mKey, currentMonth } = o;
+    const isCur = mKey === currentMonth;
+    const direct = entries.filter(e => e.type === 'expense' && e.paid === false && (isCur ? e.date.slice(0, 7) <= mKey : e.date.slice(0, 7) === mKey));
+    const recItems = pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonth);
+    const recExpense = recItems.filter(r => r.type === 'expense');
+    let debt = 0, debtCount = 0;
+    if(isCur) debts.filter(d => d.direction === 'i_owe').forEach(d => {
+      const inst = recExpense.reduce((s, r) => r.debtId === d.id ? s + r.amount : s, 0);
+      const rest = round2(Math.max(0, d.amount - debtPaid(d, entries) - inst));
+      if(rest > 0){ debt += rest; debtCount++; }
+    });
+    return {
+      expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recExpense.reduce((s, r) => s + r.amount, 0)),
+      income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0)),
+      count: direct.length + recExpense.length,
+      debt: round2(debt), debtCount
+    };
+  }
 
   // ---------- Mesecna uplata u cilj ----------
   // Plan na cilju: g.monthly = { amount, day, since: 'YYYY-MM', last?: 'YYYY-MM' }.
@@ -2308,7 +2330,7 @@
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,
-    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid,
+    round2, monthTotals, isRecurringPaid, isRecurringSkipped, recurringEntryId, pendingRecurringItems, monthsToProcess, autoPayDue, overdueRecurring, debtPaid, pendingForMonth,
     purchasedItemName, purchasedItemKey, purchasedItemStats, restockSuggestions,
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,

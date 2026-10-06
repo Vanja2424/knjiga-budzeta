@@ -515,12 +515,14 @@
     $('debtForm').requestSubmit(); await sleep(80);
     const rd = JSON.parse(localStorage.getItem('budzet-dugovi-v1') || '[]').find(d => d.person === 'Smoke rata');
     const cat0 = window.__desktopBridge.getQuickAddData().expenseCats[0];
-    const pendingBeforeInst = window.__pendingForMonth(curM).expense;
+    const pBeforeInst = window.__pendingForMonth(curM);
     const inst = rd && window.__createDebtInstallment(rd.id, { amount: 1000, day: 1, category: cat0 });
     check('rata: ponavljajuća stavka sa debtId', !!inst && inst.debtId === rd.id && inst.desc === 'Rata: Smoke rata');
     // Neplaćena rata ne sme da se doda i kao "Za plaćanje" stavka i kao deo ostatka duga (dvostruko računanje):
-    // pre i posle pravljenja rate (nema uplate između), "Za plaćanje" mora ostati isto.
-    check('rata: neplaćena rata se ne računa duplo u "Za plaćanje"', window.__pendingForMonth(curM).expense === pendingBeforeInst, JSON.stringify({ pendingBeforeInst, after: window.__pendingForMonth(curM).expense }));
+    // posle pravljenja rate (nema uplate između) rata prelazi iz dugova u dospele rashode, zbir ostaje isti.
+    const pAfterInst = window.__pendingForMonth(curM);
+    check('rata: neplaćena rata se ne računa duplo u "Za plaćanje"', pAfterInst.expense === pBeforeInst.expense + 1000 && pAfterInst.debt === pBeforeInst.debt - 1000, JSON.stringify({ pBeforeInst, pAfterInst }));
+    check('Za plaćanje: dugovi u podnaslovu', /dugovi|debts/.test($('pendingSub').textContent), $('pendingSub').textContent);
     const balBefore = $('balanceSub').textContent;
     window.__markRecurringPaid(inst.id, 1000); await sleep(60);
     const rEntry = entries().find(e => e.id === 'rec-' + inst.id + '-' + curM);
