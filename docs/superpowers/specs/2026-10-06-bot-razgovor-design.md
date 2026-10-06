@@ -35,7 +35,7 @@ Isti princip kao „Pitaj svoj budžet“: AI ne dobija iznose u prvom koraku, a
 
 1. **Plan.** `C.askPlanPrompt` dobija pitanje, kategorije, opseg meseci i **kontekst razgovora**: do 4 prethodne razmene iz istog chata, ne starije od 15 minuta. Razmena = pitanje + odgovor skraćen na 300 znakova. AI vraća JSON:
    ```
-   { "calls": [...], "action": null | { "kind": "", "target": "", "amount": null, "items": [], "month": "" }, "offTopic": false }
+   { "calls": [...], "action": null | { "kind": "", "target": "", "amount": null, "items": [] }, "offTopic": false }
    ```
 2. **Proračuni** (`calls`) — postojeći (`monthSummary`, `byCategory`, `compare`, `top`, `average`, `recurring`) i novi:
    - `toPay {}` — spisak „Za plaćanje“ za tekući mesec: stavke (opis, iznos, rok, vrsta: rashod/ponavljajuća/rata), zbir, dugovi (osoba, ostatak).
