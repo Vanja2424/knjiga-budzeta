@@ -2005,10 +2005,13 @@
     const s = String(text || '').trim();
     if(!s) return { kind: 'empty' };
     if(s[0] === '/'){
-      const cmd = foldText(s.slice(1).split(/[\s@]/)[0]);
+      const m = /^\/([^\s@]+)(?:@\S+)?\s*([\s\S]*)$/.exec(s);
+      const cmd = foldText(m ? m[1] : '');
+      if(cmd === 'nov') return { kind: 'command', command: 'nov', rest: (m[2] || '').trim() };
       return { kind: 'command', command: ['start', 'help', 'pomoc'].includes(cmd) ? 'pomoc' : (cmd === 'ponisti' ? 'ponisti' : 'nepoznata') };
     }
-    return { kind: 'entry' };
+    // bez komande: pitanje ili naredba za AI (unos ide preko /nov)
+    return { kind: 'question' };
   }
   // Tekst iz Telegrama -> nacrt unosa: "+" na pocetku ili rec prihoda (plata, honorar...; vidi tgIncomeRest) = prihod; kategorija iz pravila, pa iz istorije.
   // ctx.group: u grupi samo iznos >= 10 uz opis je unos, inace { error: 'chat' }
@@ -2045,7 +2048,7 @@
   }
   // callback_data: "<akcija>:<id>[:<arg>]"; akcije k (vrsta), s (sacuvaj), x (odbaci), o (otvori), u (ponisti)
   function parseTelegramCallback(data){
-    const m = /^([ksxou]):([A-Za-z0-9]{1,40})(?::([a-z]{1,10}))?$/.exec(String(data || ''));
+    const m = /^([ksxouncvh]):([A-Za-z0-9]{1,40})(?::([a-z0-9]{1,10}))?$/.exec(String(data || ''));
     return m ? { action: m[1], id: m[2], arg: m[3] || '' } : null;
   }
   function cleanTelegramPending(list, nowMs){

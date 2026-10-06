@@ -1830,7 +1830,13 @@ test('telegram: namera, nacrt unosa (prihod, pravila, istorija), vrsta slike, du
   assert.deepEqual(C.telegramIntent('/ponisti@knjiga_bot'), { kind: 'command', command: 'ponisti' });
   assert.deepEqual(C.telegramIntent('/xyz'), { kind: 'command', command: 'nepoznata' });
   assert.deepEqual(C.telegramIntent('   '), { kind: 'empty' });
-  assert.deepEqual(C.telegramIntent('kafa 250'), { kind: 'entry' });
+  assert.deepEqual(C.telegramIntent('kafa 250'), { kind: 'question' });
+  assert.deepEqual(C.telegramIntent('/nov kafa 250'), { kind: 'command', command: 'nov', rest: 'kafa 250' });
+  assert.deepEqual(C.telegramIntent('/nov@knjiga_bot +plata 1000'), { kind: 'command', command: 'nov', rest: '+plata 1000' });
+  assert.deepEqual(C.telegramIntent('/nov'), { kind: 'command', command: 'nov', rest: '' });
+  assert.deepEqual(C.parseTelegramCallback('c:abc123'), { action: 'c', id: 'abc123', arg: '' });
+  assert.deepEqual(C.parseTelegramCallback('n:abc123'), { action: 'n', id: 'abc123', arg: '' });
+  assert.deepEqual(C.parseTelegramCallback('h:abc123:2'), { action: 'h', id: 'abc123', arg: '2' });
   const ctx = { today: '2026-10-01', accounts: [{ id: 'a1', name: 'Visa', type: 'tekuci' }], currencies: ['EUR'],
     rules: [{ keyword: 'gorivo', category: 'Auto' }, { keyword: 'gor', category: 'Ostalo' }],
     history: [{ type: 'expense', desc: 'kafa', category: 'Kafići' }], expenseCats: ['Hrana', 'Auto', 'Kafići', 'Ostalo'], incomeCats: ['Plata', 'Ostali prihodi'] };
