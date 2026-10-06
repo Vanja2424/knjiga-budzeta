@@ -839,10 +839,17 @@
       left[r.debtId] = round2(left[r.debtId] - a);
       return a;
     };
-    const recSum = recExpense.reduce((s, r) => s + recAmount(r), 0);
+    const items = direct.map(e => ({ kind: 'expense', id: e.id, desc: e.desc, amount: e.amount, date: e.date }));
+    const recSum = recExpense.reduce((s, r) => {
+      const a = recAmount(r);
+      items.push(Object.assign({ kind: 'recurring', id: r.id, desc: r.desc, amount: a, day: r.day }, r.debtId ? { debtId: r.debtId } : {}));
+      return s + a;
+    }, 0);
     let debt = 0, debtCount = 0;
-    Object.keys(left).forEach(id => { if(left[id] > 0){ debt += left[id]; debtCount++; } });
+    const debtItems = [];
+    Object.keys(left).forEach(id => { if(left[id] > 0){ debt += left[id]; debtCount++; debtItems.push({ id, person: (debts.find(d => d.id === id) || {}).person, rest: left[id] }); } });
     return {
+      items, debtItems,
       expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recSum),
       income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0)),
       count: direct.length + recExpense.length,
@@ -1764,6 +1771,22 @@
   // ---------- Pitaj svoj budzet: AI bira proracune, aplikacija racuna lokalno, AI pise odgovor ----------
   const ASK_TOOLS = ['monthSummary', 'byCategory', 'compare', 'top', 'average', 'recurring'];
   const ASK_MAX_CALLS = 4, ASK_MAX_MONTHS = 24, ASK_MAX_TOP = 10;
+  const ASK_SNAPSHOT_TOOLS = ['toPay', 'debts', 'accounts', 'goals', 'forecast'];
+  const ACTION_KINDS = ['add', 'paid', 'skip', 'debtPay', 'goalPay', 'shopAdd', 'shopDone', 'editLast', 'deleteLast'];
+  // Prethodni razgovor iz bota (najvise 4 razmene), za pitanja kao "a proslog meseca?"
+  const askHistoryLines = h => (Array.isArray(h) && h.length) ? ['Prethodni razgovor (za kontekst, npr. "a prošlog meseca?"):']
+    .concat(h.slice(-4).map(x => 'P: ' + String(x.q || '').slice(0, 300) + ' | O: ' + String(x.a || '').slice(0, 300))) : [];
+  function cleanAskAction(a){
+    if(!a || typeof a !== 'object' || !ACTION_KINDS.includes(a.kind)) return null;
+    const n = Number(a.amount);
+    const out = { kind: a.kind, target: String(a.target == null ? '' : a.target).trim().slice(0, 60), amount: n > 0 && n < 1e8 ? round2(n) : null,
+      items: (Array.isArray(a.items) ? a.items : []).map(x => String(x == null ? '' : x).trim().slice(0, 60)).filter(Boolean).slice(0, 20) };
+    const shop = out.kind === 'shopAdd' || out.kind === 'shopDone';
+    if(shop && !out.items.length && out.target) out.items = [out.target];
+    if(shop && !out.items.length) return null;
+    if(['add', 'paid', 'skip', 'debtPay', 'goalPay'].includes(out.kind) && !out.target) return null;
+    return out;
+  }
   function askPlanPrompt(o){
     return ['Ti si pomoćnik za lični budžet (Srbija, RSD). Ne vidiš podatke — biraš proračune koje će aplikacija uraditi.',
       'Danas je ' + o.today + '. Podaci postoje od ' + o.first + ' do ' + o.last + '.',
@@ -1775,8 +1798,18 @@
       '- top {months, category?, n≤10}: najveći pojedinačni rashodi (opis, iznos)',
       '- average {months, category?}: prosek rashoda po mesecu (samo rashodi)',
       '- recurring {}: ponavljajući rashodi i pretplate',
+      '- toPay {}: šta treba platiti ovog meseca (stavke, zbir, dugovi)',
+      '- debts {}: dugovi (moji i prema meni), ostatak',
+      '- accounts {}: stanje po računu',
+      '- goals {}: ciljevi štednje (trenutno, cilj)',
+      '- forecast {}: prognoza stanja do plate',
       'Vrati SAMO JSON: {"calls":[{"tool":"","months":[],"monthsB":[],"category":"","type":"expense","n":5}],"offTopic":false}',
       'Ako pitanje nije o budžetu korisnika, vrati {"calls":[],"offTopic":true}.',
+      ...(o.actions ? [
+        'Ako korisnik traži IZMENU (ne pitanje), vrati "action" umesto proračuna: {"calls":[],"action":{"kind":"","target":"","amount":null,"items":[]}}. Inače "action": null.',
+        'kind: add (upiši rashod/prihod, target = ceo opis sa iznosom), paid (označi plaćeno), skip (preskoči ovaj mesec), debtPay (uplata na dug, target = osoba), goalPay (uplata u cilj), shopAdd (dodaj na spisak, items), shopDone (kupljeno, items), editLast (izmeni poslednji unos: amount ili target = novi opis), deleteLast (obriši poslednji unos).',
+        'target je ime iz poruke, onako kako je napisano. Ne izmišljaj iznos.'] : []),
+      ...askHistoryLines(o.history),
       'Pitanje: ' + String(o.question || '').slice(0, 500)].join('\n');
   }
   function cleanAskPlan(raw, ctx){
@@ -1794,6 +1827,7 @@
     const cat = c => (ctx.categories || []).find(x => foldText(x) === foldText(c)) || '';
     const calls = [];
     (Array.isArray(o.calls) ? o.calls : []).forEach(c => {
+      if(c && ASK_SNAPSHOT_TOOLS.includes(c.tool)){ if(calls.length < ASK_MAX_CALLS) calls.push({ tool: c.tool }); return; }
       if(!c || !ASK_TOOLS.includes(c.tool)){ notes.push('nepoznat proračun preskočen'); return; }
       if(calls.length >= ASK_MAX_CALLS){ notes.push('više od ' + ASK_MAX_CALLS + ' proračuna — ostali preskočeni'); return; }
       if(c.tool === 'recurring'){ calls.push({ tool: 'recurring' }); return; }
@@ -1809,7 +1843,7 @@
       }
       calls.push(out);
     });
-    return { calls, offTopic: !!o.offTopic, notes };
+    return { calls, action: cleanAskAction(o.action), offTopic: !!o.offTopic, notes };
   }
   function runAskTools(calls, data){
     const entries = (data && data.entries) || [];
@@ -1825,7 +1859,8 @@
     };
     return (calls || []).map(c => {
       let result;
-      if(c.tool === 'monthSummary') result = c.months.map(m => { const t = monthTotals(entries, m); return { month: m, income: t.income, expense: t.expense, net: t.net }; });
+      if(ASK_SNAPSHOT_TOOLS.includes(c.tool)){ const v = ((data && data.snapshot) || {})[c.tool]; result = v === undefined ? null : v; }
+      else if(c.tool === 'monthSummary') result = c.months.map(m => { const t = monthTotals(entries, m); return { month: m, income: t.income, expense: t.expense, net: t.net }; });
       else if(c.tool === 'byCategory') result = sumBy(c.months, c.type || 'expense');
       else if(c.tool === 'compare'){
         // uvek "ranije -> kasnije" sa imenovanim poljima, da model ne pomesa smer (razlika = kasnije - ranije)
@@ -1875,6 +1910,7 @@
       'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',
       'Vrati SAMO JSON: {"odgovor":"tekst odgovora"}',
       'Danas je ' + o.today + '.',
+      ...askHistoryLines(o.history),
       'Pitanje: ' + String(o.question || '').slice(0, 500),
       'Rezultati (JSON): ' + JSON.stringify(o.results || [])].join('\n');
   }
@@ -2364,7 +2400,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
