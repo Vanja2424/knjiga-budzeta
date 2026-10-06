@@ -1830,7 +1830,13 @@ test('telegram: namera, nacrt unosa (prihod, pravila, istorija), vrsta slike, du
   assert.deepEqual(C.telegramIntent('/ponisti@knjiga_bot'), { kind: 'command', command: 'ponisti' });
   assert.deepEqual(C.telegramIntent('/xyz'), { kind: 'command', command: 'nepoznata' });
   assert.deepEqual(C.telegramIntent('   '), { kind: 'empty' });
-  assert.deepEqual(C.telegramIntent('kafa 250'), { kind: 'entry' });
+  assert.deepEqual(C.telegramIntent('kafa 250'), { kind: 'question' });
+  assert.deepEqual(C.telegramIntent('/nov kafa 250'), { kind: 'command', command: 'nov', rest: 'kafa 250' });
+  assert.deepEqual(C.telegramIntent('/nov@knjiga_bot +plata 1000'), { kind: 'command', command: 'nov', rest: '+plata 1000' });
+  assert.deepEqual(C.telegramIntent('/nov'), { kind: 'command', command: 'nov', rest: '' });
+  assert.deepEqual(C.parseTelegramCallback('c:abc123'), { action: 'c', id: 'abc123', arg: '' });
+  assert.deepEqual(C.parseTelegramCallback('n:abc123'), { action: 'n', id: 'abc123', arg: '' });
+  assert.deepEqual(C.parseTelegramCallback('h:abc123:2'), { action: 'h', id: 'abc123', arg: '2' });
   const ctx = { today: '2026-10-01', accounts: [{ id: 'a1', name: 'Visa', type: 'tekuci' }], currencies: ['EUR'],
     rules: [{ keyword: 'gorivo', category: 'Auto' }, { keyword: 'gor', category: 'Ostalo' }],
     history: [{ type: 'expense', desc: 'kafa', category: 'Kafići' }], expenseCats: ['Hrana', 'Auto', 'Kafići', 'Ostalo'], incomeCats: ['Plata', 'Ostali prihodi'] };
@@ -2213,9 +2219,10 @@ test('pendingForMonth: drugi meseci bez dugova; rata koja pokriva ceo ostatak ne
   const debts = [{ id: 'g', direction: 'i_owe', person: 'Gabo', amount: 3000 }];
   const entries = [{ id: 'a', type: 'expense', date: '2026-11-03', amount: 200, paid: false }, { id: 'b', type: 'expense', date: '2026-10-03', amount: 300, paid: false }];
   const next = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-11', currentMonth: '2026-10' });
-  assert.deepEqual(next, { expense: 5200, income: 0, count: 2, debt: 0, debtCount: 0 });
+  const pick = o => ({ expense: o.expense, income: o.income, count: o.count, debt: o.debt, debtCount: o.debtCount });
+  assert.deepEqual(pick(next), { expense: 5200, income: 0, count: 2, debt: 0, debtCount: 0 });
   const past = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-09', currentMonth: '2026-10' });
-  assert.deepEqual(past, { expense: 0, income: 0, count: 0, debt: 0, debtCount: 0 });
+  assert.deepEqual(pick(past), { expense: 0, income: 0, count: 0, debt: 0, debtCount: 0 });
   const cur = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
   assert.equal(cur.expense, 3300); // rata 5000 ogranicena na ostatak duga 3000
   assert.equal(cur.debt, 0);
@@ -2229,4 +2236,58 @@ test('pendingForMonth: poslednja rata veca od ostatka duga racuna se samo do ost
   assert.equal(cur.expense, 1000);
   assert.equal(cur.count, 1);
   assert.equal(cur.debt, 0);
+});
+
+test('matchActionTarget: padezi, dijakritike, celo ime pobedjuje, izbor, nista', () => {
+  const debts = [{ id: 'r', name: 'Rale' }, { id: 'g', name: 'Gabo' }, { id: 'j', name: 'Jovica' }];
+  assert.deepEqual(C.matchActionTarget('Raletu', debts), { match: { id: 'r', name: 'Rale' } });
+  assert.deepEqual(C.matchActionTarget('Jovici', debts), { match: { id: 'j', name: 'Jovica' } });
+  const goals = [{ id: 'l', name: 'Letovanje' }, { id: 'a', name: 'Auto' }];
+  assert.deepEqual(C.matchActionTarget('letovanje', goals), { match: { id: 'l', name: 'Letovanje' } });
+  const rec = [{ id: 'p', name: 'Porez' }, { id: 'y', name: 'Anđela - Yettel' }, { id: 'n', name: 'Nokti' }, { id: 'pi', name: 'Porez imovina' }];
+  assert.deepEqual(C.matchActionTarget('porez', rec), { match: { id: 'p', name: 'Porez' } });
+  assert.deepEqual(C.matchActionTarget('andjela', rec), { match: { id: 'y', name: 'Anđela - Yettel' } });
+  assert.deepEqual(C.matchActionTarget('yettel', rec), { match: { id: 'y', name: 'Anđela - Yettel' } });
+  const two = [{ id: 'k1', name: 'Kaca' }, { id: 'k2', name: 'Kaca' }];
+  assert.deepEqual(C.matchActionTarget('Kaci', two), { choices: two });
+  assert.deepEqual(C.matchActionTarget('struja', rec), { none: true });
+  assert.deepEqual(C.matchActionTarget('', rec), { none: true });
+});
+
+test('pitaj iz bota: naredba, novi proracuni bez meseci, razgovor u promptu', () => {
+  const p = C.askPlanPrompt({ question: 'a prošlog meseca?', today: '2026-10-06', first: '2026-01', last: '2026-10', expenseCats: ['Hrana'], incomeCats: ['Plata'],
+    history: [{ q: 'koliko za hranu ovog meseca?', a: 'Potrošili ste 12.000 RSD.' }], actions: true });
+  assert.match(p, /koliko za hranu ovog meseca/);
+  assert.match(p, /toPay/); assert.match(p, /debtPay/);
+  assert.doesNotMatch(C.askPlanPrompt({ question: 'x', today: '2026-10-06', first: '2026-01', last: '2026-10' }), /debtPay/);
+  const ctx = { first: '2026-01', last: '2026-10', categories: ['Hrana'] };
+  const plan = C.cleanAskPlan(JSON.stringify({ calls: [{ tool: 'toPay' }, { tool: 'forecast', months: ['1999-01'] }], action: null }), ctx);
+  assert.deepEqual(plan.calls, [{ tool: 'toPay' }, { tool: 'forecast' }]);
+  assert.equal(plan.action, null);
+  const a = C.cleanAskPlan(JSON.stringify({ calls: [], action: { kind: 'debtPay', target: ' Raletu ', amount: '5000' } }), ctx).action;
+  assert.deepEqual(a, { kind: 'debtPay', target: 'Raletu', amount: 5000, items: [] });
+  assert.equal(C.cleanAskPlan(JSON.stringify({ action: { kind: 'rm -rf', target: 'x' } }), ctx).action, null);
+  assert.equal(C.cleanAskPlan(JSON.stringify({ action: { kind: 'paid', target: '' } }), ctx).action, null);
+  assert.equal(C.cleanAskPlan(JSON.stringify({ action: { kind: 'goalPay', target: 'auto', amount: 1e9 } }), ctx).action.amount, null);
+  assert.deepEqual(C.cleanAskPlan(JSON.stringify({ action: { kind: 'shopAdd', items: ['mleko', ' hleb ', ''] } }), ctx).action.items, ['mleko', 'hleb']);
+  assert.deepEqual(C.cleanAskPlan(JSON.stringify({ action: { kind: 'shopDone', target: 'mleko' } }), ctx).action.items, ['mleko']);
+  assert.deepEqual(C.cleanAskPlan(JSON.stringify({ action: { kind: 'deleteLast' } }), ctx).action, { kind: 'deleteLast', target: '', amount: null, items: [] });
+  const r = C.runAskTools([{ tool: 'toPay' }, { tool: 'goals' }], { entries: [], recurring: [], today: '2026-10-06', snapshot: { toPay: { total: 5 } } });
+  assert.deepEqual(r.map(x => x.result), [{ total: 5 }, null]);
+  const ans = C.askAnswerPrompt({ question: 'a prošlog?', today: '2026-10-06', results: [], history: [{ q: 'koliko za hranu?', a: '12.000' }] });
+  assert.match(ans, /koliko za hranu\?/);
+});
+
+test('pendingForMonth: spisak stavki i dugova za bota', () => {
+  const recurring = [{ id: 'p', desc: 'Porez', amount: 8000, type: 'expense', frequency: 'monthly', day: 1 }];
+  const entries = [{ id: 'a', type: 'expense', desc: 'Drva', date: '2026-10-01', amount: 56160, paid: false }];
+  const debts = [{ id: 'g', direction: 'i_owe', person: 'Gabo', amount: 1000 }];
+  const p = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
+  assert.deepEqual(p.items, [{ kind: 'expense', id: 'a', desc: 'Drva', amount: 56160, date: '2026-10-01' }, { kind: 'recurring', id: 'p', desc: 'Porez', amount: 8000, day: 1 }]);
+  assert.deepEqual(p.debtItems, [{ id: 'g', person: 'Gabo', rest: 1000 }]);
+});
+
+test('matchActionTarget posle pregleda: kratke reci (na, za, u) se ne broje', () => {
+  assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }]), { none: true });
+  assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }, { id: 'p', name: 'Porez na imovinu' }]), { match: { id: 'p', name: 'Porez na imovinu' } });
 });

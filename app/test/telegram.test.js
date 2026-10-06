@@ -313,3 +313,15 @@ test('telegram: QR na slici (glavni proces) -> link Poreske uprave u payload; dr
   assert.deepEqual(handled.map(p => p.fiscalUrl || null), ['https://suf.purs.gov.rs/v/?vl=AbC%2B1%3D', null, null]);
   assert.equal(decoded.length, 2); // PDF se ne salje citacu slika
 });
+
+test('telegram: meni komandi (/nov, /ponisti, /pomoc) se salje jednom; greska ne zaustavlja petlju', async () => {
+  const { api, calls, queue, reply } = setup();
+  await api.setToken(TOKEN);
+  queue.setMyCommands = [{ ok: false, status: 500, json: async () => ({ ok: false, description: 'x' }) }];
+  const w1 = await api.pollOnce();
+  assert.notEqual(w1, -1);
+  await api.pollOnce();
+  const sent = calls.filter(c => c.method === 'setMyCommands');
+  assert.equal(sent.length, 1);
+  assert.deepEqual(sent[0].body.commands.map(c => c.command), ['nov', 'ponisti', 'pomoc']);
+});
