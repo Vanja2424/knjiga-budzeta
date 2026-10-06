@@ -5707,7 +5707,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const tgReply = (text, extra) => ({ replies: [Object.assign({ text }, extra || {})] });
   const tgDayLabel = iso => { const today = toISODateLocal(new Date()); const y = new Date(); y.setDate(y.getDate() - 1);
     return iso === today ? t('danas') : iso === toISODateLocal(y) ? t('juče') : fmtDocDate(iso); };
-  const TG_HELP = () => t('Pošalji rashod kao „kafa 250“, „gorivo 6000 juče visa“ ili prihod sa + („+honorar 30000“). Pošalji sliku ili PDF računa iz prodavnice, kućnog računa ili uplatnice — pokazaću šta sam pročitao pa ti potvrdiš. /ponisti poništava poslednji unos.');
+  const TG_HELP = () => t('Pitaj me bilo šta o budžetu („šta treba da platimo?“, „koliko smo dali za hranu?“) ili reci šta da uradim („platila sam porez“, „vratila sam Raletu 5000“, „dodaj mleko“) — pre svake izmene tražim potvrdu. Nov unos: /nov kafa 250 (prihod: /nov +honorar 30000). Pošalji sliku ili PDF računa ili uplatnice. /ponisti poništava poslednji unos.');
+  // Razgovor sa botom: samo u memoriji (posle ponovnog pokretanja pocinje iz pocetka)
+  let tgHistory = [];   // [{ q, a, at }]
+  let tgAwait = null;   // { kind: 'entry', at } posle praznog /nov; { kind: 'amount', proposalId, at } kad naredbi fali iznos
+  const TG_AWAIT_MS = 10 * 60 * 1000, TG_HISTORY_MS = 15 * 60 * 1000;
+  const tgRecentHistory = () => tgHistory.filter(h=> Date.now() - h.at < TG_HISTORY_MS).slice(-4);
   async function tgAiCategory(desc){
     if(String(desc).replace(/[^\p{L}]/gu, '').length < 4) return null;
     const req = { images: [], text: '', prompt: C.quickCategoryPrompt(expenseCats, desc) };
@@ -5756,11 +5761,29 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const fiscalUrl = C.fiscalUrlFrom(text);
     if(fiscalUrl) return tgFiscalLink(fiscalUrl, p);
     const intent = C.telegramIntent(text);
-    if(intent.kind === 'command' && intent.command === 'ponisti'){
-      const it = await tgUndo(null);
-      return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
+    const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS ? tgAwait : null;
+    if(intent.kind === 'command'){
+      tgAwait = null;
+      if(intent.command === 'ponisti'){
+        const it = await tgUndo(null);
+        return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
+      }
+      if(intent.command === 'nov'){
+        if(!intent.rest){ tgAwait = { kind: 'entry', at: Date.now() }; return tgReply(t('Šta da upišem? Npr. „kafa 250“.')); }
+        return tgEntry(intent.rest, p);
+      }
+      return tgReply(TG_HELP());
     }
-    if(intent.kind !== 'entry') return tgReply(TG_HELP());
+    if(intent.kind !== 'question') return tgReply(TG_HELP());
+    if(wait){
+      tgAwait = null;
+      if(wait.kind === 'entry') return tgEntry(text, p);
+      if(wait.kind === 'amount'){ const n = C.parseAmount(text); if(n > 0) return tgProposalAmount(wait.proposalId, n, p); }
+    }
+    return tgAsk(text, p);
+  }
+  // Unos iz bota (/nov kafa 250): odmah upisuje, uz Ponisti
+  async function tgEntry(text, p){
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
       rules: data.rules, history: data.history, expenseCats, incomeCats, group: !!(p && p.group) });
@@ -5774,6 +5797,45 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const logId = tgLog(r.ids, label);
     return tgReply(`✓ ${tgWho(p)}${d.type === 'income' ? t('Prihod') + ': ' : ''}${label} · ${r.category} · ${tgDayLabel(d.date)}`, { buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] });
   }
+  // Brojke za proracune iz bota (toPay, debts, accounts, goals, forecast) — racuna stranica, AI dobija samo rezultat
+  function tgSnapshot(){
+    const mKey = currentMonthKey();
+    const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey });
+    const bal = accounts.length ? accountBalances() : null;
+    let fc = null;
+    try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
+    return {
+      toPay: { total: pend.expense, count: pend.count, expectedIncome: pend.income, debtsTotal: pend.debt,
+        items: pend.items.map(i=> ({ desc: i.desc, amount: i.amount, rok: i.date || (i.day ? t('dan {0}', i.day) : '') })),
+        debts: pend.debtItems.map(d=> ({ person: d.person, ostatak: d.rest })) },
+      debts: debts.map(d=> ({ person: d.person, smer: d.direction === 'i_owe' ? 'ja dugujem' : 'duguju meni', ukupno: d.amount, ostatak: debtRemaining(d) })),
+      accounts: bal ? { racuni: accounts.map(a=> ({ name: a.name, stanje: bal[a.id] })), ukupno: C.round2(accounts.reduce((s, a)=> s + bal[a.id], 0)) } : { ukupno: overallBalance() },
+      goals: goals.map(g=> ({ name: g.name, trenutno: g.current, cilj: g.target, mesecno: g.monthly ? g.monthly.amount : null })),
+      forecast: fc
+    };
+  }
+  const TG_NOV_HINT = () => t('Unos i dalje radi: /nov kafa 250');
+  // Pitanje ili naredba: isti tok kao "Pitaj svoj budzet" (plan -> lokalni proracuni -> odgovor), uz razgovor
+  async function tgAsk(text, p){
+    if(!askAiAvailable()) return tgReply(t('AI nije podešen (Podešavanja → AI čitanje računa).') + ' ' + TG_NOV_HINT());
+    const today = toISODateLocal(new Date()), history = tgRecentHistory();
+    const { first, last } = C.askMonthRange(entries, currentMonthKey());
+    const r1 = await askCall({ images: [], text: '', prompt: C.askPlanPrompt({ question: text, today, first, last, expenseCats, incomeCats, history, actions: true }) }, 1);
+    if(!r1 || !r1.ok) return tgReply('✕ ' + askErr(r1) + ' ' + TG_NOV_HINT());
+    const plan = C.cleanAskPlan(r1.content, { first, last, categories: expenseCats.concat(incomeCats) });
+    if(!plan) return tgReply(t('Nisam razumeo — probaj drugačije.'));
+    if(plan.action) return tgPropose(plan.action, text, p);
+    if(plan.offTopic) return tgReply(t('Mogu da odgovorim samo na pitanja o budžetu. Za unos: /nov kafa 250'));
+    if(!plan.calls.length) return tgReply(t('Za ovo pitanje nema podataka u knjizi.'));
+    const results = C.runAskTools(plan.calls, { entries, recurring, today, snapshot: tgSnapshot() });
+    const r2 = await askCall({ images: [], text: '', prompt: C.askAnswerPrompt({ question: text, today, results, history, lang: askLangOverride || I18N.lang }) }, 2);
+    if(!r2 || !r2.ok) return tgReply('✕ ' + askErr(r2) + ' ' + TG_NOV_HINT());
+    const answer = C.cleanAskAnswer(r2.content).slice(0, 3000);
+    tgHistory = tgRecentHistory().concat({ q: String(text).slice(0, 300), a: answer, at: Date.now() }).slice(-4);
+    return tgReply(answer);
+  }
+  async function tgPropose(a, text, p){ return tgReply(t('Nisam razumeo — probaj drugačije.')); }   // naredbe: Task 6
+  async function tgProposalAmount(id, n, p){ return tgReply(t('Nisam razumeo — probaj drugačije.')); }
   async function tgCallback(p){
     const cb = C.parseTelegramCallback(p.data);
     if(!cb) return { replies: [] };

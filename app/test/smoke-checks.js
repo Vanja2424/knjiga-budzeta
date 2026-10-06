@@ -1868,22 +1868,43 @@
         const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
         window.__fakeTgCategory = async () => ({ ok: true, content: JSON.stringify({ kategorija: 'Ostalo' }) });
         const n0 = ents().length;
-        const r1 = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        const r1 = await B.handle({ update_id: 900001, kind: 'text', text: '/nov Smoke tg kafa 250' });
         const e1 = ents().find(e => e.desc === 'Smoke tg kafa');
         check('telegram: tekst postaje rashod', !!e1 && e1.amount === 250 && e1.type === 'expense', JSON.stringify(e1));
         check('telegram: odgovor sa iznosom i dugmetom Poništi', /✓/.test(r1.replies[0].text) && /250/.test(r1.replies[0].text) && /^u:/.test(r1.replies[0].buttons[0][0].data), JSON.stringify(r1));
-        const r1b = await B.handle({ update_id: 900001, kind: 'text', text: 'Smoke tg kafa 250' });
+        const r1b = await B.handle({ update_id: 900001, kind: 'text', text: '/nov Smoke tg kafa 250' });
         check('telegram: isti update se ne upisuje dvaput', ents().length === n0 + 1 && r1b.replies.length === 0);
         const r2 = await B.handle({ update_id: 900002, kind: 'callback', data: r1.replies[0].buttons[0][0].data, messageId: 5 });
         check('telegram: Poništi briše rashod i menja poruku', !ents().some(e => e.desc === 'Smoke tg kafa') && r2.replies[0].editMessageId === 5, JSON.stringify(r2));
-        const r3 = await B.handle({ update_id: 900003, kind: 'text', text: 'Smoke tg kafa' });
+        const r3 = await B.handle({ update_id: 900003, kind: 'text', text: '/nov Smoke tg kafa' });
         check('telegram: bez iznosa ne upisuje', ents().length === n0 && /iznos/i.test(r3.replies[0].text), r3.replies[0] && r3.replies[0].text);
         const r4 = await B.handle({ update_id: 900004, kind: 'text', text: '/pomoc' });
         check('telegram: /pomoc daje uputstvo', /kafa 250/.test(r4.replies[0].text));
-        await B.handle({ update_id: 900005, kind: 'text', text: '+Smoke tg honorar 3000' });
+        await B.handle({ update_id: 900005, kind: 'text', text: '/nov +Smoke tg honorar 3000' });
         check('telegram: + znači prihod', ents().some(e => e.desc === 'Smoke tg honorar' && e.type === 'income' && e.amount === 3000));
         const r6 = await B.handle({ update_id: 900006, kind: 'text', text: '/ponisti' });
         check('telegram: /ponisti poništava poslednji unos', !ents().some(e => e.desc === 'Smoke tg honorar') && /Poništeno/.test(r6.replies[0].text), r6.replies[0] && r6.replies[0].text);
+        // v1.35: /nov bez teksta, pitanja (AI), razgovor, greska AI-ja
+        const n1 = await B.handle({ update_id: 900010, kind: 'text', text: '/nov' });
+        check('telegram: /nov bez teksta pita šta da upiše', /upišem/.test(n1.replies[0].text), n1.replies[0].text);
+        await B.handle({ update_id: 900011, kind: 'text', text: 'Smoke tg sok 120' });
+        check('telegram: posle /nov sledeća poruka je unos', ents().some(e => e.desc === 'Smoke tg sok' && e.amount === 120));
+        window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke tg sok').map(e => e.id));
+        let asked = [];
+        window.__fakeAsk = async (req, step) => { asked.push(req.prompt); return step === 1
+          ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'toPay' }], action: null }) }
+          : { ok: true, content: JSON.stringify({ odgovor: 'Treba platiti Smoke stavku.' }) }; };
+        const q1 = await B.handle({ update_id: 900012, kind: 'text', text: 'šta treba da platimo?' });
+        check('telegram: pitanje -> odgovor AI-ja', /Treba platiti/.test(q1.replies[0].text), JSON.stringify(q1));
+        check('telegram: toPay rezultat ide u drugi korak', /"tool":"toPay"/.test(asked[1] || '') && /"total"/.test(asked[1] || ''), (asked[1] || '').slice(0, 300));
+        check('telegram: prvi korak bez imena stavki', !/Smoke tg/.test(asked[0] || ''));
+        asked = [];
+        await B.handle({ update_id: 900013, kind: 'text', text: 'a prošlog meseca?' });
+        check('telegram: razgovor se pamti', /šta treba da platimo/.test(asked[0] || ''), (asked[0] || '').slice(-400));
+        window.__fakeAsk = async () => ({ ok: false, kind: 'http', message: 'x' });
+        const q3 = await B.handle({ update_id: 900014, kind: 'text', text: 'koliko imam na računu?' });
+        check('telegram: greška AI-ja -> poruka sa /nov', /\/nov/.test(q3.replies[0].text), q3.replies[0].text);
+        window.__fakeAsk = null;
         window.__fakeTgCategory = null;
       }
       go('podesavanja'); await sleep(150);
@@ -2012,14 +2033,14 @@
       const B = window.__telegramBridge;
       const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
       const ana = { id: 5, name: 'Ana' };
-      const g1 = await B.handle({ update_id: 900301, kind: 'text', text: 'Smoke grupa kafa 180', group: true, from: ana });
+      const g1 = await B.handle({ update_id: 900301, kind: 'text', text: '/nov Smoke grupa kafa 180', group: true, from: ana });
       const ge = ents().find(e => e.desc === 'Smoke grupa kafa');
       check('telegram grupa: rashod dobija oznaku pošiljaoca', !!ge && (ge.tags || []).includes('ana'), JSON.stringify(ge && ge.tags));
       check('telegram grupa: odgovor kaže ko je poslao', /^✓ Ana: /.test(g1.replies[0].text), g1.replies[0].text);
       const n0 = ents().length;
-      const g2 = await B.handle({ update_id: 900302, kind: 'text', text: 'idemo večeras u bioskop?', group: true, from: ana });
+      const g2 = await B.handle({ update_id: 900302, kind: 'text', text: '/nov idemo večeras u bioskop?', group: true, from: ana });
       check('telegram grupa: ćaskanje bez iznosa se ignoriše', g2.replies.length === 0 && ents().length === n0, JSON.stringify(g2));
-      const g3 = await B.handle({ update_id: 900303, kind: 'text', text: 'idemo večeras u bioskop?', group: false, from: ana });
+      const g3 = await B.handle({ update_id: 900303, kind: 'text', text: '/nov idemo večeras u bioskop?', group: false, from: ana });
       check('telegram privatno: bez iznosa i dalje objašnjava', /iznos/i.test((g3.replies[0] || {}).text || ''));
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
       window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke grupa Maxi', date: '2026-09-26', total: 90, items: [{ name: 'Smoke grupa jaja', price: 90, category: 'Hrana' }] }) });
@@ -2130,13 +2151,13 @@
       const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
       const ana = { id: 5, name: 'Ana' };
       const n0 = ents().length;
-      const k1 = await B.handle({ update_id: 900701, kind: 'text', text: 'vidimo se u 8', group: true, from: ana });
+      const k1 = await B.handle({ update_id: 900701, kind: 'text', text: '/nov vidimo se u 8', group: true, from: ana });
       check('telegram fix: u grupi „vidimo se u 8“ nije rashod i bot ćuti', k1.replies.length === 0 && ents().length === n0, JSON.stringify(k1));
-      const k2 = await B.handle({ update_id: 900702, kind: 'text', text: '250', group: true, from: ana });
+      const k2 = await B.handle({ update_id: 900702, kind: 'text', text: '/nov 250', group: true, from: ana });
       check('telegram fix: u grupi samo broj bez opisa — bot ćuti', k2.replies.length === 0 && ents().length === n0, JSON.stringify(k2));
-      const k3 = await B.handle({ update_id: 900703, kind: 'text', text: 'Smoke fix sok 8', group: false, from: ana });
+      const k3 = await B.handle({ update_id: 900703, kind: 'text', text: '/nov Smoke fix sok 8', group: false, from: ana });
       check('telegram fix: privatno „sok 8“ je i dalje rashod', ents().some(e => e.desc === 'Smoke fix sok' && e.amount === 8), JSON.stringify(k3));
-      const k4 = await B.handle({ update_id: 900704, kind: 'text', text: 'plata za majstora smokefix 5000' });
+      const k4 = await B.handle({ update_id: 900704, kind: 'text', text: '/nov plata za majstora smokefix 5000' });
       check('telegram fix: „plata za majstora“ je rashod', ents().some(e => e.desc === 'plata za majstora smokefix' && e.type === 'expense'), JSON.stringify(k4.replies[0] && k4.replies[0].text));
       window.__deleteEntriesById(ents().filter(e => /^Smoke fix|smokefix$/.test(e.desc)).map(e => e.id));
       // isti update stigne ponovo (aplikacija ugasena usred citanja) -> isto cekanje, bez drugog priloga
