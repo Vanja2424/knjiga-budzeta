@@ -2484,6 +2484,157 @@
       window.__deleteEntriesById(ents().filter(e => e.fiscalUrl === url1 || e.fiscalUrl === url2).map(e => e.id));
     }
 
+    // v1.35: naredbe iz bota sa potvrdom (predlog -> Potvrdi -> promena -> Poništi)
+    if (window.__telegramBridge) {
+      const B = window.__telegramBridge; let uid = 901000;
+      const send = (text, extra) => B.handle(Object.assign({ update_id: ++uid, kind: 'text', text }, extra || {}));
+      const click = (data, extra) => B.handle(Object.assign({ update_id: ++uid, kind: 'callback', data, messageId: 77 }, extra || {}));
+      const btn = (r, re) => ((r.replies[0] || {}).buttons || []).flat().find(b => re.test(b.data));
+      const txt = r => ((r.replies[0] || {}).text || '') + ' ' + (r.callbackText || '');
+      const act = a => { window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: a }) }); };
+      const L = k => JSON.parse(localStorage.getItem(k) || '[]');
+      const O = k => JSON.parse(localStorage.getItem(k) || '{}');
+      const curM = monthKey(new Date());
+      window.__fakeTgCategory = async () => ({ ok: true, content: JSON.stringify({ kategorija: 'Ostalo' }) });
+      // priprema
+      go('ponavljajuce'); await sleep(50);
+      for (const [d, a] of [['Smoke cmd porez', '8000'], ['Smoke cmd nokti', '4000']]) {
+        setVal('recDesc', d); setVal('recAmount', a); setVal('recDay', '1'); $('recAutoPay').checked = false;
+        $('recurringForm').requestSubmit(); await sleep(100);
+      }
+      const recP = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke cmd porez');
+      const recN = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke cmd nokti');
+      go('dugovi'); await sleep(50);
+      for (const [person, amount] of [['Smoke Rale', '12000'], ['Smoke Kaca', '3000'], ['Smoke Kaca', '3000']]) {
+        setVal('debtPerson', person); setVal('debtAmount', amount); setVal('debtCurrency', 'RSD'); setVal('debtDirection', 'i_owe');
+        $('debtForm').requestSubmit(); await sleep(80);
+      }
+      const debt = name => L('budzet-dugovi-v1').filter(d => d.person === name);
+      go('ciljevi'); await sleep(50);
+      setVal('goalName', 'Smoke letovanje'); setVal('goalTarget', '50000'); if ($('goalAccount')) $('goalAccount').value = '';
+      $('goalForm').requestSubmit(); await sleep(80);
+      const goal = () => L('budzet-ciljevi-v1').find(g => g.name === 'Smoke letovanje');
+      const isApplied = id => (O('budzet-primenjeno-v1')[curM] || []).includes(id);
+      check('naredbe: priprema', !!recP && !!recN && debt('Smoke Rale').length === 1 && debt('Smoke Kaca').length === 2 && !!goal());
+
+      // paid
+      act({ kind: 'paid', target: 'smoke cmd porez' });
+      const p1 = await send('platila sam smoke cmd porez');
+      check('naredba: predlog sa Potvrdi/Otkaži', /Smoke cmd porez/.test(txt(p1)) && !!btn(p1, /^c:/) && !!btn(p1, /^n:/), JSON.stringify(p1));
+      check('naredba: bez potvrde nema promene', !isApplied(recP.id));
+      const c1 = await click(btn(p1, /^c:/).data);
+      check('naredba: plaćeno posle potvrde', isApplied(recP.id) && /✓/.test(txt(c1)), JSON.stringify(c1));
+      const c1b = await click(btn(p1, /^c:/).data);
+      check('naredba: dupla potvrda ne ponavlja', /Već/.test(txt(c1b)), JSON.stringify(c1b));
+      await click(btn(c1, /^u:/).data);
+      check('naredba: Poništi vraća neplaćeno', !isApplied(recP.id) && !L('budzet-stavke-v2').some(e => e.id === 'rec-' + recP.id + '-' + curM));
+      // u medjuvremenu placeno u aplikaciji
+      const p2 = await send('platila sam smoke cmd porez');
+      window.__markRecurringPaid(recP.id);
+      const c2 = await click(btn(p2, /^c:/).data);
+      check('naredba: plaćeno u međuvremenu -> Već urađeno', /Već/.test(txt(c2)) && L('budzet-stavke-v2').filter(e => e.id === 'rec-' + recP.id + '-' + curM).length === 1, JSON.stringify(c2));
+      // otkazi
+      act({ kind: 'skip', target: 'nokti' });
+      const k0 = await send('nokti ovog meseca ne');
+      const k0c = await click(btn(k0, /^n:/).data);
+      check('naredba: Otkaži ne menja ništa', /Otkazano/.test(txt(k0c)) && !(O('budzet-preskoceno-v1')[curM] || []).includes(recN.id), JSON.stringify(k0c));
+      // skip
+      const k1 = await send('nokti ovog meseca ne');
+      const k1c = await click(btn(k1, /^c:/).data);
+      check('naredba: preskoči', (O('budzet-preskoceno-v1')[curM] || []).includes(recN.id), JSON.stringify(k1c));
+      await click(btn(k1c, /^u:/).data);
+      check('naredba: Poništi vraća preskakanje', !(O('budzet-preskoceno-v1')[curM] || []).includes(recN.id));
+      // istek
+      const k2 = await send('nokti ovog meseca ne');
+      const props = L('budzet-telegram-potvrde-v1'); props.forEach(x => { x.created -= 11 * 60 * 1000; }); localStorage.setItem('budzet-telegram-potvrde-v1', JSON.stringify(props));
+      const k2c = await click(btn(k2, /^c:/).data);
+      check('naredba: istekla potvrda', /Isteklo/.test(txt(k2c)) && !(O('budzet-preskoceno-v1')[curM] || []).includes(recN.id), JSON.stringify(k2c));
+      // uplata na dug veca od ostatka -> ostatak
+      act({ kind: 'debtPay', target: 'Smoke Raletu', amount: 50000 });
+      const d1 = await send('vratila sam smoke raletu 50000');
+      check('naredba: dug — predlog do ostatka', /12[.,]000/.test(txt(d1)), txt(d1));
+      const d1c = await click(btn(d1, /^c:/).data);
+      check('naredba: dug — uplaćen samo ostatak', debt('Smoke Rale')[0].paidAmount === 12000, JSON.stringify(debt('Smoke Rale')));
+      await click(btn(d1c, /^u:/).data);
+      check('naredba: dug — Poništi', !debt('Smoke Rale')[0].paidAmount);
+      // bez iznosa -> Koliko?
+      act({ kind: 'debtPay', target: 'smoke rale' });
+      const d2 = await send('vratila sam smoke raletu');
+      check('naredba: dug bez iznosa pita koliko', /Koliko/.test(txt(d2)), txt(d2));
+      const d2b = await send('5000');
+      const d2c = await click(btn(d2b, /^c:/).data);
+      check('naredba: dug — iznos iz sledeće poruke', debt('Smoke Rale')[0].paidAmount === 5000, JSON.stringify(d2c));
+      await click(btn(d2c, /^u:/).data);
+      // izbor izmedju dva ista imena
+      act({ kind: 'debtPay', target: 'smoke kaci', amount: 1000 });
+      const d3 = await send('vratila sam smoke kaci 1000');
+      const hb = ((d3.replies[0] || {}).buttons || []).flat().filter(b => /^h:/.test(b.data));
+      check('naredba: dva kandidata -> izbor', hb.length === 2 && /Na šta/.test(txt(d3)), JSON.stringify(d3));
+      const d3h = await click(hb[1].data);
+      const d3c = await click(btn(d3h, /^c:/).data);
+      const kace = debt('Smoke Kaca');
+      check('naredba: izabran drugi kandidat', !kace[0].paidAmount && kace[1].paidAmount === 1000, JSON.stringify(kace));
+      await click(btn(d3c, /^u:/).data);
+      // cilj
+      const g0 = goal().current;
+      act({ kind: 'goalPay', target: 'smoke letovanje', amount: 10000 });
+      const g1 = await send('stavi 10000 u smoke letovanje');
+      const g1c = await click(btn(g1, /^c:/).data);
+      check('naredba: uplata u cilj', goal().current === g0 + 10000, JSON.stringify(goal()));
+      await click(btn(g1c, /^u:/).data);
+      check('naredba: cilj — Poništi', goal().current === g0);
+      // Nabavka
+      const shop = () => window.__shopping().items;
+      act({ kind: 'shopAdd', items: ['Smoke mleko', 'Smoke hleb'] });
+      const s1 = await send('dodaj smoke mleko i smoke hleb');
+      const s1c = await click(btn(s1, /^c:/).data);
+      check('naredba: dodato na spisak', ['Smoke mleko', 'Smoke hleb'].every(n => shop().some(it => it.name === n && it.needed)), JSON.stringify(s1c));
+      act({ kind: 'shopDone', items: ['smoke mleko', 'smoke jaja'] });
+      const s2 = await send('kupila sam smoke mleko i smoke jaja');
+      check('naredba: kupljeno — predlog navodi šta nije nađeno', /jaja/.test(txt(s2)) && /mleko/i.test(txt(s2)), txt(s2));
+      const s2c = await click(btn(s2, /^c:/).data);
+      check('naredba: štiklirano', shop().find(it => it.name === 'Smoke mleko').checked === true);
+      await click(btn(s2c, /^u:/).data);
+      check('naredba: Poništi štikliranje', !shop().find(it => it.name === 'Smoke mleko').checked);
+      await click(btn(s1c, /^u:/).data);
+      check('naredba: Poništi dodavanje', !shop().some(it => it.name === 'Smoke hleb'));
+      // add bez /nov, pa izmena i brisanje poslednjeg
+      act({ kind: 'add', target: 'Smoke cmd kafa 250' });
+      const a1 = await send('Smoke cmd kafa 250');
+      check('naredba: tekst sa iznosom bez /nov -> predlog unosa', /Smoke cmd kafa/.test(txt(a1)) && !L('budzet-stavke-v2').some(e => e.desc === 'Smoke cmd kafa'), txt(a1));
+      await click(btn(a1, /^c:/).data);
+      const kafa = () => L('budzet-stavke-v2').find(e => e.desc === 'Smoke cmd kafa');
+      check('naredba: unos posle potvrde', !!kafa() && kafa().amount === 250);
+      act({ kind: 'editLast', target: 'kafu', amount: 300 });
+      const e1 = await send('promeni kafu na 300');
+      const e1c = await click(btn(e1, /^c:/).data);
+      check('naredba: izmena poslednjeg', kafa().amount === 300, JSON.stringify(e1c));
+      await click(btn(e1c, /^u:/).data);
+      check('naredba: Poništi izmene vraća stari iznos', !!kafa() && kafa().amount === 250);
+      act({ kind: 'deleteLast' });
+      const x1 = await send('obriši poslednji');
+      const x1c = await click(btn(x1, /^c:/).data);
+      check('naredba: brisanje poslednjeg', !kafa(), JSON.stringify(x1c));
+      await click(btn(x1c, /^u:/).data);
+      check('naredba: Poništi brisanja vraća unos', !!kafa() && kafa().amount === 250);
+      // grupa: ime onog ko potvrdi
+      act({ kind: 'skip', target: 'nokti' });
+      const gr = await send('nokti ne', { group: true, from: { id: 5, name: 'Ana' } });
+      const grc = await click(btn(gr, /^c:/).data, { group: true, from: { id: 6, name: 'Vanja' } });
+      check('naredba: grupa — rezultat nosi ime potvrđivača', /Vanja/.test(txt(grc)), txt(grc));
+      await click(btn(grc, /^u:/).data);
+      // nije nadjeno
+      act({ kind: 'paid', target: 'nepostojeca stavka xyz' });
+      const nf = await send('platila sam xyz');
+      check('naredba: nepoznata meta', /Nisam našao/.test(txt(nf)), txt(nf));
+      // pocisti
+      window.__fakeAsk = null; window.__fakeTgCategory = null;
+      window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke cmd/.test(e.desc) || e.id === 'rec-' + recP.id + '-' + curM).map(e => e.id));
+      const R = window.__recurringRaw; const list = R.list();
+      [recP.id, recN.id].forEach(id => { const i = list.findIndex(r => r.id === id); if (i >= 0) list.splice(i, 1); const ap = R.applied(); if (ap[curM]) ap[curM] = ap[curM].filter(x => x !== id); });
+      R.save();
+    }
+
     // Cuvanje u fajl
     await window.__desktopData.saveNow();
     check('podaci sačuvani u fajl', !!window.__desktopData.status.savedAt && !window.__desktopData.status.error, JSON.stringify(window.__desktopData.status));
