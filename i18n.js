@@ -624,7 +624,7 @@
     'Prekini vezu': 'Disconnect',
     'Bot uključen': 'Bot on',
     'Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).': 'The bot works while the app is running (also in the tray next to the clock). Telegram keeps messages for 24 hours — if the computer is off longer, older messages are lost; a message the bot didn’t reply to was not recorded. Messages with the bot are not end-to-end encrypted (Telegram can see them).',
-    '✓ Povezano sa Knjigom budžeta. Pošalji npr. „kafa 250“ ili sliku računa. /pomoc za uputstvo.': '✓ Connected to Budget Book. Send e.g. “coffee 250” or a receipt photo. /pomoc for help.',
+    '✓ Povezano sa Knjigom budžeta. Pitaj me nešto o budžetu ili upiši trošak: /nov kafa 250. /pomoc za uputstvo.': '✓ Connected to Budget Book. Ask me about your budget or add an expense: /nov coffee 250. /pomoc for help.',
     '⏳ Čitam…': '⏳ Reading…',    'Primam samo PDF, JPG, PNG ili WEBP.': 'I only accept PDF, JPG, PNG or WEBP.',
     'Fajl je veći od 10 MB.': 'The file is larger than 10 MB.',
     'Fajl nije preuzet iz Telegrama — pošalji ga ponovo.': 'The file couldn’t be downloaded from Telegram — send it again.',

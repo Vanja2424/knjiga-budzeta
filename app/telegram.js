@@ -26,7 +26,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   };
   let state = 'off';        // off | notoken | running | offline | conflict | badToken
   let pair = null;          // { code, until }
-  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0;
+  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0, commandsSet = false;
   const attempts = new Map(); // update_id -> broj neuspelih obrada
   // Obrada sa rokom: stranica koja se osvezi/padne usred obrade ne sme da zaustavi petlju zauvek
   const withTimeout = (promise, ms) => new Promise((res, rej) => {
@@ -80,7 +80,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     s().telegramTokenLast4 = token.slice(-4);
     if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; delete s().telegramOffset; delete s().telegramBotName; }
     saveSettings();
-    meAt = 0;
+    meAt = 0; commandsSet = false;
     try { const me = await api('getMe'); s().telegramBotName = String(me && me.username || ''); saveSettings(); lastError = ''; state = 'off'; }
     catch (e) {
       lastError = scrub(e.message);
@@ -170,7 +170,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
         if (msg.chat.type === 'private') { s().telegramUserId = fromId; delete s().telegramChatTitle; }
         else { delete s().telegramUserId; s().telegramChatTitle = String(msg.chat.title || '').slice(0, 80); }
         saveSettings(); pair = null;
-        await deliver([{ text: T('✓ Povezano sa Knjigom budžeta. Pošalji npr. „kafa 250“ ili sliku računa. /pomoc za uputstvo.') }], chatId);
+        await deliver([{ text: T('✓ Povezano sa Knjigom budžeta. Pitaj me nešto o budžetu ili upiši trošak: /nov kafa 250. /pomoc za uputstvo.') }], chatId);
         onStatus(status());
       }
       return; // tudji chat: bez odgovora
@@ -227,6 +227,14 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       meAt = now();
       const me = await safe(() => api('getMe'));
       if (me && me.username) { s().telegramBotName = String(me.username); saveSettings(); onStatus(status()); }
+    }
+    // meni komandi u Telegramu ("/"): jednom po pokretanju; greska ne smeta
+    if (!commandsSet) {
+      commandsSet = true;
+      await safe(() => api('setMyCommands', { commands: [
+        { command: 'nov', description: T('Nov unos: /nov kafa 250') },
+        { command: 'ponisti', description: T('Poništi poslednji unos') },
+        { command: 'pomoc', description: T('Uputstvo') }] }));
     }
     for (const u of updates || []) {
       try { await processUpdate(u); attempts.delete(u.update_id); }
