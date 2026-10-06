@@ -6714,9 +6714,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function debtExpenseTotals(){
     const owedByMe = debts.filter(d => d.direction === 'i_owe');
     const paid = owedByMe.reduce((s,d)=> s + Math.min(d.paidAmount||0, d.amount), 0);
-    const pending = owedByMe.reduce((s,d)=> s + debtRemaining(d), 0);
-    const pendingCount = owedByMe.filter(d => debtRemaining(d) > 0).length;
-    return { paid, pending, pendingCount };
+    return { paid };
   }
   // Zbirovi za jedan mesec — jedini izvor brojki za sazetak, Pregled, upozorenja i analizu.
   function monthTotals(mKey){ return C.monthTotals(entries, mKey); }
@@ -6734,16 +6732,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return C.pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonthKey());
   }
   function pendingForMonth(mKey){
-    const cur = currentMonthKey();
-    const direct = entries.filter(e=> e.type==='expense' && !isExpensePaid(e) && (mKey === cur ? monthKey(e.date) <= mKey : monthKey(e.date) === mKey));
-    const recItems = pendingRecurring(mKey);
-    const debt = mKey === cur ? debtExpenseTotals() : { pending: 0, pendingCount: 0 };
-    // Tekuci mesec: rate (r.debtId) su vec u debt.pending (C.debtPaid/debtRemaining), ne dodaj ih i ovde.
-    const recExpenseItems = recItems.filter(r=> r.type==='expense' && !(mKey === cur && r.debtId));
-    const expense = direct.reduce((s,e)=>s+e.amount,0) + recExpenseItems.reduce((s,r)=>s+r.amount,0) + debt.pending;
-    const income = recItems.filter(r=>r.type==='income').reduce((s,r)=>s+r.amount,0);
-    const count = direct.length + recExpenseItems.length + debt.pendingCount;
-    return { expense, income, count };
+    return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: currentMonthKey() });
   }
   if(IS_TEST) window.__pendingForMonth = pendingForMonth;
   function renderSummary(){
@@ -6770,6 +6759,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const parts = [];
     parts.push(p.count ? t(p.count===1?'{0} stavka':'{0} stavki', p.count) : t(viewMonth < cur ? 'ništa neplaćeno' : 'sve plaćeno'));
     if(p.income > 0) parts.push(t('očekuje se +{0}', fmt(p.income)));
+    if(p.debt > 0) parts.push(t('dugovi: {0} ({1})', fmt(p.debt), p.debtCount));
     document.getElementById('pendingSub').textContent = parts.join(' · ');
     renderPeriodBar();
   }
