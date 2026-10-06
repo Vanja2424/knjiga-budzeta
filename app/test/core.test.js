@@ -2236,3 +2236,19 @@ test('pendingForMonth: poslednja rata veca od ostatka duga racuna se samo do ost
   assert.equal(cur.count, 1);
   assert.equal(cur.debt, 0);
 });
+
+test('matchActionTarget: padezi, dijakritike, celo ime pobedjuje, izbor, nista', () => {
+  const debts = [{ id: 'r', name: 'Rale' }, { id: 'g', name: 'Gabo' }, { id: 'j', name: 'Jovica' }];
+  assert.deepEqual(C.matchActionTarget('Raletu', debts), { match: { id: 'r', name: 'Rale' } });
+  assert.deepEqual(C.matchActionTarget('Jovici', debts), { match: { id: 'j', name: 'Jovica' } });
+  const goals = [{ id: 'l', name: 'Letovanje' }, { id: 'a', name: 'Auto' }];
+  assert.deepEqual(C.matchActionTarget('letovanje', goals), { match: { id: 'l', name: 'Letovanje' } });
+  const rec = [{ id: 'p', name: 'Porez' }, { id: 'y', name: 'Anđela - Yettel' }, { id: 'n', name: 'Nokti' }, { id: 'pi', name: 'Porez imovina' }];
+  assert.deepEqual(C.matchActionTarget('porez', rec), { match: { id: 'p', name: 'Porez' } });
+  assert.deepEqual(C.matchActionTarget('andjela', rec), { match: { id: 'y', name: 'Anđela - Yettel' } });
+  assert.deepEqual(C.matchActionTarget('yettel', rec), { match: { id: 'y', name: 'Anđela - Yettel' } });
+  const two = [{ id: 'k1', name: 'Kaca' }, { id: 'k2', name: 'Kaca' }];
+  assert.deepEqual(C.matchActionTarget('Kaci', two), { choices: two });
+  assert.deepEqual(C.matchActionTarget('struja', rec), { none: true });
+  assert.deepEqual(C.matchActionTarget('', rec), { none: true });
+});

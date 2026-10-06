@@ -2051,6 +2051,26 @@
     const m = /^([ksxouncvh]):([A-Za-z0-9]{1,40})(?::([a-z0-9]{1,10}))?$/.exec(String(data || ''));
     return m ? { action: m[1], id: m[2], arg: m[3] || '' } : null;
   }
+  // Naredbe iz bota: ime iz poruke ("Raletu", "letovanje") -> stavka aplikacije, bez AI-ja (imena ne idu AI-ju)
+  const ACTION_SUFFIXES = ['ima', 'ama', 'ovi', 'ove', 'ova', 'om', 'em', 'u', 'a', 'e', 'i', 'o'];
+  const stemWord = w => { for(const s of ACTION_SUFFIXES) if(w.length - s.length >= 3 && w.endsWith(s)) return w.slice(0, -s.length); return w; };
+  const stemWords = s => foldText(s).split(/[^a-z0-9]+/).filter(Boolean).map(stemWord);
+  const wordHit = (a, b) => a === b || (Math.min(a.length, b.length) >= 3 && (a.startsWith(b) || b.startsWith(a)));
+  function matchActionTarget(text, candidates){
+    const tw = stemWords(text);
+    if(!tw.length) return { none: true };
+    const scored = (candidates || []).map(c => {
+      const nw = stemWords(c.name);
+      if(!nw.length) return { c, score: 0 };
+      const hits = nw.filter(n => tw.some(w => wordHit(w, n)));
+      const exact = nw.every(n => tw.includes(n));
+      return { c, score: hits.length === nw.length ? (exact ? 3 : 2) : hits.length ? 1 : 0 };
+    }).filter(x => x.score > 0);
+    if(!scored.length) return { none: true };
+    const best = Math.max(...scored.map(x => x.score));
+    const top = scored.filter(x => x.score === best).map(x => x.c);
+    return top.length === 1 ? { match: top[0] } : { choices: top.slice(0, 6) };
+  }
   function cleanTelegramPending(list, nowMs){
     const limit = nowMs - TELEGRAM_PENDING_DAYS * 864e5;
     const valid = (Array.isArray(list) ? list : []).filter(p => p && typeof p === 'object' && typeof p.id === 'string' && typeof p.created === 'number');
@@ -2344,7 +2364,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
