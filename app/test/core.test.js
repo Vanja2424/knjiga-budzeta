@@ -2217,7 +2217,16 @@ test('pendingForMonth: drugi meseci bez dugova; rata koja pokriva ceo ostatak ne
   const past = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-09', currentMonth: '2026-10' });
   assert.deepEqual(past, { expense: 0, income: 0, count: 0, debt: 0, debtCount: 0 });
   const cur = C.pendingForMonth({ entries, recurring, applied: {}, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
-  assert.equal(cur.expense, 5300);
+  assert.equal(cur.expense, 3300); // rata 5000 ogranicena na ostatak duga 3000
   assert.equal(cur.debt, 0);
   assert.equal(cur.debtCount, 0);
+});
+
+test('pendingForMonth: poslednja rata veca od ostatka duga racuna se samo do ostatka', () => {
+  const recurring = [{ id: 'r', desc: 'Rata', amount: 1500, type: 'expense', frequency: 'monthly', debtId: 'g' }];
+  const debts = [{ id: 'g', direction: 'i_owe', person: 'Gabo', amount: 3000, paidAmount: 2000 }];
+  const cur = C.pendingForMonth({ entries: [], recurring, applied: {}, skipped: {}, debts, mKey: '2026-10', currentMonth: '2026-10' });
+  assert.equal(cur.expense, 1000);
+  assert.equal(cur.count, 1);
+  assert.equal(cur.debt, 0);
 });

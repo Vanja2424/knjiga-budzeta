@@ -830,14 +830,20 @@
     const direct = entries.filter(e => e.type === 'expense' && e.paid === false && (isCur ? e.date.slice(0, 7) <= mKey : e.date.slice(0, 7) === mKey));
     const recItems = pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonth);
     const recExpense = recItems.filter(r => r.type === 'expense');
+    // Tekuci mesec: rata se racuna najvise do ostatka svog duga (poslednja rata je cesto manja), ostatak ide u debt.
+    const left = {};
+    if(isCur) debts.filter(d => d.direction === 'i_owe').forEach(d => { left[d.id] = round2(Math.max(0, d.amount - debtPaid(d, entries))); });
+    const recAmount = r => {
+      if(!(r.debtId in left)) return r.amount;
+      const a = Math.min(r.amount, left[r.debtId]);
+      left[r.debtId] = round2(left[r.debtId] - a);
+      return a;
+    };
+    const recSum = recExpense.reduce((s, r) => s + recAmount(r), 0);
     let debt = 0, debtCount = 0;
-    if(isCur) debts.filter(d => d.direction === 'i_owe').forEach(d => {
-      const inst = recExpense.reduce((s, r) => r.debtId === d.id ? s + r.amount : s, 0);
-      const rest = round2(Math.max(0, d.amount - debtPaid(d, entries) - inst));
-      if(rest > 0){ debt += rest; debtCount++; }
-    });
+    Object.keys(left).forEach(id => { if(left[id] > 0){ debt += left[id]; debtCount++; } });
     return {
-      expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recExpense.reduce((s, r) => s + r.amount, 0)),
+      expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recSum),
       income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0)),
       count: direct.length + recExpense.length,
       debt: round2(debt), debtCount

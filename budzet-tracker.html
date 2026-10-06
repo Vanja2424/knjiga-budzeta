@@ -6714,9 +6714,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function debtExpenseTotals(){
     const owedByMe = debts.filter(d => d.direction === 'i_owe');
     const paid = owedByMe.reduce((s,d)=> s + Math.min(d.paidAmount||0, d.amount), 0);
-    const pending = owedByMe.reduce((s,d)=> s + debtRemaining(d), 0);
-    const pendingCount = owedByMe.filter(d => debtRemaining(d) > 0).length;
-    return { paid, pending, pendingCount };
+    return { paid };
   }
   // Zbirovi za jedan mesec — jedini izvor brojki za sazetak, Pregled, upozorenja i analizu.
   function monthTotals(mKey){ return C.monthTotals(entries, mKey); }
