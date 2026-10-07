@@ -2745,6 +2745,21 @@
       const m3 = await window.__tgMorning(todayIso + 'T09:30');
       check('jutro: isključen prekidač — ništa', !m3.replies.length);
       { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === recJ.id); if (i >= 0) list.splice(i, 1); R.save(); }
+      // v1.37: mesecni rezime (prethodni mesec, jednom, bez AI-ja)
+      check('rezime: prekidač u Telegram odeljku', !!$('tgMonthlyOn'));
+      const prevMs = window.BudzetCore.addMonths(curM, -1);
+      const mtPrev = window.BudzetCore.monthTotals(L('budzet-stavke-v2'), prevMs);
+      localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
+      const ms0 = await window.__tgMonthly(curM + '-01T08:00');
+      check('rezime: 1. pre vremena podsetnika ništa', !ms0.replies.length);
+      const ms1 = await window.__tgMonthly(curM + '-01T09:30');
+      const hasData = mtPrev.income > 0 || mtPrev.expense > 0;
+      check('rezime: poruka za prošli mesec sa prihodima i rashodima', !hasData ? !ms1.replies.length : (/📊/.test(txt(ms1)) && /Prihodi/.test(txt(ms1)) && /Rashodi/.test(txt(ms1))), txt(ms1).slice(0, 300));
+      const ms2 = await window.__tgMonthly(curM + '-02T10:00');
+      check('rezime: samo jednom mesečno', !ms2.replies.length);
+      localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: false, last: '' }));
+      const ms3 = await window.__tgMonthly(curM + '-03T10:00');
+      check('rezime: isključen — ništa', !ms3.replies.length);
       // pocisti
       window.__fakeAsk = null; window.__fakeTgCategory = null;
       window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke cmd/.test(e.desc) || e.id === 'rec-' + recP.id + '-' + curM).map(e => e.id));

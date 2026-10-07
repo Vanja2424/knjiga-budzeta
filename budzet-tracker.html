@@ -2800,6 +2800,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         <label class="paid-checkbox-label"><input type="checkbox" id="tgOn"> Bot uključen</label>
         <div id="tgMorningRow"><label class="paid-checkbox-label"><input type="checkbox" id="tgMorningOn"> Jutarnji podsetnik u Telegramu (šta danas i sutra dospeva, šta kasni, dokumenti i godišnji troškovi)</label>
           <div class="file-row"><label for="tgMorningTime">Vreme</label><input type="time" id="tgMorningTime" value="09:00" style="max-width:120px;"></div></div>
+        <div id="tgMonthlyRow"><label class="paid-checkbox-label"><input type="checkbox" id="tgMonthlyOn"> Mesečni rezime u Telegramu (prvog u mesecu: prihodi, rashodi, ušteda, kategorije, limiti)</label></div>
         <div class="import-status" id="tgStatus" aria-live="polite"></div>
         <div class="import-status">Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).</div>
       </div>
@@ -6111,18 +6112,54 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined }] };
   }
   if(IS_TEST) window.__tgMorning = iso => tgMorning(iso);
+  // ---- Mesecni rezime: prethodni mesec, iz istih brojki kao Mesecni pregled (bez AI-ja) ----
+  const TG_MONTHLY_KEY = 'budzet-telegram-rezime-v1';
+  const tgMonthlyCfg = () => { const d = { on: true, last: '' }; try{ const v = JSON.parse(localStorage.getItem(TG_MONTHLY_KEY) || 'null'); return Object.assign(d, v && typeof v === 'object' ? v : {}); } catch(e){ return d; } };
+  const tgMonthlySave = c => localStorage.setItem(TG_MONTHLY_KEY, JSON.stringify(c));
+  async function tgMonthly(nowIso){
+    const cfg = tgMonthlyCfg();
+    const prev = C.monthlySummaryDue({ on: cfg.on, last: cfg.last, time: tgMorningCfg().time, now: nowIso });
+    if(!prev) return { replies: [] };
+    cfg.last = prev; tgMonthlySave(cfg);
+    const r = C.monthReview(entries, { recurring, applied, skipped, limits }, prev, 6);
+    if(!r.income && !r.expense) return { replies: [] };
+    const [y, mo] = prev.split('-').map(Number);
+    const name = new Date(y, mo - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
+    const B = v => '**' + v + '**';
+    const head = [`📊 ${B(name.charAt(0).toUpperCase() + name.slice(1))}`, t('Prihodi: {0}', fmt(r.income))];
+    const pct = r.expensePct != null && Math.abs(r.expensePct) >= 5 ? ' (' + t(r.expensePct > 0 ? '{0}% više od proseka' : '{0}% manje od proseka', Math.abs(r.expensePct)) + ')' : '';
+    head.push(t('Rashodi: {0}', fmt(r.expense)) + pct);
+    head.push(r.net >= 0 ? t('Ušteđeno: {0}', B(fmt(r.net))) + (r.savingsRate != null ? ` (${r.savingsRate}%)` : '') : t('Manjak: {0}', B(fmt(-r.net))));
+    const parts = [head.join('\n')];
+    const top = monthTotals(prev).catEntries.slice(0, 5);
+    if(top.length) parts.push(['🧾 ' + B(t('Najviše potrošeno'))].concat(top.map(([c, v])=> `• ${c} — ${fmt(v)}`)).join('\n'));
+    const ch = [];
+    if(r.up.length) ch.push(['📈 ' + B(t('Više nego obično'))].concat(r.up.map(u=> `• ${u.cat} — +${fmt(u.diff)}`)).join('\n'));
+    if(r.down) ch.push('📉 ' + t('Manje: {0} −{1}', r.down.cat, fmt(-r.down.diff)));
+    if(ch.length) parts.push(ch.join('\n'));
+    if(r.overBudget.length) parts.push(['🚫 ' + B(t('Preko limita'))].concat(r.overBudget.map(o=> `• ${o.cat} — ${fmt(o.spent)} / ${fmt(o.limit)}`)).join('\n'));
+    const n = r.unpaidEntries.length + r.unpaidRecurring.length;
+    if(n) parts.push('⚠️ ' + t('Ostalo neplaćeno: {0}, {1}', t(n === 1 ? '{0} stavka' : '{0} stavki', n), fmt(r.unpaidTotal)));
+    return { replies: [{ text: parts.join('\n\n') }] };
+  }
+  if(IS_TEST) window.__tgMonthly = iso => tgMonthly(iso);
+  async function tgTick(){
+    const out = await tgFileTick();
+    const now = tgNowIso();
+    try{ const m = await tgMorning(now); out.replies.push(...m.replies); } catch(e){ /* podsetnik ne sme da zaustavi ostalo */ }
+    try{ const m = await tgMonthly(now); out.replies.push(...m.replies); } catch(e){ /* isto */ }
+    return out;
+  }
+  // Podesavanja -> Telegram: jutarnji podsetnik i mesecni rezime
   (()=>{
     const on = document.getElementById('tgMorningOn'), time = document.getElementById('tgMorningTime');
     if(!on || !time) return;
     const c = tgMorningCfg(); on.checked = !!c.on; time.value = /^\d{2}:\d{2}$/.test(c.time) ? c.time : '09:00';
     const save = ()=>{ const v = tgMorningCfg(); v.on = on.checked; if(/^\d{2}:\d{2}$/.test(time.value)) v.time = time.value; tgMorningSave(v); };
     on.addEventListener('change', save); time.addEventListener('change', save);
+    const mon = document.getElementById('tgMonthlyOn');
+    if(mon){ mon.checked = !!tgMonthlyCfg().on; mon.addEventListener('change', ()=>{ const v = tgMonthlyCfg(); v.on = mon.checked; tgMonthlySave(v); }); }
   })();
-  async function tgTick(){
-    const out = await tgFileTick();
-    try{ const m = await tgMorning(tgNowIso()); out.replies.push(...m.replies); } catch(e){ /* podsetnik ne sme da zaustavi ostalo */ }
-    return out;
-  }
   const tgPending = () => tgLoad(TG_PENDING_KEY);
   const tgPendingPut = p => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== p.id).concat(p));
   const tgPendingDrop = id => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== id));

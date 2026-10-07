@@ -2339,3 +2339,14 @@ test('jutarnji podsetnik: danas, sutra, kasni (ponavljajuce i neplaceni rashodi)
   const empty = C.morningReminderItems({ recurring: [], entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-07' });
   assert.equal(C.morningHasItems(empty), false); assert.equal(C.morningHasItems(r), true);
 });
+
+test('mesecni rezime: prvog posle vremena podsetnika, kasnije do 10. u mesecu, jednom mesecno', () => {
+  const o = (now, last, on = true) => C.monthlySummaryDue({ on, time: '09:00', last, now });
+  assert.equal(o('2026-11-01T08:59', ''), null);
+  assert.equal(o('2026-11-01T09:00', ''), '2026-10');
+  assert.equal(o('2026-11-01T09:00', '2026-10'), null);
+  assert.equal(o('2026-11-04T07:00', '2026-09'), '2026-10');   // racunar je 1. bio ugasen
+  assert.equal(o('2026-11-11T12:00', ''), null);
+  assert.equal(o('2026-01-01T10:00', ''), '2025-12');
+  assert.equal(o('2026-11-01T10:00', '', false), null);
+});
