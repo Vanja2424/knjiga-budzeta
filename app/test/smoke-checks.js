@@ -2710,6 +2710,41 @@
       setVal('askInput', 'šta treba da platimo?'); $('askBtn').click(); await sleep(400);
       check('Pitaj ekran: bez Telegram pravila izgleda', !/\*\*/.test(askP[1] || ''));
       check('pregled: Pitaj ekran dobija Za plaćanje (nije null)', /"tool":"toPay"/.test(askP[1] || '') && /"total"/.test(askP[1] || ''), (askP[1] || '').slice(-300));
+      // v1.36: jutarnji podsetnik (jednom dnevno posle zadatog vremena, dugme ✓ placa odmah, Ponisti)
+      check('jutro: podešavanja u Telegram odeljku', !!$('tgMorningOn') && !!$('tgMorningTime'));
+      go('ponavljajuce'); await sleep(50);
+      setVal('recDesc', 'Smoke jutro'); setVal('recAmount', '700'); setVal('recDay', String(new Date().getDate())); $('recAutoPay').checked = false;
+      $('recurringForm').requestSubmit(); await sleep(100);
+      const recJ = L('budzet-ponavljajuce-v1').find(r => r.desc === 'Smoke jutro');
+      const todayIso = window.BudzetCore.toISODate(new Date());
+      localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: true, time: '09:00', last: '' }));
+      const m0 = await window.__tgMorning(todayIso + 'T08:30');
+      check('jutro: pre zadatog vremena ništa', !m0.replies.length, JSON.stringify(m0));
+      const m1 = await window.__tgMorning(todayIso + 'T09:05');
+      const mb = ((m1.replies[0] || {}).buttons || []).flat().find(b => /Smoke jutro/.test(b.text));
+      check('jutro: poruka sa stavkom koja danas dospeva i dugmetom', /🔔/.test(txt(m1)) && /Smoke jutro/.test(txt(m1)) && !!mb && /^c:/.test(mb.data), JSON.stringify(m1).slice(0, 400));
+      const m2 = await window.__tgMorning(todayIso + 'T11:00');
+      check('jutro: samo jednom dnevno', !m2.replies.length);
+      const pr = L('budzet-telegram-potvrde-v1'); pr.forEach(x => { x.created -= 2 * 3600 * 1000; }); localStorage.setItem('budzet-telegram-potvrde-v1', JSON.stringify(pr));
+      const mc = await click(mb.data);
+      check('jutro: dugme plaća odmah (važi ceo dan), rezultat je nova poruka', isApplied(recJ.id) && !!mc.replies[0] && !mc.replies[0].editMessageId && !!btn(mc, /^u:/), JSON.stringify(mc));
+      await click(btn(mc, /^u:/).data);
+      check('jutro: Poništi', !isApplied(recJ.id));
+      // jednokratni neplaceni rashod: iznos ispravljen u aplikaciji posle jutarnje poruke ostaje ispravljen
+      const cat0j = window.__desktopBridge.getQuickAddData().expenseCats[0];
+      const addJ = window.__desktopBridge.addEntry({ type: 'expense', desc: 'Smoke jutro drva', amount: 500, currency: 'RSD', date: todayIso, category: cat0j, paid: false });
+      localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: true, time: '09:00', last: '' }));
+      const mj = await window.__tgMorning(todayIso + 'T09:10');
+      const bj = ((mj.replies[0] || {}).buttons || []).flat().find(b => /Smoke jutro drva/.test(b.text));
+      window.__setEntryAmount(addJ.ids[0], 550);
+      if (bj) await click(bj.data);
+      const ej = L('budzet-stavke-v2').find(e => e.id === addJ.ids[0]);
+      check('jutro: dugme ne vraća ispravljen iznos rashoda', !!bj && !!ej && ej.paid !== false && ej.amount === 550, JSON.stringify(ej));
+      window.__deleteEntriesById(addJ.ids);
+      localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: false, time: '09:00', last: '' }));
+      const m3 = await window.__tgMorning(todayIso + 'T09:30');
+      check('jutro: isključen prekidač — ništa', !m3.replies.length);
+      { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === recJ.id); if (i >= 0) list.splice(i, 1); R.save(); }
       // pocisti
       window.__fakeAsk = null; window.__fakeTgCategory = null;
       window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke cmd/.test(e.desc) || e.id === 'rec-' + recP.id + '-' + curM).map(e => e.id));
