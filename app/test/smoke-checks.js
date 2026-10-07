@@ -1389,6 +1389,34 @@
       window.__deleteEntriesById(infIds);
     }
 
+    // v1.40: skrivene pretplate (Ponavljajuce: predlog, Dodaj -> pretplata placena ovog meseca, Nije -> nestaje)
+    {
+      const C2 = window.BudzetCore, todayS = C2.toISODate(new Date()), curS = todayS.slice(0, 7);
+      const mk = (m, desc, amount) => ({ id: 'smoke-sub-' + desc.replace(/\W/g, '') + m, type: 'expense', desc, amount, category: 'Ostalo', date: m + '-02', paid: true, tags: [] });
+      const ms = [C2.addMonths(curS, -2), C2.addMonths(curS, -1), curS];
+      const subEnt = ms.map(m => mk(m, 'Smokeflix', 999)).concat(ms.map(m => mk(m, 'Smokeradio', 499)));
+      window.__addEntriesRaw(subEnt);
+      go('ponavljajuce'); await sleep(150);
+      const panel = () => $('hiddenSubsPanel');
+      const rowOf = name => panel() && [...panel().querySelectorAll('.hidden-sub')].find(r => r.textContent.includes(name));
+      check('pretplate: predlog za rashod koji se ponavlja svakog meseca', !!rowOf('Smokeflix') && !!rowOf('Smokeradio') && panel().style.display !== 'none', panel() && panel().textContent.replace(/\s+/g, ' ').slice(0, 200));
+      const add = rowOf('Smokeflix') && rowOf('Smokeflix').querySelector('.hidden-sub-add');
+      if (add) { add.click(); await sleep(150); }
+      const rec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smokeflix');
+      const ap = JSON.parse(localStorage.getItem('budzet-primenjeno-v1') || '{}');
+      check('pretplate: Dodaj pravi pretplatu, plaćenu za ovaj mesec', !!rec && rec.isSubscription === true && rec.amount === 999 && rec.day === 2 && (ap[curS] || []).includes(rec.id), JSON.stringify(rec));
+      const flixCur = 'smoke-sub-Smokeflix' + curS;
+      check('pretplate: ovomesečni rashod postaje uplata pretplate (bez duplikata posle ponovnog pokretanja)', !!rec && !JSON.parse(localStorage.getItem('budzet-stavke-v2')).some(e => e.id === flixCur) && JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => e.id === 'rec-' + rec.id + '-' + curS && e.amount === 999).length === 1);
+      if (window.__reconcileApplied) { window.__reconcileApplied(); await sleep(50); }
+      check('pretplate: usklađivanje ne dodaje drugi rashod', !rec || JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => (e.id || '').startsWith('rec-' + rec.id + '-')).length === 1);
+      check('pretplate: dodata se više ne predlaže', !rowOf('Smokeflix'));
+      const no = rowOf('Smokeradio') && rowOf('Smokeradio').querySelector('.hidden-sub-no');
+      if (no) { no.click(); await sleep(150); }
+      check('pretplate: Nije sakriva predlog i pamti odluku', !rowOf('Smokeradio') && JSON.parse(localStorage.getItem('budzet-pretplate-odbijene-v1') || '[]').includes('smokeradio'));
+      if (rec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === rec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== rec.id); R.save(); }
+      window.__deleteEntriesById(subEnt.map(e => e.id).concat(rec ? ['rec-' + rec.id + '-' + curS] : []));
+    }
+
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
     if ('__fakeAsk' in window) {
       const cm = monthKey(new Date());

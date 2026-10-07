@@ -1644,6 +1644,8 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-quick{ width:100%; font-size:15px; padding:0.7em 0.9em; }
 .shop-controls{ display:flex; flex-wrap:wrap; gap:0.8em; align-items:center; margin-top:0.9em; }
 .shop-by-btn, .shop-show-btn{ border:none; background:transparent; color:var(--ink); border-radius:6px; padding:4px 12px; font:500 12.5px/1.3 var(--font); cursor:default; }
+.hidden-sub{ display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 0; border-top:1px solid var(--separator); }
+.hidden-sub-actions{ display:flex; gap:6px; align-items:center; }
 .basket-card{ background:var(--card); border-radius:10px; padding:10px 14px; margin:0 0 12px; }
 .basket-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
 .basket-periods{ display:flex; gap:4px; }
@@ -1790,6 +1792,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 .import-near-row{ display:grid; grid-template-columns:20px minmax(0,1fr) auto; gap:0.5em; align-items:center; font-size:12.5px; padding:0.25em 0; }
 .import-near-row .muted{ color:var(--ink-soft); }
 #extraBackupStatus.warn{ color:var(--warn-text); font-weight:600; }
+#hiddenSubsPanel .btn-link{ border:none; background:none; color:var(--accent); font:500 12.5px/1.3 var(--font); cursor:default; padding:0.3em 0.4em; }
+#hiddenSubsPanel .btn-link:hover{ text-decoration:underline; }
 #extraBackupGroup .btn-link{ border:none; background:none; color:var(--accent); font:500 13px/1.3 var(--font); cursor:default; }
 .pregled-empty .needs-data, .pregled-empty #patternsPanel, .pregled-empty #tagBreakdownPanel{ display:none !important; }
 .pregled-start .actions{ display:flex; flex-wrap:wrap; gap:0.6em; margin-top:0.9em; }
@@ -2289,6 +2293,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
 
   <!-- PONAVLJAJUCE -->
   <div class="screen" id="screen-ponavljajuce">
+    <div class="panel" id="hiddenSubsPanel" style="display:none; margin-bottom:1.5em;"></div>
     <div class="layout">
       <div class="panel">
         <h2>Nova ponavljajuća stavka</h2>
@@ -10119,8 +10124,59 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }).join('');
   }
 
+  // Skrivene pretplate: rashodi koji se ponavljaju svakog meseca, a nisu u Ponavljajucim -> "Dodaj" / "Nije"
+  const HIDDEN_SUBS_KEY = 'budzet-pretplate-odbijene-v1';
+  const hiddenSubsDismissed = () => { try{ const v = JSON.parse(localStorage.getItem(HIDDEN_SUBS_KEY) || '[]'); return Array.isArray(v) ? v.filter(x=> typeof x === 'string') : []; } catch(e){ return []; } };
+  function renderHiddenSubs(){
+    const panel = document.getElementById('hiddenSubsPanel'); if(!panel) return;
+    const list = C.findHiddenSubscriptions({ entries, recurring, today: toISODateLocal(new Date()), dismissed: hiddenSubsDismissed() });
+    panel.style.display = list.length ? '' : 'none';
+    if(!list.length){ panel.innerHTML = ''; return; }
+    panel.innerHTML = `<h3 style="margin-top:0;">🔍 ${escapeHtml(t('Možda su pretplate'))}</h3>`
+      + `<div class="hint">${escapeHtml(t('Ovi rashodi se ponavljaju svakog meseca, a nisu u ponavljajućim stavkama. Kad dodaš pretplatu, ubuduće je samo štikliraj ovde — nemoj je upisivati i ručno.'))}</div>`
+      + list.map((x, i)=> `<div class="hidden-sub" data-i="${i}"><span><b translate="no">${escapeHtml(x.desc)}</b> — ${escapeHtml(t('{0} mesečno, oko {1}. ({2})', fmt(x.amount), x.day, monthsTxt(x.months)))}</span>`
+        + `<span class="hidden-sub-actions"><button type="button" class="btn-secondary hidden-sub-add">${escapeHtml(t('Dodaj'))}</button><button type="button" class="btn-link hidden-sub-no">${escapeHtml(t('Nije pretplata'))}</button></span></div>`).join('');
+    panel.querySelectorAll('.hidden-sub').forEach(row=>{
+      const x = list[+row.dataset.i];
+      row.querySelector('.hidden-sub-add').addEventListener('click', ()=> addHiddenSub(x));
+      row.querySelector('.hidden-sub-no').addEventListener('click', ()=>{
+        localStorage.setItem(HIDDEN_SUBS_KEY, JSON.stringify([...new Set(hiddenSubsDismissed().concat(x.key))]));
+        renderHiddenSubs();
+      });
+    });
+  }
+  function addHiddenSub(x){
+    const mKey = currentMonthKey();
+    const r = { id: newId(), type: 'expense', desc: x.desc, amount: Math.round(x.amount), category: expenseCats.includes(x.category) ? x.category : (expenseCats[0] || 'Ostalo'),
+      day: C.clampRecurringDay(x.day), frequency: 'monthly', anchorMonth: 1, isSubscription: true, autoPay: false };
+    recurring.push(r);
+    // ovomesecni rashod je vec upisan: on postaje uplata ove pretplate za tekuci mesec (id rec-<id>-<mesec>),
+    // pa se ne racuna dvaput ni posle uskladjivanja pri pokretanju; placen -> stavka je placena, neplacen ostaje "na cekanju"
+    const e = x.thisMonthId ? entries.find(y=> y.id === x.thisMonthId) : null;
+    const oldId = e ? e.id : null, newEntryId = recurringEntryId(r, mKey);
+    const relink = (from, to)=>{
+      let b = false, d = false;
+      bills.forEach(x=>{ if(x.entryId === from){ x.entryId = to; b = true; } });
+      documents.forEach(x=>{ if(x.entryId === from){ x.entryId = to; d = true; } });
+      if(b) saveBillsState(); if(d) saveDocuments();
+    };
+    if(e){
+      e.id = newEntryId; relink(oldId, newEntryId);
+      if(isExpensePaid(e)){ if(!applied[mKey]) applied[mKey] = []; applied[mKey].push(r.id); saveApplied(); }
+      saveEntries();
+    }
+    saveRecurring(); renderAll();
+    showUndoToast(t('Pretplata dodata: {0}. Ubuduće je štikliraj u Ponavljajućim umesto ručnog unosa.', x.desc), ()=>{
+      recurring = recurring.filter(y=> y.id !== r.id);
+      if(applied[mKey]) applied[mKey] = applied[mKey].filter(id=> id !== r.id);
+      const back = entries.find(y=> y.id === newEntryId);
+      if(back && oldId){ back.id = oldId; relink(newEntryId, oldId); }
+      saveRecurring(); saveApplied(); saveEntries(); renderAll();
+    });
+  }
   function renderRecurring(){
     renderSubscriptionsPanel();
+    renderHiddenSubs();
     const list = document.getElementById('recurringList');
     const emptyEl = document.getElementById('recurringEmpty');
     const pendingLine = document.getElementById('pendingSummaryLine');
@@ -11692,6 +11748,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Popravlja neusklađenost: ako je applied-log rekao da je neki mesec plaćen za neku
   // ponavljajuću stavku, a stvarna stavka u entries-ima za taj mesec nedostaje (npr. zbog
   // starijeg bug-a ili nepotpunog uvoza), dopunjuje nedostajuću stavku da brojke budu tačne.
+  if(IS_TEST) window.__reconcileApplied = () => { reconcileAppliedEntries(); renderAll(); };
   function reconcileAppliedEntries(){
     let changed = false;
     let fixedCount = 0;

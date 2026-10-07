@@ -607,6 +607,41 @@
         first, last, creep, creepPct: creep ? Math.round((last - first) / first * 100) : null };
     }).sort((a, b) => b.yearly - a.yearly);
   }
+  // ---------- Skrivene pretplate: rashodi koji se ponavljaju svakog meseca, a nisu u Ponavljajucim ----------
+  // Kljuc opisa: bez reci sa ciframa (SPOTIFY P1A2 = Spotify), bez dijakritika i interpunkcije
+  const subscriptionKey = desc => foldText(desc).split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+  function findHiddenSubscriptions(o){
+    const cur = String(o.today).slice(0, 7), prev = addMonths(cur, -1);
+    const known = new Set((o.recurring || []).map(r => subscriptionKey(r.desc)).filter(Boolean));
+    const dismissed = new Set(o.dismissed || []);
+    const groups = new Map();
+    (o.entries || []).forEach(e => {
+      if(!e || e.type !== 'expense' || /^rec-/.test(e.id || '') || e.receiptId || e.debtId || (parseInt(e.spreadMonths, 10) || 1) > 1) return;
+      if(!/^\d{4}-\d{2}-\d{2}/.test(String(e.date || ''))) return;
+      if(e.paid === false && e.date.slice(0, 7) !== cur) return;   // neplacen se racuna samo za tekuci mesec (jos nije placen)
+      const key = subscriptionKey(e.desc);
+      if(!key || key.length < 3) return;
+      if(!groups.has(key)) groups.set(key, new Map());
+      const byMonth = groups.get(key), m = e.date.slice(0, 7);
+      byMonth.set(m, (byMonth.get(m) || []).concat(e));
+    });
+    const out = [];
+    groups.forEach((byMonth, key) => {
+      if(known.has(key) || dismissed.has(key)) return;
+      const lastM = byMonth.has(cur) ? cur : byMonth.has(prev) ? prev : null;
+      if(!lastM) return;
+      const run = [];
+      for(let m = lastM; byMonth.has(m); m = addMonths(m, -1)) run.push(m);
+      if(run.length < 3 || run.some(m => byMonth.get(m).length > 1)) return;   // jednom mesecno
+      const last3 = run.slice(0, 3).map(m => byMonth.get(m)[0].amount);
+      if(Math.max(...last3) > Math.min(...last3) * 1.15) return;
+      const latest = byMonth.get(run[0])[0];
+      const words = String(latest.desc || '').split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ');
+      out.push({ key, desc: words || cleanDesc(latest.desc) || String(latest.desc || ''), amount: round2(latest.amount), category: latest.category || '',
+        day: parseInt(latest.date.slice(8, 10), 10), months: run.length, thisMonthId: byMonth.has(cur) ? byMonth.get(cur)[0].id : null });
+    });
+    return out.sort((a, b) => b.amount - a.amount);
+  }
   // Broj meseci do roka, isto kao predlog kod ciljeva (najmanje 1).
   function monthsUntil(today, deadlineISO){
     const [y, m, d] = deadlineISO.split('-').map(Number);
@@ -2465,7 +2500,7 @@
   }
   // Da li je fajl kopije (podaci.json) nas i neostecen: poznati kljucevi moraju biti niz/objekat (ili JSON string toga).
   const DATA_ARRAY_KEYS = ['budzet-stavke-v2', 'budzet-ponavljajuce-v1', 'budzet-ciljevi-v1', 'budzet-dugovi-v1', 'budzet-racuni-v1',
-    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-telegram-cekanje-v1', 'budzet-dokumenti-v1'];
+    'budzet-lokacije-v1', 'budzet-vrste-racuna-v1', 'budzet-kucni-racuni-v1', 'budzet-telegram-cekanje-v1', 'budzet-dokumenti-v1', 'budzet-pretplate-odbijene-v1'];
   const DATA_OBJECT_KEYS = ['budzet-limiti-v1', 'budzet-primenjeno-v1', 'budzet-preskoceno-v1', 'budzet-plata-v1'];
   function checkDataFileShape(data){
     if(!data || typeof data !== 'object' || Array.isArray(data)) return { ok: false, problems: ['nema podataka Knjige budžeta'] };
@@ -2490,7 +2525,7 @@
     linearRegressionForecast, debtPayoffPlan,
     NO_DESC, isPaidExp, cleanDesc, normalizeDesc, analysisPeriod, firstExpenseMonth, sumPaid, periodStats,
     isFixedEntry, monthlyEquivalent, ABOVE_PCT, ABOVE_MIN, SMALL_MAX, SMALL_PER_MONTH, groupByDesc, categoryBreakdown, aboveAverage, smallFrequent,
-    splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, monthsUntil, whatIf, savingsSummary,
+    splitFixedVariable, variableAverage, CREEP_PCT, subscriptionsYearly, subscriptionKey, findHiddenSubscriptions, monthsUntil, whatIf, savingsSummary,
     SHOPPING_OTHER, SHOPPING_SECTIONS, QTY_UNITS, parseShoppingInput, normShoppingName, findShoppingItem,
     purchaseItemLabel, mostCommonStore, itemsToCell, cellToItems, normalizeShopping,
     NO_STORE, NO_CATEGORY, groupShoppingItems, shoppingEstimate, splitPurchase,

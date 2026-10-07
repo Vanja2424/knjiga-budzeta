@@ -640,6 +640,8 @@
     'Tvoja korpa': 'Your basket', '1m': '1m', '{0} za {1}': '{0} over {1}', '{0} artikal': '{0} item', '{0} artikla': '{0} items', '{0} artikala': '{0} items', 'Najviše poskupelo': 'Biggest price increases', 'Najviše pojeftinilo': 'Biggest price drops',
     'Premalo podataka za ovaj period (treba bar 3 artikla kupljena i tada i sada). Kako šalješ račune, ovde se pojavljuje poređenje.': 'Not enough data for this period (at least 3 items bought both then and now are needed). As you add receipts, the comparison appears here.',
     'Korpa: {0} za {1} ({2})': 'Basket: {0} over {1} ({2})',
+    'Možda su pretplate': 'Possible subscriptions', 'Ovi rashodi se ponavljaju svakog meseca, a nisu u ponavljajućim stavkama. Kad dodaš pretplatu, ubuduće je samo štikliraj ovde — nemoj je upisivati i ručno.': 'These expenses repeat every month but are not in your recurring items. Once you add a subscription, just tick it here from then on — don’t also enter it by hand.',
+    '{0} mesečno, oko {1}. ({2})': '{0} monthly, around day {1} ({2})', 'Nije pretplata': 'Not a subscription', 'Pretplata dodata: {0}. Ubuduće je štikliraj u Ponavljajućim umesto ručnog unosa.': 'Subscription added: {0}. From now on, tick it in Recurring instead of entering it by hand.',
     'Sutra': 'Tomorrow', 'Kasni': 'Overdue', 'Uskoro (godišnji)': 'Coming up (yearly)', '{0} ističe danas': '{0} expires today', '{0} ističe za {1}': '{0} expires in {1}',
     'Token bota': 'Bot token',
     'Sačuvaj token': 'Save token',
