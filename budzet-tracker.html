@@ -2792,12 +2792,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       </div>
       <div class="settings-group" id="tgSettings" style="display:none;">
         <h3>Telegram bot</h3>
-        <div class="import-status" style="margin-top:0;">Šalji botu rashode („kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
+        <div class="import-status" style="margin-top:0;">Pitaj bota o budžetu („šta treba da platimo?“), daj mu naredbe („platila sam porez“) ili šalji rashode („/nov kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
         <div class="import-status">Za zajedničku grupu (npr. ti i partner): kod @BotFather pošalji /setprivacy, izaberi bota i Disable, pa dodaj bota u grupu i pošalji kod u grupu. Svaki rashod iz grupe dobija oznaku sa imenom onog ko ga je poslao.</div>
         <div class="import-status"><label for="tgToken">Token bota</label></div>
         <div class="file-row"><input type="password" id="tgToken" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="tgTokenSave">Sačuvaj token</button><button class="btn-secondary" id="tgTokenClear">Obriši token</button></div>
         <div class="file-row"><button class="btn-secondary" id="tgPair">Poveži Telegram</button><button class="btn-secondary" id="tgUnlink">Prekini vezu</button></div>
         <label class="paid-checkbox-label"><input type="checkbox" id="tgOn"> Bot uključen</label>
+        <div id="tgMorningRow"><label class="paid-checkbox-label"><input type="checkbox" id="tgMorningOn"> Jutarnji podsetnik u Telegramu (šta danas i sutra dospeva, šta kasni, dokumenti i godišnji troškovi)</label>
+          <div class="file-row"><label for="tgMorningTime">Vreme</label><input type="time" id="tgMorningTime" value="09:00" style="max-width:120px;"></div></div>
         <div class="import-status" id="tgStatus" aria-live="polite"></div>
         <div class="import-status">Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).</div>
       </div>
@@ -6035,7 +6037,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const x = tgProps().find(y=> y.id === cb.id);
     if(!x) return { callbackText: t('Isteklo'), replies: [] };
     if(x.state !== 'open') return { callbackText: t('Već urađeno'), replies: [] };
-    if(Date.now() - x.created > TG_PROP_MS){ x.state = 'cancelled'; tgPropPut(x); return { callbackText: t('Isteklo'), replies: [{ editMessageId: p.messageId, text: t('Isteklo — pošalji ponovo.') }] }; }
+    if(x.until ? Date.now() > x.until : Date.now() - x.created > TG_PROP_MS){ x.state = 'cancelled'; tgPropPut(x); return { callbackText: t('Isteklo'), replies: x.reminder ? [] : [{ editMessageId: p.messageId, text: t('Isteklo — pošalji ponovo.') }] }; }
     if(cb.action === 'n'){ x.state = 'cancelled'; tgPropPut(x); return { callbackText: t('Otkazano'), replies: [{ editMessageId: p.messageId, text: '✕ ' + t('Otkazano') }] }; }
     if(cb.action === 'h'){
       const c = (x.choices || [])[parseInt(cb.arg, 10)];
@@ -6048,12 +6050,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.needAmount || x.choices) return { callbackText: t('Koliko? (npr. 5000)'), replies: [] };
     x.state = 'done'; tgPropPut(x);   // pre izvrsenja: ponovljen klik ne ponavlja radnju
     let res;
+    // podsetnik: jutarnji spisak ostaje ceo, rezultat ide kao nova poruka
+    const where = x.reminder ? {} : { editMessageId: p.messageId };
     try{ res = tgExecute(x); }
-    catch(e){ return { replies: [{ editMessageId: p.messageId, text: '✕ ' + t('Nije urađeno: {0}', String(e && e.message || e)) }] }; }
+    catch(e){ return { replies: [Object.assign({ text: '✕ ' + t('Nije urađeno: {0}', String(e && e.message || e)) }, where)] }; }
     renderAll();
-    if(res.already) return { callbackText: t('Već urađeno'), replies: [{ editMessageId: p.messageId, text: t('Već urađeno — ništa nije menjano.') }] };
+    if(res.already) return { callbackText: t('Već urađeno'), replies: x.reminder ? [] : [{ editMessageId: p.messageId, text: t('Već urađeno — ništa nije menjano.') }] };
     const logId = tgLog(res.ids || [], res.text, { act: res.act || null, shopping: res.shopping });
-    return { replies: [{ editMessageId: p.messageId, text: '✓ ' + tgWho(p) + res.text, buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] }] };
+    return { replies: [Object.assign({ text: '✓ ' + tgWho(p) + res.text, buttons: [[{ text: t('Poništi'), data: 'u:' + logId }]] }, where)] };
   }
   async function tgCallback(p){
     const cb = C.parseTelegramCallback(p.data);
@@ -6076,7 +6080,48 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(window.__desktopBridge && window.__desktopBridge.flush){ try{ await window.__desktopBridge.flush(); } catch(e){ /* sledece cuvanje */ } }
     return out;
   }
-  async function tgTick(){ return tgFileTick(); } // Task 5
+  // ---- Jutarnji podsetnik: jednom dnevno posle zadatog vremena, samo kad ima sta da se javi ----
+  const TG_MORNING_KEY = 'budzet-telegram-jutro-v1';
+  const tgMorningCfg = () => { const d = { on: true, time: '09:00', last: '' }; try{ const v = JSON.parse(localStorage.getItem(TG_MORNING_KEY) || 'null'); return Object.assign(d, v && typeof v === 'object' ? v : {}); } catch(e){ return d; } };
+  const tgMorningSave = c => localStorage.setItem(TG_MORNING_KEY, JSON.stringify(c));
+  const tgNowIso = () => { const d = new Date(); return toISODateLocal(d) + 'T' + String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0'); };
+  async function tgMorning(nowIso){
+    const cfg = tgMorningCfg();
+    if(!C.morningDue(Object.assign({}, cfg, { now: nowIso }))) return { replies: [] };
+    const today = nowIso.slice(0, 10);
+    cfg.last = today; tgMorningSave(cfg);
+    const m = C.morningReminderItems({ recurring, entries, applied, skipped, documents, today, amountOf: r=> suggestedPayAmount(r) });
+    if(!C.morningHasItems(m)) return { replies: [] };
+    const line = i => `• ${i.desc} — ${fmt(i.amount)}`;
+    const head = (icon, txt) => `${icon} **${txt}**`;
+    const parts = [];
+    if(m.today.length) parts.push([head('🔔', t('Danas dospeva'))].concat(m.today.map(line)).join('\n'));
+    if(m.tomorrow.length) parts.push([head('⏰', t('Sutra'))].concat(m.tomorrow.map(line)).join('\n'));
+    if(m.overdue.length) parts.push([head('⚠️', t('Kasni'))].concat(m.overdue.map(i=> line(i) + ' (' + daysTxt(i.days) + ')')).join('\n'));
+    if(m.docs.length) parts.push([head('📄', t('Dokumenti'))].concat(m.docs.map(d=> '• ' + (d.days === 0 ? t('{0} ističe danas', d.title) : t('{0} ističe za {1}', d.title, daysTxt(d.days))))).join('\n'));
+    if(m.yearly.length) parts.push([head('📅', t('Uskoro (godišnji)'))].concat(m.yearly.map(y=> `• ${y.desc} — ${fmt(y.amount)}, ${fmtDocDate(y.date)}`)).join('\n'));
+    // dugme po stavci koja se placa: klik odmah oznacava placeno (isti put kao naredba), vazi do kraja dana
+    const until = new Date(); until.setHours(23, 59, 59, 999);
+    const buttons = m.today.concat(m.tomorrow, m.overdue).slice(0, 8).map(i=>{
+      const x = { id: newId(), created: Date.now(), until: until.getTime(), kind: 'paid', targetId: i.id, targetKind: i.kind, label: i.desc, amount: i.amount, userAmount: false, reminder: true, state: 'open' };
+      tgPropPut(x);
+      return [{ text: '✓ ' + String(i.desc).slice(0, 40), data: 'c:' + x.id }];
+    });
+    return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined }] };
+  }
+  if(IS_TEST) window.__tgMorning = iso => tgMorning(iso);
+  (()=>{
+    const on = document.getElementById('tgMorningOn'), time = document.getElementById('tgMorningTime');
+    if(!on || !time) return;
+    const c = tgMorningCfg(); on.checked = !!c.on; time.value = /^\d{2}:\d{2}$/.test(c.time) ? c.time : '09:00';
+    const save = ()=>{ const v = tgMorningCfg(); v.on = on.checked; if(/^\d{2}:\d{2}$/.test(time.value)) v.time = time.value; tgMorningSave(v); };
+    on.addEventListener('change', save); time.addEventListener('change', save);
+  })();
+  async function tgTick(){
+    const out = await tgFileTick();
+    try{ const m = await tgMorning(tgNowIso()); out.replies.push(...m.replies); } catch(e){ /* podsetnik ne sme da zaustavi ostalo */ }
+    return out;
+  }
   const tgPending = () => tgLoad(TG_PENDING_KEY);
   const tgPendingPut = p => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== p.id).concat(p));
   const tgPendingDrop = id => tgSave(TG_PENDING_KEY, tgPending().filter(x=> x.id !== id));
