@@ -2298,3 +2298,42 @@ test('askAnswerPrompt: izgled za Telegram (spisak, podebljan zbir) samo za bota'
   const app = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [] });
   assert.doesNotMatch(app, /\*\*/); assert.match(app, /do 8 rečenica/);
 });
+
+test('jutarnji podsetnik: vreme slanja (jednom dnevno, posle zadatog vremena)', () => {
+  assert.equal(C.morningDue({ on: true, time: '09:00', last: '', now: '2026-10-07T08:59' }), false);
+  assert.equal(C.morningDue({ on: true, time: '09:00', last: '', now: '2026-10-07T09:00' }), true);
+  assert.equal(C.morningDue({ on: true, time: '09:00', last: '2026-10-07', now: '2026-10-07T15:00' }), false);
+  assert.equal(C.morningDue({ on: true, time: '09:00', last: '2026-10-06', now: '2026-10-07T23:10' }), true);
+  assert.equal(C.morningDue({ on: false, time: '09:00', last: '', now: '2026-10-07T10:00' }), false);
+  assert.equal(C.morningDue({ on: true, time: 'xx', last: '', now: '2026-10-07T09:30' }), true);   // neispravno vreme -> 09:00
+});
+
+test('jutarnji podsetnik: danas, sutra, kasni (ponavljajuce i neplaceni rashodi), dokumenti, godisnji', () => {
+  const recurring = [
+    { id: 'p', desc: 'Porez', amount: 8000, type: 'expense', frequency: 'monthly', day: 7 },
+    { id: 's', desc: 'Struja', amount: 4000, type: 'expense', frequency: 'monthly', day: 8 },
+    { id: 'n', desc: 'Nokti', amount: 4000, type: 'expense', frequency: 'monthly', day: 4 },
+    { id: 'k', desc: 'Kirija', amount: 30000, type: 'expense', frequency: 'monthly', day: 1 },
+    { id: 'x', desc: 'Preskocena', amount: 100, type: 'expense', frequency: 'monthly', day: 7 },
+    { id: 'pl', desc: 'Plata', amount: 100000, type: 'income', frequency: 'monthly', day: 7 },
+    { id: 'o', desc: 'Osiguranje', amount: 24000, type: 'expense', frequency: 'yearly', anchorMonth: 11, day: 3 }
+  ];
+  const entries = [
+    { id: 'd', type: 'expense', desc: 'Drva', amount: 56160, date: '2026-10-01', paid: false },
+    { id: 'f', type: 'expense', desc: 'Frizer', amount: 2000, date: '2026-10-08', paid: false },
+    { id: 'z', type: 'expense', desc: 'Placeno', amount: 1, date: '2026-10-01' }
+  ];
+  const documents = [{ id: 'lk', title: 'Lična karta', expires: '2026-10-19', remindDays: 30 }];
+  const r = C.morningReminderItems({ recurring, entries, applied: { '2026-10': ['k'] }, skipped: { '2026-10': ['x'] }, documents, today: '2026-10-07' });
+  assert.deepEqual(r.today.map(i => i.id), ['p']);
+  assert.deepEqual(r.tomorrow.map(i => i.id), ['s', 'f']);
+  assert.deepEqual(r.overdue.map(i => [i.id, i.days]), [['d', 6], ['n', 3]]);
+  assert.equal(r.today[0].kind, 'recurring'); assert.equal(r.overdue[0].kind, 'expense');
+  assert.deepEqual(r.docs.map(d => [d.title, d.days]), [['Lična karta', 12]]);
+  assert.deepEqual(r.yearly.map(y => [y.id, y.date]), [['o', '2026-11-03']]);
+  // kraj meseca: sutra je 1. u sledecem mesecu
+  const r2 = C.morningReminderItems({ recurring, entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-31' });
+  assert.deepEqual(r2.tomorrow.map(i => i.id), ['k']);
+  const empty = C.morningReminderItems({ recurring: [], entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-07' });
+  assert.equal(C.morningHasItems(empty), false); assert.equal(C.morningHasItems(r), true);
+});

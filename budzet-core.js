@@ -2253,6 +2253,41 @@
       .sort((a, b) => a.date.localeCompare(b.date))
       .map(x => ({ id: x.r.id, desc: x.r.desc || '', amount: round2(x.r.amount), date: x.date }));
   }
+  // ---------- Jutarnji podsetnik iz Telegram bota ----------
+  // Jednom dnevno, kad prodje zadato vreme (HH:MM, neispravno -> 09:00); now = 'YYYY-MM-DDTHH:MM' (lokalno)
+  function morningDue(o){
+    if(!o || !o.on) return false;
+    const now = String(o.now || ''), day = now.slice(0, 10), hm = now.slice(11, 16);
+    const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(o.time || '') ? o.time : '09:00';
+    return o.last !== day && hm >= time;
+  }
+  // Stavke za poruku: danas / sutra / kasni (ponavljajuci rashodi tekuceg meseca i neplaceni rashodi), dokumenti, godisnji (30 dana).
+  // Svaka lista je poredjana od najveceg iznosa; amountOf(r) = iznos ponavljajuce za prikaz (podrazumevano r.amount).
+  function morningReminderItems(o){
+    const today = o.today, t0 = dayNumber(today), tomorrow = isoOfDay(t0 + 1);
+    const amountOf = o.amountOf || (r => r.amount);
+    const entries = o.entries || [], recurring = o.recurring || [];
+    const ids = new Set(entries.map(e => e.id));
+    const open = (r, mKey) => r.type !== 'income' && isDueInMonth(r, mKey) && !isRecurringPaid(o.applied, r, mKey)
+      && !isRecurringSkipped(o.skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey));
+    const recAt = iso => { const mKey = iso.slice(0, 7), d = +iso.slice(8, 10);
+      return recurring.filter(r => open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, desc: r.desc || '', amount: round2(amountOf(r)) })); };
+    const unpaid = entries.filter(e => e.type === 'expense' && e.paid === false && /^\d{4}-\d{2}-\d{2}/.test(String(e.date || '')));
+    const entAt = iso => unpaid.filter(e => e.date.slice(0, 10) === iso).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount) }));
+    const byAmount = (a, b) => b.amount - a.amount;
+    const curM = today.slice(0, 7), todayDay = +today.slice(8, 10);
+    const overdue = recurring.filter(r => open(r, curM) && effectiveDay(r.day, curM) < todayDay)
+      .map(r => ({ kind: 'recurring', id: r.id, desc: r.desc || '', amount: round2(amountOf(r)), days: todayDay - effectiveDay(r.day, curM) }))
+      .concat(unpaid.filter(e => e.date.slice(0, 10) < today).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount), days: t0 - dayNumber(e.date.slice(0, 10)) })))
+      .sort(byAmount);
+    const out = { today: recAt(today).concat(entAt(today)).sort(byAmount), tomorrow: recAt(tomorrow).concat(entAt(tomorrow)).sort(byAmount), overdue };
+    const used = new Set([].concat(out.today, out.tomorrow, overdue).filter(i => i.kind === 'recurring').map(i => i.id));
+    out.docs = documentReminders(o.documents || [], today).map(x => ({ id: x.doc.id, title: x.doc.title || '', days: x.status.days }));
+    out.yearly = yearlyReminders(recurring.map(r => Object.assign({}, r, { amount: amountOf(r) })), today, { applied: o.applied, skipped: o.skipped })
+      .filter(y => y.date > tomorrow && !used.has(y.id));
+    return out;
+  }
+  const morningHasItems = m => !!m && ['today', 'tomorrow', 'overdue', 'docs', 'yearly'].some(k => (m[k] || []).length > 0);
   // ---------- Prognoza do plate: stanje po danu za narednih N dana ----------
   // Ulazi: pocetno stanje (racuni bez stednje), ponavljajuce (iznos vec u RSD), upisane neplacene i buduce stavke,
   // mesecne uplate u ciljeve i svakodnevna potrosnja (prosek promenljivih troskova). Plata: najveci ponavljajuci
@@ -2409,7 +2444,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
