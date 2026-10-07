@@ -1378,7 +1378,7 @@
       const card = () => document.querySelector('#shopPrices .basket-card');
       check('inflacija: kartica Tvoja korpa u Cenama', !!card());
       const m3 = card() && card().querySelector('.basket-m[data-m="3"]'); if (m3) { m3.click(); await sleep(100); }
-      check('inflacija: 3 meseca — tačan procenat i artikal koji je poskupeo', !!card() && /2[.,]5\s*%/.test(card().textContent) && /Smoke INF mleko/.test(card().textContent) && /10\s*%/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 300));
+      check('inflacija: 3 meseca — tačan procenat i artikal koji je poskupeo', !!card() && /2[.,]5\s*%/.test(card().textContent) && /Smoke INF mleko/.test(card().textContent) && /\+10\s*%/.test(card().textContent) && /3 artikla(?!la)/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 300));
       const m12 = card() && card().querySelector('.basket-m[data-m="12"]'); if (m12) { m12.click(); await sleep(100); }
       check('inflacija: period bez dovoljno podataka', !!card() && /[Pp]remalo podataka/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 200));
       localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
