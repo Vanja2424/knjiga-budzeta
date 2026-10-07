@@ -325,3 +325,40 @@ test('telegram: meni komandi (/nov, /ponisti, /pomoc) se salje jednom; greska ne
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0].body.commands.map(c => c.command), ['nov', 'ponisti', 'pomoc']);
 });
+
+test('telegram: **podebljano** -> HTML <b>, specijalni znaci se cuvaju; odbijen HTML -> isti tekst bez formata', async () => {
+  const texts = ['💳 Za plaćanje: **77.660 RSD**\n• a<b & c>d — 1 RSD', 'obicna poruka <x>', '**Porez** pao'];
+  let i = 0;
+  const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async () => ({ replies: [{ text: texts[i++] }] }) });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [reply('sendMessage', { message_id: 1 }), reply('sendMessage', { message_id: 2 }),
+    { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: can't parse entities" }) }, reply('sendMessage', { message_id: 3 })];
+  queue.getUpdates = [reply('getUpdates', [upd(20, { text: 'x' }), upd(21, { text: 'y' }), upd(22, { text: 'z' })])];
+  await api.pollOnce();
+  const sent = calls.filter(c => c.method === 'sendMessage').map(c => c.body);
+  assert.equal(sent[0].parse_mode, 'HTML');
+  assert.equal(sent[0].text, '💳 Za plaćanje: <b>77.660 RSD</b>\n• a&lt;b &amp; c&gt;d — 1 RSD');
+  assert.equal(sent[1].parse_mode, undefined);
+  assert.equal(sent[1].text, 'obicna poruka <x>');
+  assert.equal(sent[2].parse_mode, 'HTML');
+  assert.equal(sent[3].parse_mode, undefined);
+  assert.equal(sent[3].text, 'Porez pao');
+});
+
+test('telegram: bez formata se ponavlja samo kad Telegram odbije HTML (ne na 429/mrezu); izmena poruke zadrzava dugmad', async () => {
+  let i = 0;
+  const outs = [{ replies: [{ text: '**A** 1' }] }, { replies: [{ editMessageId: 5, text: '**B** 2', buttons: [[{ text: 'x', data: 'u:1' }]] }] }];
+  const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async () => outs[i++] });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  const bad = { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: can't parse entities" }) };
+  queue.sendMessage = [{ ok: false, status: 429, json: async () => ({ ok: false, parameters: { retry_after: 1 } }) }];
+  queue.editMessageText = [bad, reply('editMessageText', { message_id: 5 })];
+  queue.getUpdates = [reply('getUpdates', [upd(30, { text: 'x' }), upd(31, { text: 'y' })])];
+  await api.pollOnce();
+  const sends = calls.filter(c => c.method === 'sendMessage');
+  assert.equal(sends.length, 1);   // 429 -> bez ponavljanja istog odgovora
+  const edits = calls.filter(c => c.method === 'editMessageText').map(c => c.body);
+  assert.equal(edits.length, 2);
+  assert.equal(edits[0].parse_mode, 'HTML'); assert.equal(edits[1].parse_mode, undefined);
+  assert.equal(edits[1].text, 'B 2'); assert.equal(edits[1].reply_markup.inline_keyboard[0][0].callback_data, 'u:1');
+});
