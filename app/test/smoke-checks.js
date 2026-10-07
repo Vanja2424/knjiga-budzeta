@@ -1898,6 +1898,7 @@
         check('telegram: pitanje -> odgovor AI-ja', /Treba platiti/.test(q1.replies[0].text), JSON.stringify(q1));
         check('telegram: toPay rezultat ide u drugi korak', /"tool":"toPay"/.test(asked[1] || '') && /"total"/.test(asked[1] || ''), (asked[1] || '').slice(0, 300));
         check('telegram: prvi korak bez imena stavki', !/Smoke tg/.test(asked[0] || ''));
+        check('telegram: odgovor bota ima pravila izgleda (spisak, podebljano)', /•/.test(asked[1] || '') && /\*\*/.test(asked[1] || ''));
         asked = [];
         await B.handle({ update_id: 900013, kind: 'text', text: 'a prošlog meseca?' });
         check('telegram: razgovor se pamti', /šta treba da platimo/.test(asked[0] || ''), (asked[0] || '').slice(-400));
@@ -2522,6 +2523,7 @@
       const p1 = await send('platila sam smoke cmd porez');
       check('naredba: predlog sa Potvrdi/Otkaži', /Smoke cmd porez/.test(txt(p1)) && !!btn(p1, /^c:/) && !!btn(p1, /^n:/), JSON.stringify(p1));
       check('naredba: bez potvrde nema promene', !isApplied(recP.id));
+      check('naredba: ime i iznos u predlogu su podebljani', /\*\*Smoke cmd porez\*\*/.test(txt(p1)), txt(p1));
       const c1 = await click(btn(p1, /^c:/).data);
       check('naredba: plaćeno posle potvrde', isApplied(recP.id) && /✓/.test(txt(c1)), JSON.stringify(c1));
       const c1b = await click(btn(p1, /^c:/).data);
@@ -2691,6 +2693,7 @@
       window.__fakeAsk = async (req, step) => { askP.push(req.prompt); return step === 1 ? { ok: true, content: JSON.stringify({ calls: [{ tool: 'toPay' }] }) } : { ok: true, content: JSON.stringify({ odgovor: 'ok' }) }; };
       go('pitaj'); await sleep(50);
       setVal('askInput', 'šta treba da platimo?'); $('askBtn').click(); await sleep(400);
+      check('Pitaj ekran: bez Telegram pravila izgleda', !/\*\*/.test(askP[1] || ''));
       check('pregled: Pitaj ekran dobija Za plaćanje (nije null)', /"tool":"toPay"/.test(askP[1] || '') && /"total"/.test(askP[1] || ''), (askP[1] || '').slice(-300));
       // pocisti
       window.__fakeAsk = null; window.__fakeTgCategory = null;

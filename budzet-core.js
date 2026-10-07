@@ -1904,7 +1904,15 @@
   }
   function askAnswerPrompt(o){
     const lang = o.lang === 'en' ? 'Odgovori na engleskom jeziku (answer in English)' : 'Odgovori na srpskom (latinica)';
-    return ['Ti si pomoćnik za lični budžet. ' + lang + ', kratko (do 8 rečenica), na osnovu REZULTATA ispod.',
+    // Telegram: pregledna poruka (spisak, prazan red izmedju celina, **podebljan** zbir -> bold u Telegramu)
+    const look = o.style === 'telegram' ? [
+      'Izgled poruke (Telegram, čitljivo na telefonu): prvi red je kratak zaključak sa ukupnim iznosom, sa jednim emoji na početku (npr. 💳, 🤝, 📊, 🎯).',
+      'Zatim spisak: jedna stavka po redu, u obliku "• naziv — 12.345 RSD", od najvećeg ka najmanjem. Bez dugih rečenica i bez ponavljanja brojeva u tekstu.',
+      'Različite celine (npr. stavke za plaćanje i dugovi) odvoji praznim redom i kratkim naslovom sa emoji i zbirom.',
+      'Ukupne iznose i naslove označi sa **dve zvezdice** (npr. **77.660 RSD**). Najviše oko 15 redova; ako je stavki više, navedi najveće i napiši koliko ih je još.',
+      'Zbirove NE računaj sam — prepiši ih iz rezultata (npr. total, debtsTotal) i poštuj napomene u rezultatu. Spiskove zadrži redosledom iz rezultata. Bez zaključnog reda na kraju i bez kurziva (jedna zvezdica).'] : [];
+    return ['Ti si pomoćnik za lični budžet. ' + lang + (o.style === 'telegram' ? ', pregledno' : ', kratko (do 8 rečenica)') + ', na osnovu REZULTATA ispod.',
+      ...look,
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
       'U rezultatu "top": "amount" je pun iznos stavke, a "uPeriodu" deo koji pripada traženim mesecima (stavka raspodeljena na "spreadMonths" meseci); za zbirove koristi "uPeriodu".',
       'U rezultatu "compare": "ranije" i "kasnije" su meseci dva perioda; u redovima "razlika" = kasnije − ranije (pozitivno = rast troška u kasnijem periodu).',

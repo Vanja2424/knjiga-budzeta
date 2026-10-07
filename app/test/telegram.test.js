@@ -325,3 +325,22 @@ test('telegram: meni komandi (/nov, /ponisti, /pomoc) se salje jednom; greska ne
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0].body.commands.map(c => c.command), ['nov', 'ponisti', 'pomoc']);
 });
+
+test('telegram: **podebljano** -> HTML <b>, specijalni znaci se cuvaju; odbijen HTML -> isti tekst bez formata', async () => {
+  const texts = ['💳 Za plaćanje: **77.660 RSD**\n• a<b & c>d — 1 RSD', 'obicna poruka <x>', '**Porez** pao'];
+  let i = 0;
+  const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async () => ({ replies: [{ text: texts[i++] }] }) });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [reply('sendMessage', { message_id: 1 }), reply('sendMessage', { message_id: 2 }),
+    { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: can't parse entities" }) }, reply('sendMessage', { message_id: 3 })];
+  queue.getUpdates = [reply('getUpdates', [upd(20, { text: 'x' }), upd(21, { text: 'y' }), upd(22, { text: 'z' })])];
+  await api.pollOnce();
+  const sent = calls.filter(c => c.method === 'sendMessage').map(c => c.body);
+  assert.equal(sent[0].parse_mode, 'HTML');
+  assert.equal(sent[0].text, '💳 Za plaćanje: <b>77.660 RSD</b>\n• a&lt;b &amp; c&gt;d — 1 RSD');
+  assert.equal(sent[1].parse_mode, undefined);
+  assert.equal(sent[1].text, 'obicna poruka <x>');
+  assert.equal(sent[2].parse_mode, 'HTML');
+  assert.equal(sent[3].parse_mode, undefined);
+  assert.equal(sent[3].text, 'Porez pao');
+});

@@ -132,16 +132,23 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   }
 
   const markup = buttons => ({ inline_keyboard: (buttons || []).map(row => row.map(b => ({ text: String(b.text).slice(0, 60), callback_data: String(b.data).slice(0, 64) }))) });
+  // **podebljano** iz odgovora -> Telegram HTML; ako Telegram odbije HTML, isti tekst ide bez formata
+  const BOLD_RE = /\*\*([^*\n]+?)\*\*/g;
+  const escHtml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   async function deliver(replies, chatId) {
     chatId = chatId || s().telegramChatId;
     for (const r of replies || []) {
       if (!r || !r.text) continue;
-      const text = String(r.text).slice(0, 4096);
+      const raw = String(r.text);
+      const rich = BOLD_RE.test(raw); BOLD_RE.lastIndex = 0;
+      const plain = raw.replace(BOLD_RE, '$1').slice(0, 4096);
+      // HTML: znaci &<> rastu pri escape-u, pa se sece ranije
+      const variants = rich ? [{ text: escHtml(raw.slice(0, 3500)).replace(BOLD_RE, '<b>$1</b>'), parse_mode: 'HTML' }, { text: plain }] : [{ text: plain }];
+      let done = false;
       if (r.editMessageId) {
-        const ok = await safe(() => api('editMessageText', { chat_id: chatId, message_id: r.editMessageId, text, reply_markup: markup(r.buttons) }));
-        if (ok) continue;
+        for (const v of variants) if (!done) done = !!(await safe(() => api('editMessageText', Object.assign({ chat_id: chatId, message_id: r.editMessageId, reply_markup: markup(r.buttons) }, v))));
       }
-      await safe(() => api('sendMessage', { chat_id: chatId, text, reply_markup: r.buttons ? markup(r.buttons) : undefined }));
+      for (const v of variants) if (!done) done = !!(await safe(() => api('sendMessage', Object.assign({ chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined }, v))));
     }
   }
 

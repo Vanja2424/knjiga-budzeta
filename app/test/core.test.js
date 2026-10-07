@@ -2291,3 +2291,10 @@ test('matchActionTarget posle pregleda: kratke reci (na, za, u) se ne broje', ()
   assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }]), { none: true });
   assert.deepEqual(C.matchActionTarget('porez na imovinu', [{ id: 'k', name: 'Kirija na Zlatiboru' }, { id: 'p', name: 'Porez na imovinu' }]), { match: { id: 'p', name: 'Porez na imovinu' } });
 });
+
+test('askAnswerPrompt: izgled za Telegram (spisak, podebljan zbir) samo za bota', () => {
+  const tg = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [], style: 'telegram' });
+  assert.match(tg, /•/); assert.match(tg, /\*\*/); assert.match(tg, /jedna stavka po redu/);
+  const app = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [] });
+  assert.doesNotMatch(app, /\*\*/); assert.match(app, /do 8 rečenica/);
+});

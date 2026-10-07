@@ -5818,9 +5818,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     let fc = null;
     try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
     return {
-      toPay: { total: pend.expense, count: pend.count, expectedIncome: pend.income, debtsTotal: pend.debt,
-        items: pend.items.map(i=> ({ desc: i.desc, amount: i.amount, rok: i.date || (i.day ? t('dan {0}', i.day) : '') })),
-        debts: pend.debtItems.map(d=> ({ person: d.person, ostatak: d.rest })) },
+      // poredjano od najveceg; total su samo stavke, dugovi su posebno (debtsTotal) i ne sabiraju se sa total
+      toPay: { total: pend.expense, count: pend.count, expectedIncome: pend.income, debtsTotal: pend.debt, napomena: 'total = samo stavke za plaćanje; dugovi (debtsTotal) su posebno i NE ulaze u total',
+        items: pend.items.slice().sort((a, b)=> b.amount - a.amount).map(i=> ({ desc: i.desc, amount: i.amount, rok: i.date || (i.day ? t('dan {0}', i.day) : '') })),
+        debts: pend.debtItems.slice().sort((a, b)=> b.rest - a.rest).map(d=> ({ person: d.person, ostatak: d.rest })) },
       debts: debts.map(d=> ({ person: d.person, smer: d.direction === 'i_owe' ? 'ja dugujem' : 'duguju meni', ukupno: d.amount, ostatak: debtRemaining(d) })),
       accounts: bal ? { racuni: accounts.map(a=> ({ name: a.name, stanje: bal[a.id] })), ukupno: C.round2(accounts.reduce((s, a)=> s + bal[a.id], 0)) } : { ukupno: overallBalance() },
       goals: goals.map(g=> ({ name: g.name, trenutno: g.current, cilj: g.target, mesecno: g.monthly ? g.monthly.amount : null })),
@@ -5841,7 +5842,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(plan.offTopic) return tgReply(t('Mogu da odgovorim samo na pitanja o budžetu. Za unos: /nov kafa 250'));
     if(!plan.calls.length) return tgReply(t('Za ovo pitanje nema podataka u knjizi.'));
     const results = C.runAskTools(plan.calls, { entries, recurring, today, snapshot: tgSnapshot() });
-    const r2 = await askCall({ images: [], text: '', prompt: C.askAnswerPrompt({ question: text, today, results, history, lang: askLangOverride || I18N.lang }) }, 2);
+    const r2 = await askCall({ images: [], text: '', prompt: C.askAnswerPrompt({ question: text, today, results, history, lang: askLangOverride || I18N.lang, style: 'telegram' }) }, 2);
     if(!r2 || !r2.ok) return tgReply('✕ ' + askErr(r2) + ' ' + TG_NOV_HINT());
     const answer = C.cleanAskAnswer(r2.content).slice(0, 3000);
     tgHistory = tgRecentHistory().concat({ q: String(text).slice(0, 300), a: answer, at: Date.now() }).slice(-4);
@@ -5869,17 +5870,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(kind === 'editLast' || kind === 'deleteLast') return tgLastEntries().map(e=> ({ id: e.id, name: e.desc, targetKind: 'entry', amount: e.amount }));
     return [];
   }
+  // ime i iznos u predlogu su **podebljani** (Telegram bold)
+  const tgB = v => '**' + v + '**';
   function tgProposalText(x){
     switch(x.kind){
-      case 'add': return t('Upisati: {0} · {1} · {2}?', (x.draft.type === 'income' ? t('Prihod') + ': ' : '') + x.draft.desc, fmt(x.draft.amount), x.draft.category || '—');
-      case 'paid': return t('Označiti {0} ({1}) kao plaćeno za {2}?', x.label, fmt(x.amount), tgMonthName());
-      case 'skip': return t('Preskočiti {0} ({1}) za {2}?', x.label, fmt(x.amount), tgMonthName());
-      case 'debtPay': return t('Uplata {0} na dug {1}? Ostaje {2}.', fmt(x.amount), x.label, fmt(Math.max(0, C.round2(x.rest - x.amount))));
-      case 'goalPay': return t('Uplatiti {0} u cilj {1}?', fmt(x.amount), x.label);
-      case 'shopAdd': return t('Dodati na spisak: {0}?', x.items.join(', '));
-      case 'shopDone': return t('Štiklirati: {0}?', x.items.join(', ')) + (x.missing && x.missing.length ? '\n' + t('Nisam našao: {0}', x.missing.join(', ')) : '');
-      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', x.label, fmt(x.oldAmount), x.amount != null ? fmt(x.amount) : x.newDesc);
-      case 'deleteLast': return t('Obrisati: {0} ({1})?', x.label, fmt(x.amount));
+      case 'add': return t('Upisati: {0} · {1} · {2}?', (x.draft.type === 'income' ? t('Prihod') + ': ' : '') + tgB(x.draft.desc), tgB(fmt(x.draft.amount)), x.draft.category || '—');
+      case 'paid': return t('Označiti {0} ({1}) kao plaćeno za {2}?', tgB(x.label), tgB(fmt(x.amount)), tgMonthName());
+      case 'skip': return t('Preskočiti {0} ({1}) za {2}?', tgB(x.label), tgB(fmt(x.amount)), tgMonthName());
+      case 'debtPay': return t('Uplata {0} na dug {1}? Ostaje {2}.', tgB(fmt(x.amount)), tgB(x.label), fmt(Math.max(0, C.round2(x.rest - x.amount))));
+      case 'goalPay': return t('Uplatiti {0} u cilj {1}?', tgB(fmt(x.amount)), tgB(x.label));
+      case 'shopAdd': return t('Dodati na spisak: {0}?', tgB(x.items.join(', ')));
+      case 'shopDone': return t('Štiklirati: {0}?', tgB(x.items.join(', '))) + (x.missing && x.missing.length ? '\n' + t('Nisam našao: {0}', x.missing.join(', ')) : '');
+      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', tgB(x.label), fmt(x.oldAmount), tgB(x.amount != null ? fmt(x.amount) : x.newDesc));
+      case 'deleteLast': return t('Obrisati: {0} ({1})?', tgB(x.label), fmt(x.amount));
     }
     return '';
   }
