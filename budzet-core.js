@@ -2287,6 +2287,15 @@
       .filter(y => y.date > tomorrow && !used.has(y.id));
     return out;
   }
+  // Mesecni rezime iz bota: prethodni mesec, od 1. (posle vremena jutarnjeg podsetnika) do 10. u mesecu, jednom mesecno
+  function monthlySummaryDue(o){
+    if(!o || !o.on) return null;
+    const now = String(o.now || ''), day = parseInt(now.slice(8, 10), 10), hm = now.slice(11, 16);
+    const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(o.time || '') ? o.time : '09:00';
+    if(!(day >= 1 && day <= 10) || (day === 1 && hm < time)) return null;
+    const prev = addMonths(now.slice(0, 7), -1);
+    return o.last === prev ? null : prev;
+  }
   const morningHasItems = m => !!m && ['today', 'tomorrow', 'overdue', 'docs', 'yearly'].some(k => (m[k] || []).length > 0);
   // ---------- Prognoza do plate: stanje po danu za narednih N dana ----------
   // Ulazi: pocetno stanje (racuni bez stednje), ponavljajuce (iznos vec u RSD), upisane neplacene i buduce stavke,
@@ -2444,7 +2453,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, monthlySummaryDue, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
