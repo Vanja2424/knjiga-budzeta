@@ -1744,8 +1744,27 @@
         o.renewal = { amount: Number.isFinite(a) && a > 0 ? round2(a) : 0, category: str(d.renewal.category, 40), months: m > 0 && m <= 120 ? m : 12 }; }
       if(Array.isArray(d.history)) o.history = d.history.filter(h => h && isoOk(h.renewedAt)).map(h => Object.assign({ expires: isoOk(h.expires) ? h.expires : '', renewedAt: h.renewedAt }, isId(h.entryId) ? { entryId: h.entryId } : {}));
       if(isId(d.entryId)) o.entryId = d.entryId;
+      if(fiscalUrlFrom(d.fiscalUrl) === d.fiscalUrl) o.fiscalUrl = d.fiscalUrl;
       return o;
     });
+  }
+  // Garancija iz artikla rashoda (racun iz prodavnice / fiskalni QR). min: samo artikli od tolike cene po komadu
+  // i bez garancije sa istog rashoda (predlog posle cuvanja); bez min: svi artikli, sa oznakom has.
+  function warrantyItems(entry, documents, min){
+    const items = entry && Array.isArray(entry.items) ? entry.items : [];
+    const prices = Array.isArray(entry && entry.itemPrices) && entry.itemPrices.length === items.length ? entry.itemPrices : [];
+    const qty = Array.isArray(entry && entry.itemQty) && entry.itemQty.length === items.length ? entry.itemQty : [];
+    const have = new Set((documents || []).filter(d => d && d.entryId === entry.id).map(d => foldText(d.title)));
+    return items.map((label, i) => {
+      const name = purchasedItemName(label), price = typeof prices[i] === 'number' ? prices[i] : null;
+      const q = qty[i] && qty[i].qty > 0 ? qty[i].qty : 1;
+      return { index: i, name, price, unitPrice: price != null ? round2(price / q) : null, has: have.has(foldText(name)) };
+    }).filter(x => x.name && (min == null || (x.unitPrice != null && x.unitPrice >= min && !x.has)));
+  }
+  function warrantyFromItem(entry, item, months){
+    const m = parseInt(months, 10);
+    return { kind: 'garancija', title: String(item.name || '').slice(0, 80), group: 'Tehnika', issued: entry.date, warrantyMonths: m > 0 && m <= 240 ? m : 24,
+      vendor: String(entry.desc || '').slice(0, 60), entryId: entry.id, fiscalUrl: entry.fiscalUrl, remindDays: 30, files: [] };
   }
   function documentPrompt(groups){
     return ['Čitaš garantni list, polisu, saobraćajnu/registraciju, ugovor ili drugi dokument sa rokom (Srbija), sa slike ili iz teksta.',
@@ -2453,7 +2472,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, monthlySummaryDue, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, monthlySummaryDue, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, warrantyItems, warrantyFromItem, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });
