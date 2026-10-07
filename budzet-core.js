@@ -1989,6 +1989,32 @@
     priceObservations(entries).forEach(o => { if(!map.has(o.key)) map.set(o.key, { key: o.key, name: o.name, obs: [] }); const h = map.get(o.key); h.obs.push(o); h.name = o.name; });
     return map;
   }
+  // Licna inflacija: koliko je poskupela korpa artikala kupljenih i pre `months` meseci i sada (ista jedinica).
+  // Stara cena = prosek oko tog datuma, nova = prosek poslednjih dana (prozor do 45 dana, kraci za 1 mesec da se ne preklapaju);
+  // indeks ponderisan potrosnjom na artikal u poslednjih 12 meseci. Manje od 3 artikla -> enough:false.
+  function basketInflation(entries, today, months){
+    const t0 = dayNumber(today), cutoff = dayNumber(addMonthsToDate(today, -months)), W = Math.min(45, Math.floor(months * 15));
+    const yearAgo = t0 - 365, rows = [];
+    priceHistory(entries).forEach(h => {
+      const unit = h.obs[h.obs.length - 1].unit;
+      const obs = h.obs.filter(o => o.unit === unit);
+      const oldObs = obs.filter(o => { const d = dayNumber(o.date); return d >= cutoff - W && d < cutoff + W && d < t0 - W; });
+      const newObs = obs.filter(o => { const d = dayNumber(o.date); return d >= t0 - W && d <= t0; });
+      if(!oldObs.length || !newObs.length) return;
+      const avg = l => l.reduce((x, o) => x + o.unitPrice, 0) / l.length;
+      const base = round2(avg(oldObs)), cur = round2(avg(newObs));
+      const weight = obs.filter(o => dayNumber(o.date) >= yearAgo && dayNumber(o.date) <= t0).reduce((x, o) => x + o.total, 0);
+      if(!(base > 0) || !(weight > 0)) return;
+      rows.push({ key: h.key, name: h.name, unit, base, cur, weight, pct: Math.round((cur - base) / base * 1000) / 10 });
+    });
+    if(rows.length < 3) return { enough: false, months, count: rows.length };
+    const w = rows.reduce((x, r) => x + r.weight, 0);
+    const idx = rows.reduce((x, r) => x + r.weight * r.cur / r.base, 0) / w;
+    const pick = r => ({ name: r.name, unit: r.unit, base: r.base, cur: r.cur, pct: r.pct });
+    return { enough: true, months, count: rows.length, pct: Math.round((idx - 1) * 1000) / 10,
+      up: rows.filter(r => r.pct > 0).sort((a, b) => b.pct - a.pct).slice(0, 5).map(pick),
+      down: rows.filter(r => r.pct < 0).sort((a, b) => a.pct - b.pct).slice(0, 5).map(pick) };
+  }
   function priceInsight(hist, today){
     if(!hist || !hist.obs.length) return null;
     const obs = hist.obs, last = obs[obs.length - 1];
@@ -2473,7 +2499,7 @@
     goalPlanDue, planAmount, monthReviewMonth, monthReview,
     BILL_KEYS, foldText, defaultBillTypes, cleanLocations, cleanBillTypes, cleanBills, billsPrompt, cleanBillReading, mergeBillQr, billCurrencyMismatch, payeeWithBillReference, findRecurringByPayee,
     compactBillText, nextMetricKey, findBillDuplicate, findRecurringForBill, billsTable, expenseDateFor, parseBillsSheet,
-    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, monthlySummaryDue, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, warrantyItems, warrantyFromItem, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
+    isAttachmentName, itemKey, receiptPrompt, cleanReceiptReading, mergeReceiptParts, insertReceiptPart, applyReceiptDiscounts, slipPrompt, cleanSlipReading, slipWarnings, parseQuickSentence, quickCategoryPrompt, cleanQuickCategory, parseItemQty, normUnit, priceObservations, priceHistory, priceInsight, basketInflation, estimateShoppingItem, cashForecast, pickSalary, morningDue, morningReminderItems, morningHasItems, monthlySummaryDue, forecastDailySpend, yearlyCosts, yearlyReminders, fiscalUrlFrom, parseSufPage, sufItems, sufJournalItems, sufReading, receiptCategoryPrompt, cleanReceiptCategories, TELEGRAM_PENDING_DAYS, telegramIntent, telegramEntryDraft, photoKindFromCaption, parseTelegramCallback, matchActionTarget, cleanTelegramPending, ASK_TOOLS, ASK_SNAPSHOT_TOOLS, ACTION_KINDS, askPlanPrompt, askMonthRange, cleanAskPlan, runAskTools, askAnswerPrompt, cleanAskAnswer, DOC_GROUPS, warrantyItems, warrantyFromItem, addMonthsToDate, documentExpiry, documentStatus, documentReminders, renewDocument, cleanDocuments, documentPrompt, cleanDocumentReading, importDescKey, importAiCandidates, importCategoryPrompt, suggestKeyword, cleanImportSuggestions, rulesFromSuggestions, itemCategoryMemory, matchReceiptToShopping, receiptToExpenses, findReceiptDuplicate, billsFromSheet, itemPriceHistory, mergePriceHistoryAliases, RECEIPT_DIFF_NAME, isReceiptDiffName, canonicalItemName, lastPurchaseDates, pruneDismissed, importRulePlan,
     checkWorkbookShape, checkDataFileShape
   };
 });

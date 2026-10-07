@@ -1644,6 +1644,16 @@ html.sidebar-collapsed nav.tabs .tab-badge{ position: absolute; top: 2px; right:
 .shop-quick{ width:100%; font-size:15px; padding:0.7em 0.9em; }
 .shop-controls{ display:flex; flex-wrap:wrap; gap:0.8em; align-items:center; margin-top:0.9em; }
 .shop-by-btn, .shop-show-btn{ border:none; background:transparent; color:var(--ink); border-radius:6px; padding:4px 12px; font:500 12.5px/1.3 var(--font); cursor:default; }
+.basket-card{ background:var(--card); border-radius:10px; padding:10px 14px; margin:0 0 12px; }
+.basket-head{ display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px; }
+.basket-periods{ display:flex; gap:4px; }
+.basket-m{ padding:2px 8px; font-size:12px; }
+.basket-m.active{ font-weight:600; outline:1px solid var(--ink-tertiary); }
+.basket-pct{ font-size:20px; font-weight:600; margin:2px 0 6px; }
+.basket-pct.up{ color:var(--neg-text); }
+.basket-pct.down{ color:var(--pos-text); }
+.basket-sub{ font-size:12px; color:var(--ink-tertiary); margin:8px 0 2px; }
+.basket-row{ display:grid; grid-template-columns:1fr auto auto; gap:10px; padding:2px 0; font-size:13px; }
 .shop-by-btn.active, .shop-show-btn.active{ background:var(--card); font-weight:600; box-shadow:0 1px 3px rgba(0,0,0,0.12); }
 [data-theme="dark"] .shop-by-btn.active, [data-theme="dark"] .shop-show-btn.active{ background:#636366; }
 .shop-sections{ margin-top:0.9em; padding-top:0.9em; border-top:1px solid var(--paper-line); }
@@ -6151,6 +6161,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(r.overBudget.length) parts.push(['🚫 ' + B(t('Preko limita'))].concat(r.overBudget.map(o=> `• ${o.cat} — ${fmt(o.spent)} / ${fmt(o.limit)}`)).join('\n'));
     const n = r.unpaidEntries.length + r.unpaidRecurring.length;
     if(n) parts.push('⚠️ ' + t('Ostalo neplaćeno: {0}, {1}', t(n === 1 ? '{0} stavka' : '{0} stavki', n), fmt(r.unpaidTotal)));
+    // korpa je dodatak: greska u njoj ne sme da obori ceo rezime
+    try{
+      const basket = [3, 1].map(m=> C.basketInflation(entries, nowIso.slice(0, 10), m)).find(b=> b.enough);
+      if(basket) parts.push('🛒 ' + t('Korpa: {0} za {1} ({2})', pctTxt(basket.pct), monthsTxt(basket.months), itemsTxt(basket.count)));
+    } catch(e){ /* bez reda o korpi */ }
     return { replies: [{ text: parts.join('\n\n') }] };
   }
   if(IS_TEST) window.__tgMonthly = iso => tgMonthly(iso);
@@ -8112,6 +8127,21 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       priceHistCache = { entries, version: entriesVersion, hist: C.priceHistory(entries) };
     return priceHistCache.hist;
   }
+  // Licna inflacija: koliko je poskupela tvoja korpa (artikli kupljeni i tada i sada)
+  let basketMonths = 3;
+  const pctTxt = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
+  const itemsTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} artikal' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} artikla' : '{0} artikala', n);
+  function basketCardHtml(){
+    const r = C.basketInflation(entries, toISODateLocal(new Date()), basketMonths);
+    const periods = [1, 3, 6, 12].map(m=> `<button class="btn-secondary basket-m${m === basketMonths ? ' active' : ''}" data-m="${m}">${m === 1 ? t('1m') : m + 'm'}</button>`).join('');
+    const row = x => `<div class="basket-row"><span class="shop-name" translate="no">${escapeHtml(x.name)}</span><span class="muted">${unitPriceTxt(x.base, x.unit)} → ${unitPriceTxt(x.cur, x.unit)}</span><span class="shop-price-change ${x.pct > 0 ? 'up' : 'down'}">${pctTxt(x.pct)}</span></div>`;
+    const body = !r.enough
+      ? `<div class="hint">${escapeHtml(t('Premalo podataka za ovaj period (treba bar 3 artikla kupljena i tada i sada). Kako šalješ račune, ovde se pojavljuje poređenje.'))}</div>`
+      : `<div class="basket-pct ${r.pct > 0 ? 'up' : r.pct < 0 ? 'down' : ''}">${escapeHtml(t('{0} za {1}', pctTxt(r.pct), monthsTxt(basketMonths)))} <span class="muted">· ${escapeHtml(itemsTxt(r.count))}</span></div>`
+        + (r.up.length ? `<div class="basket-sub">${escapeHtml(t('Najviše poskupelo'))}</div>` + r.up.map(row).join('') : '')
+        + (r.down.length ? `<div class="basket-sub">${escapeHtml(t('Najviše pojeftinilo'))}</div>` + r.down.map(row).join('') : '');
+    return `<div class="basket-card"><div class="basket-head"><b>🛒 ${escapeHtml(t('Tvoja korpa'))}</b><span class="basket-periods">${periods}</span></div>${body}</div>`;
+  }
   function renderShopPrices(hist){
     hist = C.mergePriceHistoryAliases(hist, shopping.items);
     const box = document.getElementById('shopPrices');
@@ -8122,13 +8152,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       .sort((a, b)=> Math.abs((b.change || {}).pct || 0) - Math.abs((a.change || {}).pct || 0) || a.name.localeCompare(b.name));
     const filters = [['all', t('Sve')], ['up', t('Poskupelo')], ['down', t('Pojeftinilo')]]
       .map(([f, label])=> `<button class="btn-secondary price-filter${priceFilter === f ? ' active' : ''}" data-f="${f}">${label}</button>`).join('');
-    box.innerHTML = `<div class="price-filters">${filters}</div>` + (list.length ? list.map(x=> `<div class="price-row" data-key="${escapeHtml(x.key)}" role="button" tabindex="0">
+    box.innerHTML = basketCardHtml() + `<div class="price-filters">${filters}</div>` + (list.length ? list.map(x=> `<div class="price-row" data-key="${escapeHtml(x.key)}" role="button" tabindex="0">
         <span class="shop-name" translate="no">${escapeHtml(x.name)}</span>
         <span>${unitPriceTxt(x.last.unitPrice, x.unit)} <span class="muted">· <span translate="no">${escapeHtml(x.last.store || t(C.NO_STORE))}</span> · ${fmtDocDate(x.last.date)}</span></span>
         <span>${priceChangeHtml(x.change)}</span>
         ${cheapestHtml(x) || '<span></span>'}
       </div>`).join('') : `<div class="empty">${t('Nema artikala za ovaj filter.')}</div>`);
     box.querySelectorAll('.price-filter').forEach(b=> b.addEventListener('click', ()=>{ priceFilter = b.dataset.f; renderShopPrices(hist); }));
+    box.querySelectorAll('.basket-m').forEach(b=> b.addEventListener('click', ()=>{ basketMonths = Number(b.dataset.m); renderShopPrices(hist); }));
     box.querySelectorAll('.price-row').forEach(r=>{
       const open = ()=> openPriceHistory(hist.get(r.dataset.key));
       r.addEventListener('click', open);
