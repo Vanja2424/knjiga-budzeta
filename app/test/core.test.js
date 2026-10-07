@@ -2410,4 +2410,8 @@ test('skrivene pretplate: 3+ meseca zaredom, jednom mesecno, slican iznos, nije 
   const r = C.findHiddenSubscriptions({ entries, recurring: [{ id: 'n', desc: 'Netflix', type: 'expense' }], today: '2026-10-20', dismissed: ['hbo'] });
   assert.deepEqual(r.map(x => [x.key, x.amount, x.day, x.months, !!x.thisMonthId]), [['spotify', 1299, 12, 4, true], ['disney', 899, 15, 3, false]]);
   assert.equal(r[0].desc, 'Spotify'); assert.equal(r[0].category, 'Zabava');
+  // ovomesecni rashod jos nije placen: i dalje je pretplata, thisMonthId pokazuje na njega; naziv bez sifre
+  const e2 = [ex('2026-08-20', 'YOUTUBE PREMIUM X12', 699), ex('2026-09-20', 'YouTube Premium Q77', 699), ex('2026-10-20', 'YOUTUBE PREMIUM Z9', 699, { paid: false })];
+  const r2 = C.findHiddenSubscriptions({ entries: e2, recurring: [], today: '2026-10-21', dismissed: [] });
+  assert.deepEqual(r2.map(x => [x.key, x.months, x.thisMonthId, x.desc]), [['youtube premium', 3, e2[2].id, 'YOUTUBE PREMIUM']]);
 });

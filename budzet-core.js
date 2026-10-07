@@ -616,8 +616,9 @@
     const dismissed = new Set(o.dismissed || []);
     const groups = new Map();
     (o.entries || []).forEach(e => {
-      if(!e || e.type !== 'expense' || e.paid === false || /^rec-/.test(e.id || '') || e.receiptId || e.debtId || (parseInt(e.spreadMonths, 10) || 1) > 1) return;
+      if(!e || e.type !== 'expense' || /^rec-/.test(e.id || '') || e.receiptId || e.debtId || (parseInt(e.spreadMonths, 10) || 1) > 1) return;
       if(!/^\d{4}-\d{2}-\d{2}/.test(String(e.date || ''))) return;
+      if(e.paid === false && e.date.slice(0, 7) !== cur) return;   // neplacen se racuna samo za tekuci mesec (jos nije placen)
       const key = subscriptionKey(e.desc);
       if(!key || key.length < 3) return;
       if(!groups.has(key)) groups.set(key, new Map());
@@ -635,7 +636,8 @@
       const last3 = run.slice(0, 3).map(m => byMonth.get(m)[0].amount);
       if(Math.max(...last3) > Math.min(...last3) * 1.15) return;
       const latest = byMonth.get(run[0])[0];
-      out.push({ key, desc: cleanDesc(latest.desc) || String(latest.desc || ''), amount: round2(latest.amount), category: latest.category || '',
+      const words = String(latest.desc || '').split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ');
+      out.push({ key, desc: words || cleanDesc(latest.desc) || String(latest.desc || ''), amount: round2(latest.amount), category: latest.category || '',
         day: parseInt(latest.date.slice(8, 10), 10), months: run.length, thisMonthId: byMonth.has(cur) ? byMonth.get(cur)[0].id : null });
     });
     return out.sort((a, b) => b.amount - a.amount);

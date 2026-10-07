@@ -1405,12 +1405,16 @@
       const rec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smokeflix');
       const ap = JSON.parse(localStorage.getItem('budzet-primenjeno-v1') || '{}');
       check('pretplate: Dodaj pravi pretplatu, plaćenu za ovaj mesec', !!rec && rec.isSubscription === true && rec.amount === 999 && rec.day === 2 && (ap[curS] || []).includes(rec.id), JSON.stringify(rec));
+      const flixCur = 'smoke-sub-Smokeflix' + curS;
+      check('pretplate: ovomesečni rashod postaje uplata pretplate (bez duplikata posle ponovnog pokretanja)', !!rec && !JSON.parse(localStorage.getItem('budzet-stavke-v2')).some(e => e.id === flixCur) && JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => e.id === 'rec-' + rec.id + '-' + curS && e.amount === 999).length === 1);
+      if (window.__reconcileApplied) { window.__reconcileApplied(); await sleep(50); }
+      check('pretplate: usklađivanje ne dodaje drugi rashod', !rec || JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => (e.id || '').startsWith('rec-' + rec.id + '-')).length === 1);
       check('pretplate: dodata se više ne predlaže', !rowOf('Smokeflix'));
       const no = rowOf('Smokeradio') && rowOf('Smokeradio').querySelector('.hidden-sub-no');
       if (no) { no.click(); await sleep(150); }
       check('pretplate: Nije sakriva predlog i pamti odluku', !rowOf('Smokeradio') && JSON.parse(localStorage.getItem('budzet-pretplate-odbijene-v1') || '[]').includes('smokeradio'));
       if (rec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === rec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== rec.id); R.save(); }
-      window.__deleteEntriesById(subEnt.map(e => e.id));
+      window.__deleteEntriesById(subEnt.map(e => e.id).concat(rec ? ['rec-' + rec.id + '-' + curS] : []));
     }
 
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
