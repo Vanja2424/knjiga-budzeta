@@ -2350,3 +2350,26 @@ test('mesecni rezime: prvog posle vremena podsetnika, kasnije do 10. u mesecu, j
   assert.equal(o('2026-01-01T10:00', ''), '2025-12');
   assert.equal(o('2026-11-01T10:00', '', false), null);
 });
+
+test('garancija iz racuna: artikli (cena po komadu, prag), vec postojeca, nova garancija, link u dokumentu', () => {
+  const url = 'https://suf.purs.gov.rs/v/?vl=ABC%2B1%3D';
+  const e = { id: 'e1', type: 'expense', desc: 'Tehnomanija', date: '2026-10-05', fiscalUrl: url,
+    items: ['Usisivač', 'Kabl USB (2 kom)', 'Slušalice'], itemPrices: [12999, 1200, 9000], itemQty: [{ qty: 1, unit: 'kom' }, { qty: 2, unit: 'kom' }, { qty: 2, unit: 'kom' }] };
+  const all = C.warrantyItems(e, []);
+  assert.deepEqual(all.map(x => [x.name, x.unitPrice, x.has]), [['Usisivač', 12999, false], ['Kabl USB', 600, false], ['Slušalice', 4500, false]]);
+  assert.deepEqual(C.warrantyItems(e, [], 5000).map(x => x.index), [0]);
+  const d = C.warrantyFromItem(e, all[0], 24);
+  assert.deepEqual(d, { kind: 'garancija', title: 'Usisivač', group: 'Tehnika', issued: '2026-10-05', warrantyMonths: 24, vendor: 'Tehnomanija', entryId: 'e1', fiscalUrl: url, remindDays: 30, files: [] });
+  assert.equal(C.warrantyFromItem(e, all[0], 'x').warrantyMonths, 24);
+  const clean = C.cleanDocuments([Object.assign({ id: 'd1' }, d)])[0];
+  assert.equal(clean.fiscalUrl, url); assert.equal(clean.entryId, 'e1');
+  assert.equal(C.cleanDocuments([{ id: 'd2', title: 'x', fiscalUrl: 'https://evil.com/v/?vl=1' }])[0].fiscalUrl, undefined);
+  const docs = [clean];
+  assert.equal(C.warrantyItems(e, docs).find(x => x.name === 'Usisivač').has, true);
+  assert.deepEqual(C.warrantyItems(e, docs, 5000), []);
+  assert.deepEqual(C.warrantyItems({ id: 'x' }, []), []);
+  // kilogram/litar: cena reda nije cena po komadu; red razlike do ukupnog nije artikal
+  const kg = { id: 'e2', desc: 'Maxi', date: '2026-10-05', items: ['Pršuta (0,15 kg)', C.RECEIPT_DIFF_NAME], itemPrices: [1050, 6000], itemQty: [{ qty: 0.15, unit: 'kg' }, { qty: 1, unit: 'kom' }] };
+  assert.deepEqual(C.warrantyItems(kg, [], 5000), []);
+  assert.equal(C.warrantyItems(kg, [])[0].unitPrice, 1050);
+});

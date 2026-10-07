@@ -5677,7 +5677,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       entries.forEach(e=>{ if(ids.has(e.id)) unapplyRoundUpSaving(e.amount); });
       entries = entries.filter(e=> !ids.has(e.id));
       // slike ovog racuna idu u Prilozi/.obrisano (nijedan drugi rashod ih ne koristi)
-      if(attachments.length && window.desktop && window.desktop.bills) attachments.forEach(n=> window.desktop.bills.deleteFile(n));
+      if(attachments.length && window.desktop && window.desktop.bills) attachments.filter(n=> !documents.some(d=> (d.files || []).includes(n))).forEach(n=> window.desktop.bills.deleteFile(n));
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
       saveEntries(); saveShopping(); renderAll();
     });
@@ -5692,6 +5692,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(receipt !== r) return;
     if(!res.ok){ rEl('receiptSave').disabled = false; if(res.error) rEl('receiptStatus').textContent = res.error; return; }
     closeReceipt(true);
+    const sug = warrantySuggestions(res.ids);
+    if(sug.length) openWarrantyPicker(sug, { title: t('Dodati garanciju?'), checked: true });
   }
   rEl('receiptSave').addEventListener('click', saveReceipt);
   if(IS_TEST) window.__saveReceipt = saveReceipt;
@@ -5760,10 +5762,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
     if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = Math.max(0, C.round2((d.paidAmount || 0) - a.amount)); saveDebts(); syncDebtInstallments(); } }
     if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = Math.max(0, C.round2(g.current - a.amount)); saveGoals(); } }
+    if(a && a.kind === 'doc'){ documents = documents.filter(d=> d.id !== a.id); saveDocuments(); }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
     if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id)){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
-      if(!entries.some(e=> (e.attachments || []).includes(name))) await window.desktop.bills.deleteFile(name);
+      if(!entries.some(e=> (e.attachments || []).includes(name)) && !documents.some(d=> (d.files || []).includes(name))) await window.desktop.bills.deleteFile(name);
     }
     renderAll();
     item.undone = true; tgSave(TG_LOG_KEY, log);
@@ -6024,6 +6027,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(x.amount != null) e.amount = x.amount; else e.desc = x.newDesc;
       saveEntries();
       return { text: t('Izmenjeno: {0} · {1}', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev } };
+    }
+    if(x.kind === 'warranty'){
+      const entry = entries.find(y=> y.id === x.targetId);
+      const item = entry && C.warrantyItems(entry, documents).find(i=> i.index === x.itemIndex);
+      if(!item || item.has) return { already: true };
+      const d = addWarrantyDocs([{ entry, item }], 24)[0];
+      if(!d) return { already: true };
+      return { text: t('Garancija: {0}, do {1}', d.title, fmtDocDate(C.documentExpiry(d))), ids: [], act: { kind: 'doc', id: d.id } };
     }
     if(x.kind === 'deleteLast'){
       const e = entries.find(y=> y.id === x.targetId);
@@ -6330,7 +6341,14 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       }
       tgPendingDrop(pend.id); tgMem.delete(pend.id);
       const logId = ids.length ? tgLog(ids, label, undoExtra) : null;
-      return { callbackText: t('Sačuvano'), replies: [{ editMessageId: p.messageId, text: '✓ ' + t('Sačuvano') + (label ? ': ' + label : ''), buttons: logId ? [[{ text: t('Poništi'), data: 'u:' + logId }]] : undefined }] };
+      const replies = [{ editMessageId: p.messageId, text: '✓ ' + t('Sačuvano') + (label ? ': ' + label : ''), buttons: logId ? [[{ text: t('Poništi'), data: 'u:' + logId }]] : undefined }];
+      const sug = pend.kind === 'receipt' ? warrantySuggestions(ids).slice(0, 3) : [];
+      if(sug.length) replies.push({ text: '🛡 ' + t('Dodati garanciju (24 meseca)?'), buttons: sug.map(({ entry, item })=>{
+        const x = { id: newId(), created: Date.now(), until: Date.now() + 864e5 - 60000, kind: 'warranty', targetId: entry.id, itemIndex: item.index, label: item.name, reminder: true, state: 'open' };
+        tgPropPut(x);
+        return [{ text: '🛡 ' + String(item.name).slice(0, 40), data: 'c:' + x.id }];
+      }) });
+      return { callbackText: t('Sačuvano'), replies };
     }
     return { replies: [] };
   }
@@ -6372,7 +6390,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     dEl('docList').innerHTML = list.length ? list.map(x=> `<div class="doc-row doc-${x.st.state}" data-id="${x.d.id}" data-row-id="${x.d.id}" tabindex="0">
         <div class="doc-main"><b translate="no">${escapeHtml(x.d.title)}</b><span class="hint" translate="no">${escapeHtml([x.d.group, x.d.vendor].filter(Boolean).join(' · '))}</span></div>
         <span class="doc-badge">${escapeHtml(x.text)}</span>
-        ${x.d.files.length && window.desktop ? `<button type="button" class="att-btn doc-att" title="${escapeHtml(t('Otvori prilog'))}">📎</button>` : '<span></span>'}
+        ${x.d.files.length && window.desktop ? `<button type="button" class="att-btn doc-att" title="${escapeHtml(t('Otvori prilog'))}">📎</button>` : x.d.fiscalUrl ? `<button type="button" class="att-btn doc-fiscal" title="${escapeHtml(t('Otvori račun na sajtu Poreske uprave'))}">🧾</button>` : '<span></span>'}
         ${x.d.kind === 'dokument' && C.documentExpiry(x.d) ? `<button type="button" class="btn-secondary doc-renew">${escapeHtml(t('Obnovi'))}</button>` : '<span></span>'}
       </div>`).join('') : `<div class="hint" style="padding:1em 0;">${escapeHtml(t('Još nema dokumenata. Dodaj garanciju, registraciju, polisu…'))}</div>`;
   }
@@ -6381,6 +6399,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const doc = documents.find(d=> d.id === row.dataset.id); if(!doc) return;
     if(e.target.closest('.doc-att')){ window.desktop.bills.openFile(doc.files[0]).then(r=>{ if(!r || !r.ok) appAlert(t('Prilog nije pronađen u folderu Prilozi.')); }); return; }
     if(e.target.closest('.doc-renew')){ renewDocumentNow(doc.id); return; }
+    if(e.target.closest('.doc-fiscal')){ const url = C.fiscalUrlFrom(doc.fiscalUrl); if(url) window.open(url); return; }
     openDocReview({ doc });
   });
   // Enter/razmak na redu (ne na dugmetu u redu) otvara zapis kao klik
@@ -6426,7 +6445,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   function openDocReview(opts){
     const doc = opts.doc || null, pre = opts.prefill || {};
-    docReview = { doc, files: (doc ? doc.files : (pre.files || [])).map(n=> ({ name: n, label: n })), removed: [], entryId: doc ? doc.entryId : pre.entryId, resolve: null };
+    docReview = { doc, files: (doc ? doc.files : (pre.files || [])).map(n=> ({ name: n, label: n })), removed: [], entryId: doc ? doc.entryId : pre.entryId, fiscalUrl: doc ? doc.fiscalUrl : pre.fiscalUrl, resolve: null };
     dEl('docDlgTitle').textContent = doc ? t('Izmeni zapis') : t('Novi zapis');
     dEl('docNoAi').checked = false;
     fillDocForm(doc || Object.assign({ kind: 'garancija', remindDays: 30 }, pre));
@@ -6522,7 +6541,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const base = { id: st.doc ? st.doc.id : newId(), kind, title, group: dEl('docGroup').value.trim() || 'Ostalo',
       issued: dEl('docIssued').value || undefined, expires: dEl('docExpires').value || undefined, warrantyMonths: parseInt(dEl('docMonths').value, 10) || undefined,
       vendor: dEl('docVendor').value.trim(), notes: dEl('docNotes').value.trim(), remindDays: dEl('docRemind').value === '' ? 30 : parseInt(dEl('docRemind').value, 10),
-      history: st.doc ? st.doc.history : undefined, entryId: st.entryId };
+      history: st.doc ? st.doc.history : undefined, entryId: st.entryId, fiscalUrl: st.fiscalUrl };
     if(kind === 'dokument' && (parseFloat(dEl('docRenewAmount').value) > 0 || parseInt(dEl('docRenewMonths').value, 10) !== 12))
       base.renewal = { amount: parseFloat(dEl('docRenewAmount').value) || 0, category: dEl('docRenewCat').value, months: parseInt(dEl('docRenewMonths').value, 10) || 12 };
     const names = [];
@@ -6828,10 +6847,38 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   if(IS_TEST) window.__runDocNotifications = ()=> runDocNotifications();
   // Garancija iz rashoda: popunjen nov zapis sa prilozima rashoda
+  // rashod iz prodavnice: artikli (i fiskalni racun bez slike) ili slika racuna (ne uplatnica)
+  function hasWarrantySource(e){ return (Array.isArray(e.items) && e.items.length > 0) || (!e.fiscalUrl && e.attachments && e.attachments.length && !!window.desktop && !/-uplatnica-/.test(String(e.attachments[0] || ''))); }
+  const WARRANTY_MIN_PRICE = 5000;
   function openWarrantyFromEntry(e){
-    const first = Array.isArray(e.items) && e.items[0] ? C.purchasedItemName(e.items[0]) : '';
-    openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id } });
+    const items = C.warrantyItems(e, documents);
+    if(items.length > 1) return openWarrantyPicker(items.map(item=> ({ entry: e, item })), { title: t('Garancija za artikle'), checked: false });
+    const first = items[0] ? items[0].name : '';
+    openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id, fiscalUrl: e.fiscalUrl } });
   }
+  // garancije za izabrane artikle (jedna po artiklu): naziv artikla, datum racuna, prodavnica, link racuna, slika racuna
+  function addWarrantyDocs(pairs, months){
+    const made = pairs.map(({ entry, item })=> C.cleanDocuments([Object.assign({ id: newId() }, C.warrantyFromItem(entry, item, months),
+      { files: entry.fiscalUrl ? [] : (entry.attachments || []).filter(n=> !isSlipAttachment(n)) })])[0]).filter(Boolean);
+    if(!made.length) return [];
+    documents = documents.concat(made); saveDocuments(); renderAll();
+    return made;
+  }
+  function openWarrantyPicker(pairs, opts){
+    const fields = pairs.map((p, i)=> ({ key: 'w' + i, type: 'checkbox', value: !!opts.checked && !p.item.has,
+      label: p.item.name + (p.item.unitPrice != null ? ' — ' + fmt(p.item.unitPrice) : '') + (p.item.has ? ' · ' + t('već ima garanciju') : '') }))
+      .concat({ key: 'months', type: 'number', label: t('Trajanje garancije (meseci)'), value: 24 });
+    openEditModal(opts.title, fields, vals=>{
+      const chosen = pairs.filter((p, i)=> vals['w' + i]);
+      const made = addWarrantyDocs(chosen, vals.months);
+      if(!made.length) return;
+      const ids = new Set(made.map(d=> d.id));
+      showUndoToast(t('Garancija dodata ({0})', made.length), ()=>{ documents = documents.filter(d=> !ids.has(d.id)); saveDocuments(); renderAll(); });
+    });
+  }
+  // posle cuvanja racuna: predlog za skupe artikle (bez onih koji vec imaju garanciju)
+  const warrantySuggestions = ids => ids.map(id=> entries.find(e=> e.id === id)).filter(Boolean)
+    .flatMap(e=> C.warrantyItems(e, documents, WARRANTY_MIN_PRICE).map(item=> ({ entry: e, item })));
 
   // ---------- Pitaj svoj budzet: AI bira proracune, aplikacija racuna lokalno, AI pise odgovor ----------
   let fakeAsk = null; // test: (req, step) -> { ok, content }
@@ -9557,7 +9604,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
           <td class="amount expense">− ${fmt(e.amount)}${origTag(e)}</td>
           <td class="row-actions">${e.fiscalUrl ? `<button class="att-btn fiscal-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun na sajtu Poreske uprave'))}">🧾</button>` : ''}${!e.fiscalUrl && e.attachments && e.attachments.length && window.desktop ? (isSlipAttachment(e.attachments[0])
             ? `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori uplatnicu'))}">📎</button>`
-            : `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button><button class="btn-link warranty-btn" data-id="${e.id}" title="${escapeHtml(t('Dodaj garanciju za ovu kupovinu'))}">${escapeHtml(t('+ garancija'))}</button>`) : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
+            : `<button class="att-btn" data-id="${e.id}" title="${escapeHtml(t('Otvori račun iz prodavnice'))}">📎</button>`) : ''}${hasWarrantySource(e) ? `<button class="btn-link warranty-btn" data-id="${e.id}" title="${escapeHtml(t('Dodaj garanciju za ovu kupovinu'))}">${escapeHtml(t('+ garancija'))}</button>` : ''}<button class="edit-btn" data-id="${e.id}" title="Uredi">✎</button><button class="dup-btn" data-id="${e.id}" title="Dupliraj">⧉</button><button class="del-btn" data-id="${e.id}" title="Obriši">✕</button></td></tr>`;
       }).join('');
       selectAllCb.checked = filtered.every(e=>selectedExpenseIds.has(e.id));
       body.querySelectorAll('.row-select').forEach(cb=>{
@@ -11415,7 +11462,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const wsRec = XLSX.utils.json_to_sheet(recurring.map(r=>({ID:r.id, Opis:r.desc, Iznos:r.amount, Kategorija:r.category, Tip:r.type, Dan:r.day, Ucestalost:r.frequency||'monthly', PocetniMesec:r.anchorMonth||1, Pretplata:r.isSubscription?'da':'ne', AutoUpis:r.autoPay?'da':'ne', RaspodelaNaPeriod:r.spreadPeriod?'da':'ne', DugID:r.debtId||'', Do:r.until||'', PrimalacRacun:r.payee?r.payee.account:'', PrimalacNaziv:r.payee?r.payee.name:'', SifraPlacanja:r.payee?r.payee.code:'', SvrhaPlacanja:r.payee?r.payee.purpose:'', Model:r.payee?r.payee.model:'', PozivNaBroj:r.payee?r.payee.reference:''})));
     XLSX.utils.book_append_sheet(wb, wsRec, 'Ponavljajuce');
     if(documents.length){
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(documents.map(d=>({ID:d.id, Vrsta:d.kind, Naziv:d.title, Grupa:d.group, Izdato:d.issued||'', Istice:d.expires||'', GarancijaMeseci:d.warrantyMonths||'', Prodavac:d.vendor||'', Napomena:d.notes||'', Podsetnik:d.remindDays, Prilozi:(d.files||[]).join('; '), Obnova:d.renewal ? JSON.stringify(d.renewal) : '', Istorija:d.history ? JSON.stringify(d.history) : '', StavkaID:d.entryId||''}))), 'Dokumenti');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(documents.map(d=>({ID:d.id, Vrsta:d.kind, Naziv:d.title, Grupa:d.group, Izdato:d.issued||'', Istice:d.expires||'', GarancijaMeseci:d.warrantyMonths||'', Prodavac:d.vendor||'', Napomena:d.notes||'', Podsetnik:d.remindDays, Prilozi:(d.files||[]).join('; '), Obnova:d.renewal ? JSON.stringify(d.renewal) : '', Istorija:d.history ? JSON.stringify(d.history) : '', StavkaID:d.entryId||'', Link:d.fiscalUrl||''}))), 'Dokumenti');
     }
     if(locations.length){
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(locations.map(l=>({ID:l.id, Naziv:l.name, Valuta:l.currency}))), 'Lokacije');
@@ -11474,7 +11521,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!wb.Sheets['Dokumenti']) return null;
     const js = v => { try { return JSON.parse(v); } catch(e){ return undefined; } };
     const dateCell = v => v === '' || v == null ? '' : normalizeDateCell(v, '');
-    return C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: dateCell(r.Izdato), expires: dateCell(r.Istice), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||'') })));
+    return C.cleanDocuments(XLSX.utils.sheet_to_json(wb.Sheets['Dokumenti'], {defval:''}).filter(r=> r.ID).map(r=>({ id: String(r.ID), kind: String(r.Vrsta), title: String(r.Naziv), group: String(r.Grupa), issued: dateCell(r.Izdato), expires: dateCell(r.Istice), warrantyMonths: r.GarancijaMeseci, vendor: String(r.Prodavac||''), notes: String(r.Napomena||''), remindDays: r.Podsetnik, files: String(r.Prilozi||'').split(';').map(x=> x.trim()).filter(Boolean), renewal: js(r.Obnova), history: js(r.Istorija), entryId: String(r.StavkaID||''), fiscalUrl: String(r.Link||'') })));
   }
   if(IS_TEST) window.__documentsFromWorkbook = documentsFromWorkbook;
   // List Ciljevi (racun cilja se cuva po ID-ju, kao i racuni u listu Racuni)

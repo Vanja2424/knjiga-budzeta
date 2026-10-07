@@ -1293,6 +1293,77 @@
       window.__deleteEntriesById(['smoke-war-1']);
     } else check('dokumenti: hook __docNotifyKeys', false);
 
+    // v1.38: garancija iz artikala racuna (fiskalni QR bez priloga, vise artikala), predlog posle cuvanja (aplikacija i bot)
+    {
+      const ents = () => JSON.parse(localStorage.getItem('budzet-stavke-v2') || '[]');
+      const docs = () => window.__documents();
+      const today = window.BudzetCore.toISODate(new Date());
+      const furl = 'https://suf.purs.gov.rs/v/?vl=SMOKEW%2B1%3D';
+      window.__addEntriesRaw([{ id: 'smoke-w-1', type: 'expense', desc: 'Smoke W Tehno', amount: 14000, category: 'Ostalo', date: today, paid: true, tags: [], fiscalUrl: furl,
+        items: ['Smoke W usisivač', 'Smoke W kabl (2 kom)'], itemPrices: [12999, 1001], itemQty: [{ qty: 1, unit: 'kom' }, { qty: 2, unit: 'kom' }] }]);
+      go('rashodi'); await sleep(60);
+      setVal('filterCategory', ''); setVal('filterPaid', ''); await sleep(120);   // filteri iz ranijih provera
+      const wb1 = document.querySelector('.warranty-btn[data-id="smoke-w-1"]');
+      check('garancija: dugme i kod fiskalnog računa bez priloga', !!wb1);
+      if (wb1) {
+        wb1.click(); await sleep(120);
+        const cb0 = document.querySelector('#editModalOverlay [data-field="w0"]'), cb1 = document.querySelector('#editModalOverlay [data-field="w1"]');
+        check('garancija: izbor artikala (više artikala)', $('editModalOverlay').classList.contains('show') && !!cb0 && !!cb1 && !!document.querySelector('#editModalOverlay [data-field="months"]'));
+        if (cb0 && cb1) { cb0.checked = true; cb1.checked = false; document.querySelector('#editModalOverlay [data-field="months"]').value = '36'; $('editModalSave').click(); await sleep(150); }
+        const wd = docs().find(d => d.entryId === 'smoke-w-1');
+        check('garancija: napravljena iz izabranog artikla, sa linkom računa', !!wd && wd.title === 'Smoke W usisivač' && wd.warrantyMonths === 36 && wd.fiscalUrl === furl && wd.vendor === 'Smoke W Tehno' && docs().filter(d => d.entryId === 'smoke-w-1').length === 1, JSON.stringify(wd));
+        go('dokumenti'); await sleep(120);
+        const row = wd && document.querySelector('#docList .doc-row[data-id="' + wd.id + '"]');
+        check('garancija: u Dokumentima dugme 🧾', !!row && !!row.querySelector('.doc-fiscal'));
+        if (wd) window.__deleteDocument(wd.id, { confirm: false });
+      }
+      window.__deleteEntriesById(['smoke-w-1']);
+      // predlog posle cuvanja racuna u aplikaciji (samo artikli od 5.000 po komadu)
+      if (typeof window.__addReceiptFiles === 'function') {
+        window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke W prodavnica', date: today, total: 13299, items: [{ name: 'Smoke W frižider', price: 12999, category: 'Ostalo' }, { name: 'Smoke W baterije', price: 300, category: 'Ostalo' }] }) });
+        const img = await new Promise(r => { const c = document.createElement('canvas'); c.width = 60; c.height = 60; const g = c.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, 60, 60); c.toBlob(r, 'image/png'); });
+        window.__addReceiptFiles([new File([img], 'w.png', { type: 'image/png' })]);
+        await sleep(1500);
+        await window.__saveReceipt(); await sleep(150);
+        const boxes = [...document.querySelectorAll('#editModalOverlay input[type="checkbox"][data-field^="w"]')];
+        check('garancija: posle čuvanja računa predlog samo za skup artikal', $('editModalOverlay').classList.contains('show') && boxes.length === 1 && boxes[0].checked && /frižider/.test($('editModalFields').textContent), $('editModalFields').textContent);
+        if ($('editModalOverlay').classList.contains('show')) { $('editModalSave').click(); await sleep(150); }
+        const made = ents().filter(e => e.desc === 'Smoke W prodavnica');
+        const wd2 = docs().find(d => made.some(e => e.id === d.entryId));
+        check('garancija: predlog posle čuvanja pravi garanciju', !!wd2 && wd2.title === 'Smoke W frižider' && wd2.warrantyMonths === 24, JSON.stringify(wd2));
+        if (wd2) window.__deleteDocument(wd2.id, { confirm: false });
+        window.__deleteEntriesById(made.map(e => e.id));
+        window.__fakeReceiptReading = null;
+      }
+      // bot: posle cuvanja racuna poruka sa dugmetom po skupom artiklu, klik pravi garanciju, Ponisti je brise
+      if (window.__telegramBridge) {
+        const B = window.__telegramBridge;
+        const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
+        const file = { base64: btoa(String.fromCharCode(...png)), name: 'telegram.png', mime: 'image/png' };
+        window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke W bot', date: today, total: 8000, items: [{ name: 'Smoke W mikser', price: 8000, category: 'Ostalo' }] }) });
+        const b1 = await B.handle({ update_id: 902001, kind: 'file', caption: 'maxi', progressMessageId: 71, file });
+        const sb = (b1.replies[0].buttons || []).flat().find(b => /^s:/.test(b.data));
+        const b2 = sb ? await B.handle({ update_id: 902002, kind: 'callback', data: sb.data, messageId: 71 }) : { replies: [] };
+        const wr = b2.replies.find(r => /🛡/.test(r.text || ''));
+        const wbtn = wr && (wr.buttons || []).flat().find(b => /mikser/.test(b.text));
+        check('garancija (bot): posle čuvanja računa ponuda sa dugmetom', !!wbtn && /^c:/.test(wbtn.data), JSON.stringify(b2.replies).slice(0, 300));
+        if (wbtn) {
+          const b3 = await B.handle({ update_id: 902003, kind: 'callback', data: wbtn.data, messageId: 72 });
+          const wd3 = docs().find(d => d.title === 'Smoke W mikser');
+          check('garancija (bot): klik pravi garanciju (nova poruka)', !!wd3 && wd3.warrantyMonths === 24 && !!b3.replies[0] && !b3.replies[0].editMessageId, JSON.stringify(b3));
+          // Ponisti racuna ne sme da baci sliku koju koristi garancija
+          const rb = (b2.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
+          if (rb) await B.handle({ update_id: 902005, kind: 'callback', data: rb.data, messageId: 71 });
+          check('garancija (bot): Poništi računa ne briše sliku koju koristi garancija', !!wd3 && wd3.files.length === 1 && (await window.desktop.bills.openFile(wd3.files[0])).ok === true, JSON.stringify(wd3 && wd3.files));
+          const ub = (b3.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
+          if (ub) await B.handle({ update_id: 902004, kind: 'callback', data: ub.data, messageId: 73 });
+          check('garancija (bot): Poništi briše garanciju', !docs().some(d => d.title === 'Smoke W mikser'));
+        }
+        window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke W bot').map(e => e.id));
+        window.__fakeReceiptReading = null;
+      }
+    }
+
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
     if ('__fakeAsk' in window) {
       const cm = monthKey(new Date());

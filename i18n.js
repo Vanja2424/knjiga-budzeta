@@ -635,6 +635,8 @@
     'Prihodi: {0}': 'Income: {0}', 'Rashodi: {0}': 'Expenses: {0}', '{0}% više od proseka': '{0}% above average', '{0}% manje od proseka': '{0}% below average',
     'Ušteđeno: {0}': 'Saved: {0}', 'Manjak: {0}': 'Shortfall: {0}', 'Najviše potrošeno': 'Top spending', 'Više nego obično': 'More than usual',
     'Manje: {0} −{1}': 'Less: {0} −{1}', 'Preko limita': 'Over the limit', 'Ostalo neplaćeno: {0}, {1}': 'Left unpaid: {0}, {1}',
+    'Garancija za artikle': 'Warranty for items', 'već ima garanciju': 'already has a warranty', 'Trajanje garancije (meseci)': 'Warranty length (months)',
+    'Garancija dodata ({0})': 'Warranty added ({0})', 'Dodati garanciju?': 'Add a warranty?', 'Dodati garanciju (24 meseca)?': 'Add a warranty (24 months)?', 'Garancija: {0}, do {1}': 'Warranty: {0}, until {1}',
     'Sutra': 'Tomorrow', 'Kasni': 'Overdue', 'Uskoro (godišnji)': 'Coming up (yearly)', '{0} ističe danas': '{0} expires today', '{0} ističe za {1}': '{0} expires in {1}',
     'Token bota': 'Bot token',
     'Sačuvaj token': 'Save token',
