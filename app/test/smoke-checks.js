@@ -1364,6 +1364,31 @@
       }
     }
 
+    // v1.39: licna inflacija (kartica u Nabavka -> Cene, red u mesecnom rezimeu)
+    {
+      const C2 = window.BudzetCore, todayI = C2.toISODate(new Date());
+      const back = C2.addMonthsToDate(todayI, -3), recent = (() => { const d = new Date(); d.setDate(d.getDate() - 2); return C2.toISODate(d); })();
+      const buy = (id, date, name, price) => ({ id, type: 'expense', receiptId: 'smoke-inf-' + id, desc: 'Smoke INF prodavnica', category: 'Hrana', amount: price, paid: true, tags: [], date, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: 'kom' }] });
+      const infIds = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'].map(x => 'smoke-inf-' + x);
+      window.__addEntriesRaw([buy(infIds[0], back, 'Smoke INF mleko', 100), buy(infIds[1], recent, 'Smoke INF mleko', 110),
+        buy(infIds[2], back, 'Smoke INF kafa', 200), buy(infIds[3], recent, 'Smoke INF kafa', 180),
+        buy(infIds[4], back, 'Smoke INF hleb', 50), buy(infIds[5], recent, 'Smoke INF hleb', 50)]);
+      go('nabavka'); await sleep(80);
+      const pb = document.querySelector('.shop-show-btn[data-show="prices"]'); if (pb) pb.click(); await sleep(150);
+      const card = () => document.querySelector('#shopPrices .basket-card');
+      check('inflacija: kartica Tvoja korpa u Cenama', !!card());
+      const m3 = card() && card().querySelector('.basket-m[data-m="3"]'); if (m3) { m3.click(); await sleep(100); }
+      check('inflacija: 3 meseca — tačan procenat i artikal koji je poskupeo', !!card() && /2[.,]5\s*%/.test(card().textContent) && /Smoke INF mleko/.test(card().textContent) && /10\s*%/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 300));
+      const m12 = card() && card().querySelector('.basket-m[data-m="12"]'); if (m12) { m12.click(); await sleep(100); }
+      check('inflacija: period bez dovoljno podataka', !!card() && /[Pp]remalo podataka/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 200));
+      localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
+      const mr = window.__tgMonthly ? await window.__tgMonthly(todayI + 'T23:00') : { replies: [] };
+      const mt = (mr.replies[0] || {}).text || '';
+      check('inflacija: red u mesečnom rezimeu', !mt || /🛒/.test(mt), mt.slice(-200));
+      localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
+      window.__deleteEntriesById(infIds);
+    }
+
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
     if ('__fakeAsk' in window) {
       const cm = monthKey(new Date());
