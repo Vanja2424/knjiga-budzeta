@@ -1351,6 +1351,10 @@
           const b3 = await B.handle({ update_id: 902003, kind: 'callback', data: wbtn.data, messageId: 72 });
           const wd3 = docs().find(d => d.title === 'Smoke W mikser');
           check('garancija (bot): klik pravi garanciju (nova poruka)', !!wd3 && wd3.warrantyMonths === 24 && !!b3.replies[0] && !b3.replies[0].editMessageId, JSON.stringify(b3));
+          // Ponisti racuna ne sme da baci sliku koju koristi garancija
+          const rb = (b2.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
+          if (rb) await B.handle({ update_id: 902005, kind: 'callback', data: rb.data, messageId: 71 });
+          check('garancija (bot): Poništi računa ne briše sliku koju koristi garancija', !!wd3 && wd3.files.length === 1 && (await window.desktop.bills.openFile(wd3.files[0])).ok === true, JSON.stringify(wd3 && wd3.files));
           const ub = (b3.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
           if (ub) await B.handle({ update_id: 902004, kind: 'callback', data: ub.data, messageId: 73 });
           check('garancija (bot): Poništi briše garanciju', !docs().some(d => d.title === 'Smoke W mikser'));

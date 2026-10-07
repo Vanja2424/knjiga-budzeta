@@ -2368,4 +2368,8 @@ test('garancija iz racuna: artikli (cena po komadu, prag), vec postojeca, nova g
   assert.equal(C.warrantyItems(e, docs).find(x => x.name === 'Usisivač').has, true);
   assert.deepEqual(C.warrantyItems(e, docs, 5000), []);
   assert.deepEqual(C.warrantyItems({ id: 'x' }, []), []);
+  // kilogram/litar: cena reda nije cena po komadu; red razlike do ukupnog nije artikal
+  const kg = { id: 'e2', desc: 'Maxi', date: '2026-10-05', items: ['Pršuta (0,15 kg)', C.RECEIPT_DIFF_NAME], itemPrices: [1050, 6000], itemQty: [{ qty: 0.15, unit: 'kg' }, { qty: 1, unit: 'kom' }] };
+  assert.deepEqual(C.warrantyItems(kg, [], 5000), []);
+  assert.equal(C.warrantyItems(kg, [])[0].unitPrice, 1050);
 });

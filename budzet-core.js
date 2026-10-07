@@ -1757,9 +1757,10 @@
     const have = new Set((documents || []).filter(d => d && d.entryId === entry.id).map(d => foldText(d.title)));
     return items.map((label, i) => {
       const name = purchasedItemName(label), price = typeof prices[i] === 'number' ? prices[i] : null;
-      const q = qty[i] && qty[i].qty > 0 ? qty[i].qty : 1;
-      return { index: i, name, price, unitPrice: price != null ? round2(price / q) : null, has: have.has(foldText(name)) };
-    }).filter(x => x.name && (min == null || (x.unitPrice != null && x.unitPrice >= min && !x.has)));
+      // cena po komadu samo za komade; za kg/l/pak se gleda cena reda (0,15 kg prsute nije "7.000 po komadu")
+      const q = qty[i] && qty[i].qty > 0 && (!qty[i].unit || qty[i].unit === 'kom') ? qty[i].qty : 1;
+      return { index: i, name, price, unitPrice: price != null ? round2(price / q) : null, has: have.has(foldText(name.slice(0, 80))), diff: isReceiptDiffName(name) };
+    }).filter(x => x.name && (min == null || (x.unitPrice != null && x.unitPrice >= min && !x.has && !x.diff)));
   }
   function warrantyFromItem(entry, item, months){
     const m = parseInt(months, 10);

@@ -5677,7 +5677,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       entries.forEach(e=>{ if(ids.has(e.id)) unapplyRoundUpSaving(e.amount); });
       entries = entries.filter(e=> !ids.has(e.id));
       // slike ovog racuna idu u Prilozi/.obrisano (nijedan drugi rashod ih ne koristi)
-      if(attachments.length && window.desktop && window.desktop.bills) attachments.forEach(n=> window.desktop.bills.deleteFile(n));
+      if(attachments.length && window.desktop && window.desktop.bills) attachments.filter(n=> !documents.some(d=> (d.files || []).includes(n))).forEach(n=> window.desktop.bills.deleteFile(n));
       before.forEach(b=>{ b.s.needed = b.needed; b.s.checked = b.checked; b.s.price = b.price; });
       saveEntries(); saveShopping(); renderAll();
     });
@@ -5766,7 +5766,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
     if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id)){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
-      if(!entries.some(e=> (e.attachments || []).includes(name))) await window.desktop.bills.deleteFile(name);
+      if(!entries.some(e=> (e.attachments || []).includes(name)) && !documents.some(d=> (d.files || []).includes(name))) await window.desktop.bills.deleteFile(name);
     }
     renderAll();
     item.undone = true; tgSave(TG_LOG_KEY, log);
