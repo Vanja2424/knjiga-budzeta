@@ -3652,6 +3652,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(editModalLastFocus && typeof editModalLastFocus.focus === 'function') editModalLastFocus.focus();
     editModalLastFocus = null;
   }
+  // Klik na tamnu pozadinu zatvara prozor samo ako je i pritisak misa bio na pozadini: kad se tekst u polju
+  // selektuje prevlacenjem pa mis pusti van prozora, pregledac salje "click" pozadini — to ne sme da zatvori prozor.
+  // Isto i obrnuto: pritisak na pozadini, pustanje u prozoru. Zatvara samo kad su i pritisak i pustanje na pozadini.
+  let pointerDownOn = null, pointerUpOn = null;
+  document.addEventListener('mousedown', e=>{ pointerDownOn = e.target; pointerUpOn = null; }, true);
+  document.addEventListener('mouseup', e=>{ pointerUpOn = e.target; }, true);
+  document.addEventListener('click', e=>{
+    const el = e.target;
+    const isOverlay = el && (el.classList.contains('modal-overlay') || /Overlay$/.test(el.id || ''));
+    if(isOverlay && (pointerDownOn !== el || (pointerUpOn && pointerUpOn !== el))) e.stopImmediatePropagation();
+    pointerDownOn = pointerUpOn = null;
+  }, true);
   document.getElementById('editModalOverlay').addEventListener('click', (e)=>{
     if(e.target.id === 'editModalOverlay') closeEditModal();
   });

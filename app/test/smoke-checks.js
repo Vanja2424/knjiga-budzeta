@@ -2248,6 +2248,21 @@
         check('link sa QR koda: dugme u Nabavci', !!btn);
         if (btn) {
           btn.click(); await sleep(60);
+          // prevlacenje misem iz polja van prozora (selektovanje teksta) ne sme da zatvori prozor
+          const inp0 = document.querySelector('#editModalFields input');
+          inp0.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          check('prozor: prevlačenje iz polja van prozora ga ne zatvara', $('editModalOverlay').classList.contains('show'));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          inp0.dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          check('prozor: prevlačenje sa pozadine u prozor ga ne zatvara', $('editModalOverlay').classList.contains('show'));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('mouseup', { bubbles: true }));
+          $('editModalOverlay').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+          check('prozor: klik na pozadinu i dalje zatvara', !$('editModalOverlay').classList.contains('show'));
+          if (!$('editModalOverlay').classList.contains('show')) { btn.click(); await sleep(60); }
           const inp = document.querySelector('#editModalFields input');
           check('link sa QR koda: prozor sa poljem za link', $('editModalOverlay').classList.contains('show') && !!inp);
           if (inp) { inp.value = 'nije link'; $('editModalSave').click(); await sleep(80); }
