@@ -2373,3 +2373,22 @@ test('garancija iz racuna: artikli (cena po komadu, prag), vec postojeca, nova g
   assert.deepEqual(C.warrantyItems(kg, [], 5000), []);
   assert.equal(C.warrantyItems(kg, [])[0].unitPrice, 1050);
 });
+
+test('licna inflacija: indeks korpe ponderisan potrosnjom, samo artikli kupljeni i tada i sada', () => {
+  const buy = (date, name, price, qty, unit) => ({ id: 'e' + date + name, type: 'expense', receiptId: 'r' + date, desc: 'Maxi', date, items: [name], itemPrices: [price], itemQty: [{ qty: qty || 1, unit: unit || 'kom' }] });
+  const entries = [
+    buy('2026-07-01', 'Mleko', 100), buy('2026-10-01', 'Mleko', 110),
+    buy('2026-07-03', 'Kafa', 200), buy('2026-10-02', 'Kafa', 180),
+    buy('2026-07-05', 'Hleb', 50), buy('2026-10-03', 'Hleb', 50),
+    buy('2026-10-04', 'Novo', 999),                          // samo sada — ne ulazi
+    buy('2026-07-02', 'Sir', 500, 0.5, 'kg'), buy('2026-10-05', 'Sir', 300, 1, 'kom')   // druga jedinica — ne ulazi
+  ];
+  const r = C.basketInflation(entries, '2026-10-07', 3);
+  assert.equal(r.enough, true); assert.equal(r.count, 3);
+  assert.equal(r.pct, -2.5);   // (210*1,1 + 380*0,9 + 100*1) / 690 = 0,9754
+  assert.deepEqual(r.up.map(x => [x.name, x.base, x.cur, x.pct]), [['Mleko', 100, 110, 10]]);
+  assert.deepEqual(r.down.map(x => [x.name, x.pct]), [['Kafa', -10]]);
+  const one = C.basketInflation(entries, '2026-10-07', 1);
+  assert.equal(one.enough, false); assert.equal(one.count, 0);
+  assert.equal(C.basketInflation([], '2026-10-07', 6).enough, false);
+});
