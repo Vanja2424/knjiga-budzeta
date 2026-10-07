@@ -344,3 +344,21 @@ test('telegram: **podebljano** -> HTML <b>, specijalni znaci se cuvaju; odbijen 
   assert.equal(sent[3].parse_mode, undefined);
   assert.equal(sent[3].text, 'Porez pao');
 });
+
+test('telegram: bez formata se ponavlja samo kad Telegram odbije HTML (ne na 429/mrezu); izmena poruke zadrzava dugmad', async () => {
+  let i = 0;
+  const outs = [{ replies: [{ text: '**A** 1' }] }, { replies: [{ editMessageId: 5, text: '**B** 2', buttons: [[{ text: 'x', data: 'u:1' }]] }] }];
+  const { api, settings, queue, reply, calls } = setup({ settings: { telegramChatId: 77 }, handle: async () => outs[i++] });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  const bad = { ok: false, status: 400, json: async () => ({ ok: false, description: "Bad Request: can't parse entities" }) };
+  queue.sendMessage = [{ ok: false, status: 429, json: async () => ({ ok: false, parameters: { retry_after: 1 } }) }];
+  queue.editMessageText = [bad, reply('editMessageText', { message_id: 5 })];
+  queue.getUpdates = [reply('getUpdates', [upd(30, { text: 'x' }), upd(31, { text: 'y' })])];
+  await api.pollOnce();
+  const sends = calls.filter(c => c.method === 'sendMessage');
+  assert.equal(sends.length, 1);   // 429 -> bez ponavljanja istog odgovora
+  const edits = calls.filter(c => c.method === 'editMessageText').map(c => c.body);
+  assert.equal(edits.length, 2);
+  assert.equal(edits[0].parse_mode, 'HTML'); assert.equal(edits[1].parse_mode, undefined);
+  assert.equal(edits[1].text, 'B 2'); assert.equal(edits[1].reply_markup.inline_keyboard[0][0].callback_data, 'u:1');
+});
