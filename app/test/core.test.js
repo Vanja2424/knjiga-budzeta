@@ -2334,6 +2334,8 @@ test('jutarnji podsetnik: danas, sutra, kasni (ponavljajuce i neplaceni rashodi)
   // kraj meseca: sutra je 1. u sledecem mesecu
   const r2 = C.morningReminderItems({ recurring, entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-31' });
   assert.deepEqual(r2.tomorrow.map(i => i.id), ['k']);
+  assert.equal(r2.tomorrow[0].mKey, '2026-11');   // dugme placa novembar, ne oktobar
+  assert.equal(r.today[0].mKey, '2026-10'); assert.equal(r.overdue.find(i => i.id === 'n').mKey, '2026-10');
   const empty = C.morningReminderItems({ recurring: [], entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-07' });
   assert.equal(C.morningHasItems(empty), false); assert.equal(C.morningHasItems(r), true);
 });

@@ -5965,6 +5965,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       return { text: `${d.type === 'income' ? t('Prihod') + ': ' : ''}${d.desc} · ${r.amountText} · ${r.category}`, ids: r.ids };
     }
     if(x.kind === 'paid' && x.targetKind === 'recurring'){
+      const mKey = x.mKey || currentMonthKey();   // podsetnik "sutra" moze biti u sledecem mesecu
       const r = recurring.find(y=> y.id === x.targetId);
       if(!r || isPaid(r, mKey)) return { already: true };
       const wasSkipped = isSkipped(r, mKey);
@@ -5978,7 +5979,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       const e = entries.find(y=> y.id === x.targetId);
       if(!e || isExpensePaid(e)) return { already: true };
       const prev = { paid: e.paid, amount: e.amount };
-      e.paid = true; if(x.amount && x.amount !== e.amount) e.amount = x.amount;
+      e.paid = true; if(x.userAmount && x.amount && x.amount !== e.amount) e.amount = x.amount;   // inace ostaje iznos iz aplikacije (mozda ispravljen posle predloga)
       saveEntries();
       return { text: t('{0} plaćeno ({1})', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev } };
     }
@@ -6103,7 +6104,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     // dugme po stavci koja se placa: klik odmah oznacava placeno (isti put kao naredba), vazi do kraja dana
     const until = new Date(); until.setHours(23, 59, 59, 999);
     const buttons = m.today.concat(m.tomorrow, m.overdue).slice(0, 8).map(i=>{
-      const x = { id: newId(), created: Date.now(), until: until.getTime(), kind: 'paid', targetId: i.id, targetKind: i.kind, label: i.desc, amount: i.amount, userAmount: false, reminder: true, state: 'open' };
+      const x = { id: newId(), created: Date.now(), until: until.getTime(), kind: 'paid', targetId: i.id, targetKind: i.kind, mKey: i.mKey, label: i.desc, amount: i.amount, userAmount: false, reminder: true, state: 'open' };
       tgPropPut(x);
       return [{ text: '✓ ' + String(i.desc).slice(0, 40), data: 'c:' + x.id }];
     });
@@ -9902,6 +9903,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   if(IS_TEST) window.__deleteExpenseCategory = cat => deleteExpenseCategory(cat);
   // Samo za automatske provere: uklanja stavke po id-u (npr. da bi se izbrisala test kategorija posle).
   if(IS_TEST) window.__deleteEntriesById = ids => { entries = entries.filter(e => !ids.includes(e.id)); saveEntries(); syncDebtInstallments(); invalidate(); };
+  if(IS_TEST) window.__setEntryAmount = (id, amount) => { const e = entries.find(x=> x.id === id); if(e){ e.amount = amount; saveEntries(); invalidate(); } };
   if(IS_TEST) window.__setEntryItems = (id, items) => { const e = entries.find(x=> x.id === id); if(e){ e.items = items.slice(); saveEntries(); invalidate(); } };
   function renameCategory(oldName, newName){
     newName = (newName || '').trim();

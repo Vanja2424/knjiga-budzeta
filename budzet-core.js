@@ -2271,13 +2271,13 @@
     const open = (r, mKey) => r.type !== 'income' && isDueInMonth(r, mKey) && !isRecurringPaid(o.applied, r, mKey)
       && !isRecurringSkipped(o.skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey));
     const recAt = iso => { const mKey = iso.slice(0, 7), d = +iso.slice(8, 10);
-      return recurring.filter(r => open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, desc: r.desc || '', amount: round2(amountOf(r)) })); };
+      return recurring.filter(r => open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, mKey, desc: r.desc || '', amount: round2(amountOf(r)) })); };
     const unpaid = entries.filter(e => e.type === 'expense' && e.paid === false && /^\d{4}-\d{2}-\d{2}/.test(String(e.date || '')));
     const entAt = iso => unpaid.filter(e => e.date.slice(0, 10) === iso).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount) }));
     const byAmount = (a, b) => b.amount - a.amount;
     const curM = today.slice(0, 7), todayDay = +today.slice(8, 10);
     const overdue = recurring.filter(r => open(r, curM) && effectiveDay(r.day, curM) < todayDay)
-      .map(r => ({ kind: 'recurring', id: r.id, desc: r.desc || '', amount: round2(amountOf(r)), days: todayDay - effectiveDay(r.day, curM) }))
+      .map(r => ({ kind: 'recurring', id: r.id, mKey: curM, desc: r.desc || '', amount: round2(amountOf(r)), days: todayDay - effectiveDay(r.day, curM) }))
       .concat(unpaid.filter(e => e.date.slice(0, 10) < today).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount), days: t0 - dayNumber(e.date.slice(0, 10)) })))
       .sort(byAmount);
     const out = { today: recAt(today).concat(entAt(today)).sort(byAmount), tomorrow: recAt(tomorrow).concat(entAt(tomorrow)).sort(byAmount), overdue };
