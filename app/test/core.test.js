@@ -2392,3 +2392,22 @@ test('licna inflacija: indeks korpe ponderisan potrosnjom, samo artikli kupljeni
   assert.equal(one.enough, false); assert.equal(one.count, 0);
   assert.equal(C.basketInflation([], '2026-10-07', 6).enough, false);
 });
+
+test('skrivene pretplate: 3+ meseca zaredom, jednom mesecno, slican iznos, nije vec ponavljajuca/odbijena/racun', () => {
+  let n = 0;
+  const ex = (date, desc, amount, extra) => Object.assign({ id: 'x' + (n++), type: 'expense', desc, amount, date, category: 'Zabava', paid: true }, extra || {});
+  const entries = [
+    ex('2026-07-12', 'SPOTIFY P1A2', 1199), ex('2026-08-12', 'Spotify P9Z8', 1299), ex('2026-09-12', 'spotify', 1299), ex('2026-10-12', 'Spotify', 1299),
+    ex('2026-08-01', 'Yettel', 9500), ex('2026-09-01', 'Yettel', 9500),                                  // samo 2 meseca
+    ex('2026-08-03', 'Kafa', 250), ex('2026-09-03', 'Kafa', 250), ex('2026-09-04', 'Kafa', 250), ex('2026-10-03', 'Kafa', 250),   // vise puta mesecno
+    ex('2026-08-05', 'Teretana', 3000), ex('2026-09-05', 'Teretana', 5000), ex('2026-10-05', 'Teretana', 3000),                    // iznos skace
+    ex('2026-08-07', 'Netflix', 1499), ex('2026-09-07', 'Netflix', 1499), ex('2026-10-07', 'Netflix', 1499),                       // vec ponavljajuca
+    ex('2026-08-09', 'Maxi', 4000, { receiptId: 'r1' }), ex('2026-09-09', 'Maxi', 4100, { receiptId: 'r2' }), ex('2026-10-09', 'Maxi', 4050, { receiptId: 'r3' }),
+    ex('2026-06-10', 'Struja', 3000), ex('2026-07-10', 'Struja', 3100), ex('2026-08-10', 'Struja', 3050),                          // prekinuto pre 2 meseca
+    ex('2026-08-11', 'HBO', 999), ex('2026-09-11', 'HBO', 999), ex('2026-10-11', 'HBO', 999),                                      // odbijena
+    ex('2026-07-15', 'Disney', 899), ex('2026-08-15', 'Disney', 899), ex('2026-09-15', 'Disney', 899)                              // do proslog meseca
+  ];
+  const r = C.findHiddenSubscriptions({ entries, recurring: [{ id: 'n', desc: 'Netflix', type: 'expense' }], today: '2026-10-20', dismissed: ['hbo'] });
+  assert.deepEqual(r.map(x => [x.key, x.amount, x.day, x.months, !!x.thisMonthId]), [['spotify', 1299, 12, 4, true], ['disney', 899, 15, 3, false]]);
+  assert.equal(r[0].desc, 'Spotify'); assert.equal(r[0].category, 'Zabava');
+});
