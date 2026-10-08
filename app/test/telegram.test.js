@@ -374,3 +374,12 @@ test('telegram: meni komandi se salje ponovo kad se promeni jezik', async () => 
   assert.equal(sent.length, 2);
   assert.match(sent[1].body.commands[0].description, /^EN /);
 });
+
+test('telegram: odgovor iz otkucaja koji nije isporucen javlja se nazad (nack), da se posalje ponovo', async () => {
+  const nacked = [];
+  const { api, settings, queue, reply } = setup({ settings: { telegramChatId: 77 }, tick: async () => ({ replies: [{ text: 'jutro', nackKey: 'morning' }, { text: 'ok', nackKey: 'monthly' }] }), extra: { nack: async keys => { nacked.push(...keys); } } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [{ ok: false, status: 429, json: async () => ({ ok: false, parameters: { retry_after: 1 } }) }, reply('sendMessage', { message_id: 5 })];
+  await api.pollOnce();
+  assert.deepEqual(nacked, ['morning']);
+});

@@ -1000,7 +1000,7 @@ function init() {
   } });
   ipcMain.handle('bills:decode-qr', (_e, bytes) => qrReader.decode(bytes));
   telegramApi = createTelegram({ fetch: (u, o) => net.fetch(u, o), safeStorage, getSettings: () => settings, saveSettings: saveSettingsNow, T, decodeQr: buf => qrReader.decode(buf),
-    handle: p => runTelegramBridge('handle', p), tick: () => runTelegramBridge('tick'), onStatus: st => sendToMain('telegram:status', st) });
+    handle: p => runTelegramBridge('handle', p), tick: () => runTelegramBridge('tick'), nack: keys => runTelegramBridge('nack', keys), onStatus: st => sendToMain('telegram:status', st) });
   registerTelegramIpc(ipcMain, telegramApi);
   setTimeout(() => billsApi.purgeTrash(30), 60 * 1000);
 

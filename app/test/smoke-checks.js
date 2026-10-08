@@ -1366,13 +1366,14 @@
 
     // v1.39: licna inflacija (kartica u Nabavka -> Cene, red u mesecnom rezimeu)
     {
-      const C2 = window.BudzetCore, todayI = C2.toISODate(new Date());
-      const back = C2.addMonthsToDate(todayI, -3), recent = (() => { const d = new Date(); d.setDate(d.getDate() - 2); return C2.toISODate(d); })();
+      const C2 = window.BudzetCore, todayI = C2.toISODate(new Date()), refI = todayI.slice(0, 7) + '-05';
+      const back = C2.addMonthsToDate(refI, -3), recent = todayI.slice(0, 7) + '-01';
       const buy = (id, date, name, price) => ({ id, type: 'expense', receiptId: 'smoke-inf-' + id, desc: 'Smoke INF prodavnica', category: 'Hrana', amount: price, paid: true, tags: [], date, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: 'kom' }] });
-      const infIds = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'].map(x => 'smoke-inf-' + x);
+      const infIds = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7'].map(x => 'smoke-inf-' + x);
       window.__addEntriesRaw([buy(infIds[0], back, 'Smoke INF mleko', 100), buy(infIds[1], recent, 'Smoke INF mleko', 110),
         buy(infIds[2], back, 'Smoke INF kafa', 200), buy(infIds[3], recent, 'Smoke INF kafa', 180),
-        buy(infIds[4], back, 'Smoke INF hleb', 50), buy(infIds[5], recent, 'Smoke INF hleb', 50)]);
+        buy(infIds[4], back, 'Smoke INF hleb', 50), buy(infIds[5], recent, 'Smoke INF hleb', 50),
+        { id: infIds[6], type: 'expense', desc: 'Smoke INF prošli mesec', category: 'Ostalo', amount: 100, paid: true, tags: [], date: C2.addMonths(todayI.slice(0, 7), -1) + '-15' }]);
       go('nabavka'); await sleep(80);
       const pb = document.querySelector('.shop-show-btn[data-show="prices"]'); if (pb) pb.click(); await sleep(150);
       const card = () => document.querySelector('#shopPrices .basket-card');
@@ -1382,9 +1383,13 @@
       const m12 = card() && card().querySelector('.basket-m[data-m="12"]'); if (m12) { m12.click(); await sleep(100); }
       check('inflacija: period bez dovoljno podataka', !!card() && /[Pp]remalo podataka/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 200));
       localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
-      const mr = window.__tgMonthly ? await window.__tgMonthly(todayI + 'T23:00') : { replies: [] };
+      const mr = await window.__tgMonthly(refI + 'T23:00');
       const mt = (mr.replies[0] || {}).text || '';
-      check('inflacija: red u mesečnom rezimeu', !mt || /🛒/.test(mt), mt.slice(-200));
+      check('inflacija: red u mesečnom rezimeu', /🛒/.test(mt), mt.slice(-200));
+      check('sitnice: rezime nosi oznaku za ponovno slanje', (mr.replies[0] || {}).nackKey === 'monthly');
+      await window.__telegramBridge.nack(['monthly']);
+      const mr2 = await window.__tgMonthly(refI + 'T23:30');
+      check('sitnice: neisporučen rezime se šalje ponovo', !!mr2.replies.length);
       localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
       window.__deleteEntriesById(infIds);
     }
@@ -2876,6 +2881,8 @@
       const m1 = await window.__tgMorning(todayIso + 'T09:05');
       const mb = ((m1.replies[0] || {}).buttons || []).flat().find(b => /Smoke jutro/.test(b.text));
       check('jutro: poruka sa stavkom koja danas dospeva i dugmetom', /🔔/.test(txt(m1)) && /Smoke jutro/.test(txt(m1)) && !!mb && /^c:/.test(mb.data), JSON.stringify(m1).slice(0, 400));
+      check('sitnice: dugme podsetnika nosi i iznos', / · 700/.test(mb.text), mb.text);
+      check('sitnice: podsetnik nosi oznaku za ponovno slanje', m1.replies[0].nackKey === 'morning');
       const m2 = await window.__tgMorning(todayIso + 'T11:00');
       check('jutro: samo jednom dnevno', !m2.replies.length);
       const pr = L('budzet-telegram-potvrde-v1'); pr.forEach(x => { x.created -= 2 * 3600 * 1000; }); localStorage.setItem('budzet-telegram-potvrde-v1', JSON.stringify(pr));

@@ -5884,7 +5884,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---- Naredbe iz bota: predlog -> "✓ Potvrdi" -> izvrsenje istim funkcijama kao dugmad u aplikaciji -> "Poništi" ----
   const TG_PROP_KEY = 'budzet-telegram-potvrde-v1', TG_PROP_MS = 10 * 60 * 1000;
   const tgProps = () => tgLoad(TG_PROP_KEY).filter(x=> x && Date.now() - x.created < 864e5);
-  const tgPropPut = x => tgSave(TG_PROP_KEY, tgProps().filter(y=> y.id !== x.id).concat(x).slice(-50));
+  const tgPropPut = x => { const all = tgProps().filter(y=> y.id !== x.id).concat(x), live = y=> y.until && y.until > Date.now() && y.state === 'open';
+    const others = all.filter(y=> !live(y)).slice(-50); tgSave(TG_PROP_KEY, all.filter(y=> live(y) || others.includes(y))); };
   const tgConfirmButtons = x => [[{ text: '✓ ' + t('Potvrdi'), data: 'c:' + x.id }, { text: '✕ ' + t('Otkaži'), data: 'n:' + x.id }]];
   const tgMonthName = () => { const [y, m] = currentMonthKey().split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: 'long' }); };
   // unosi iz bota u poslednja 24 h (isti dnevnik kao /ponisti), od najstarijeg ka najnovijem
@@ -6121,7 +6122,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!C.morningDue(Object.assign({}, cfg, { now: nowIso }))) return { replies: [] };
     const today = nowIso.slice(0, 10);
     cfg.last = today; tgMorningSave(cfg);
-    const m = C.morningReminderItems({ recurring, entries, applied, skipped, documents, today, amountOf: r=> suggestedPayAmount(r) });
+    const m = C.morningReminderItems({ recurring, entries, applied, skipped, documents, today, amountOf: (r, mKey)=> suggestedPayAmount(r, mKey) });
     if(!C.morningHasItems(m)) return { replies: [] };
     const line = i => `• ${i.desc} — ${fmt(i.amount)}`;
     const head = (icon, txt) => `${icon} **${txt}**`;
@@ -6133,12 +6134,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(m.yearly.length) parts.push([head('📅', t('Uskoro (godišnji)'))].concat(m.yearly.map(y=> `• ${y.desc} — ${fmt(y.amount)}, ${fmtDocDate(y.date)}`)).join('\n'));
     // dugme po stavci koja se placa: klik odmah oznacava placeno (isti put kao naredba), vazi do kraja dana
     const until = new Date(); until.setHours(23, 59, 59, 999);
-    const buttons = m.today.concat(m.tomorrow, m.overdue).slice(0, 8).map(i=>{
+    const buttons = m.overdue.concat(m.today, m.tomorrow).slice(0, 8).map(i=>{
       const x = { id: newId(), created: Date.now(), until: until.getTime(), kind: 'paid', targetId: i.id, targetKind: i.kind, mKey: i.mKey, label: i.desc, amount: i.amount, userAmount: false, reminder: true, state: 'open' };
       tgPropPut(x);
-      return [{ text: '✓ ' + String(i.desc).slice(0, 40), data: 'c:' + x.id }];
+      return [{ text: '✓ ' + String(i.desc).slice(0, 32) + ' · ' + fmt(i.amount), data: 'c:' + x.id }];
     });
-    return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined }] };
+    return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined, nackKey: 'morning' }] };
   }
   if(IS_TEST) window.__tgMorning = iso => tgMorning(iso);
   // ---- Mesecni rezime: prethodni mesec, iz istih brojki kao Mesecni pregled (bez AI-ja) ----
@@ -6171,10 +6172,16 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(n) parts.push('⚠️ ' + t('Ostalo neplaćeno: {0}, {1}', t(n === 1 ? '{0} stavka' : '{0} stavki', n), fmt(r.unpaidTotal)));
     // korpa je dodatak: greska u njoj ne sme da obori ceo rezime
     try{
-      const basket = [3, 1].map(m=> C.basketInflation(entries, nowIso.slice(0, 10), m)).find(b=> b.enough);
+      const ph = C.priceHistory(entries);
+      const basket = [3, 1].map(m=> C.basketInflation(entries, nowIso.slice(0, 10), m, ph)).find(b=> b.enough);
       if(basket) parts.push('🛒 ' + t('Korpa: {0} za {1} ({2})', pctTxt(basket.pct), monthsTxt(basket.months), itemsTxt(basket.count)));
     } catch(e){ /* bez reda o korpi */ }
-    return { replies: [{ text: parts.join('\n\n') }] };
+    return { replies: [{ text: parts.join('\n\n'), nackKey: 'monthly' }] };
+  }
+  // Telegram nije primio podsetnik/rezime -> ponovo pri sledecem otkucaju
+  async function tgNack(keys){
+    if((keys || []).includes('morning')){ const c = tgMorningCfg(); c.last = ''; tgMorningSave(c); }
+    if((keys || []).includes('monthly')){ const c = tgMonthlyCfg(); c.last = ''; tgMonthlySave(c); }
   }
   if(IS_TEST) window.__tgMonthly = iso => tgMonthly(iso);
   async function tgTick(){
@@ -7110,8 +7117,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const a = b && b.amount > 0 ? billAmountRsd(b) : null;
     return a ? a.amount : null;
   };
-  const suggestedPayAmount = r => {
-    const fromBill = linkedBillAmount(r);
+  const suggestedPayAmount = (r, mKey) => {
+    const fromBill = linkedBillAmount(r, mKey);
     if(fromBill != null) return fromBill;
     if(!r.debtId) return recurringAmountNow(r);
     const d = debts.find(x=> x.id === r.debtId);
@@ -8140,7 +8147,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const pctTxt = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
   const itemsTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} artikal' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} artikla' : '{0} artikala', n);
   function basketCardHtml(){
-    const r = C.basketInflation(entries, toISODateLocal(new Date()), basketMonths);
+    const r = C.basketInflation(entries, toISODateLocal(new Date()), basketMonths, shopPriceHistory());
     const periods = [1, 3, 6, 12].map(m=> `<button class="btn-secondary basket-m${m === basketMonths ? ' active' : ''}" data-m="${m}">${m === 1 ? t('1m') : m + 'm'}</button>`).join('');
     const row = x => `<div class="basket-row"><span class="shop-name" translate="no">${escapeHtml(x.name)}</span><span class="muted">${unitPriceTxt(x.base, x.unit)} → ${unitPriceTxt(x.cur, x.unit)}</span><span class="shop-price-change ${x.pct > 0 ? 'up' : 'down'}">${pctTxt(x.pct)}</span></div>`;
     const body = !r.enough
@@ -12590,7 +12597,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       }
     };
     // Telegram bot: glavni proces prosledjuje poruke ovde (vidi app/telegram.js)
-    window.__telegramBridge = { handle: tgHandle, tick: tgTick };
+    window.__telegramBridge = { handle: tgHandle, tick: tgTick, nack: tgNack };
   }
 })();
 </script>

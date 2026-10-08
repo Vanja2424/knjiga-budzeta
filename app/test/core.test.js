@@ -2416,3 +2416,22 @@ test('skrivene pretplate: 3+ meseca zaredom, jednom mesecno, slican iznos, nije 
   const r2 = C.findHiddenSubscriptions({ entries: e2, recurring: [], today: '2026-10-21', dismissed: [] });
   assert.deepEqual(r2.map(x => [x.key, x.months, x.thisMonthId, x.desc]), [['youtube premium', 3, e2[2].id, 'YOUTUBE PREMIUM']]);
 });
+
+test('sitnice B: podsetnik bez automatskog placanja za danas/sutra; korpa: jedinica bez buducih datuma, gotova istorija', () => {
+  const recurring = [
+    { id: 'a', desc: 'Auto', amount: 500, type: 'expense', frequency: 'monthly', day: 7, autoPay: true },
+    { id: 'b', desc: 'Auto kasni', amount: 600, type: 'expense', frequency: 'monthly', day: 3, autoPay: true },
+    { id: 'm', desc: 'Rucno', amount: 700, type: 'expense', frequency: 'monthly', day: 8 }
+  ];
+  const r = C.morningReminderItems({ recurring, entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-07', amountOf: (x, mKey) => mKey === '2026-10' ? x.amount : -1 });
+  assert.deepEqual(r.today.map(i => i.id), []);                 // automatski se placa sam
+  assert.deepEqual(r.tomorrow.map(i => [i.id, i.amount]), [['m', 700]]);
+  assert.deepEqual(r.overdue.map(i => i.id), ['b']);            // propusteno automatsko placanje se ipak javlja
+  const buy = (date, name, price, unit) => ({ id: 'e' + date + name, type: 'expense', receiptId: 'r' + date, desc: 'Maxi', date, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: unit || 'kom' }] });
+  const entries = [buy('2026-07-01', 'Mleko', 100), buy('2026-10-01', 'Mleko', 110), buy('2027-01-01', 'Mleko', 900, 'kg'),
+    buy('2026-07-03', 'Kafa', 200), buy('2026-10-02', 'Kafa', 180), buy('2026-07-05', 'Hleb', 50), buy('2026-10-03', 'Hleb', 50)];
+  const k = C.basketInflation(entries, '2026-10-07', 3);
+  assert.equal(k.count, 3);                                     // pogresno buduci "kg" ne izbacuje mleko
+  const hist = C.priceHistory(entries);
+  assert.deepEqual(C.basketInflation(entries, '2026-10-07', 3, hist), k);
+});

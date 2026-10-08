@@ -15,7 +15,7 @@ const LINKABLE = ['private', 'group', 'supergroup']; // kanal se ne povezuje
 const FISCAL_URL_RE = /https:\/\/suf\.purs\.gov\.rs\/v\/\?vl=[A-Za-z0-9%+\/=_-]+/; // QR fiskalnog racuna (Poreska uprava)
 const MIME_EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, onStatus = () => {}, T = s => s,
+function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, nack, onStatus = () => {}, T = s => s,
   now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = Math.random, autoStart = true, handleTimeoutMs = HANDLE_TIMEOUT_MS, decodeQr = async () => null }) {
   const s = () => getSettings();
   const encryption = () => { try { return !!safeStorage.isEncryptionAvailable(); } catch { return false; } };
@@ -137,6 +137,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   const escHtml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   async function deliver(replies, chatId) {
     chatId = chatId || s().telegramChatId;
+    const failed = [];
     for (const r of replies || []) {
       if (!r || !r.text) continue;
       const raw = String(r.text);
@@ -153,8 +154,9 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
         return 'fail';
       };
       if (r.editMessageId && await attempt('editMessageText', { chat_id: chatId, message_id: r.editMessageId, reply_markup: markup(r.buttons) }) === 'ok') continue;
-      await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined });
+      if (await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined }) !== 'ok') failed.push(r);
     }
+    return failed;
   }
 
   // "@ime_bota 482100" / "kafa 250 @ime_bota" -> bez pominjanja bota (u grupi se botu tako pise; "/komanda@bot" ostaje)
@@ -264,7 +266,11 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     if (s().telegramChatId && now() - lastTick >= TICK_MS) {
       lastTick = now();
       const out = await safe(() => withTimeout(tick(), handleTimeoutMs));
-      if (out && out.replies && out.replies.length) await deliver(out.replies);
+      if (out && out.replies && out.replies.length) {
+        // neisporucen podsetnik/rezime: stranica ga vraca u red, pa ide ponovo pri sledecem otkucaju
+        const keys = (await deliver(out.replies)).map(r => r.nackKey).filter(Boolean);
+        if (keys.length && nack) await safe(() => nack(keys));
+      }
     }
     return 0;
   }

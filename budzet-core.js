@@ -2027,11 +2027,13 @@
   // Licna inflacija: koliko je poskupela korpa artikala kupljenih i pre `months` meseci i sada (ista jedinica).
   // Stara cena = prosek oko tog datuma, nova = prosek poslednjih dana (prozor do 45 dana, kraci za 1 mesec da se ne preklapaju);
   // indeks ponderisan potrosnjom na artikal u poslednjih 12 meseci. Manje od 3 artikla -> enough:false.
-  function basketInflation(entries, today, months){
+  function basketInflation(entries, today, months, hist){
     const t0 = dayNumber(today), cutoff = dayNumber(addMonthsToDate(today, -months)), W = Math.min(45, Math.floor(months * 15));
     const yearAgo = t0 - 365, rows = [];
-    priceHistory(entries).forEach(h => {
-      const unit = h.obs[h.obs.length - 1].unit;
+    (hist || priceHistory(entries)).forEach(h => {
+      const upToNow = h.obs.filter(o => dayNumber(o.date) <= t0);   // pogresan buduci datum ne odredjuje jedinicu
+      if(!upToNow.length) return;
+      const unit = upToNow[upToNow.length - 1].unit;
       const obs = h.obs.filter(o => o.unit === unit);
       const oldObs = obs.filter(o => { const d = dayNumber(o.date); return d >= cutoff - W && d < cutoff + W && d < t0 - W; });
       const newObs = obs.filter(o => { const d = dayNumber(o.date); return d >= t0 - W && d <= t0; });
@@ -2352,13 +2354,14 @@
     const open = (r, mKey) => r.type !== 'income' && isDueInMonth(r, mKey) && !isRecurringPaid(o.applied, r, mKey)
       && !isRecurringSkipped(o.skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey));
     const recAt = iso => { const mKey = iso.slice(0, 7), d = +iso.slice(8, 10);
-      return recurring.filter(r => open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, mKey, desc: r.desc || '', amount: round2(amountOf(r)) })); };
+      // automatsko placanje (autoPay) se samo upise na dan dospeca — ne javlja se za danas/sutra, samo ako je propusteno (kasni)
+      return recurring.filter(r => !r.autoPay && open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, mKey, desc: r.desc || '', amount: round2(amountOf(r, mKey)) })); };
     const unpaid = entries.filter(e => e.type === 'expense' && e.paid === false && /^\d{4}-\d{2}-\d{2}/.test(String(e.date || '')));
     const entAt = iso => unpaid.filter(e => e.date.slice(0, 10) === iso).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount) }));
     const byAmount = (a, b) => b.amount - a.amount;
     const curM = today.slice(0, 7), todayDay = +today.slice(8, 10);
     const overdue = recurring.filter(r => open(r, curM) && effectiveDay(r.day, curM) < todayDay)
-      .map(r => ({ kind: 'recurring', id: r.id, mKey: curM, desc: r.desc || '', amount: round2(amountOf(r)), days: todayDay - effectiveDay(r.day, curM) }))
+      .map(r => ({ kind: 'recurring', id: r.id, mKey: curM, desc: r.desc || '', amount: round2(amountOf(r, curM)), days: todayDay - effectiveDay(r.day, curM) }))
       .concat(unpaid.filter(e => e.date.slice(0, 10) < today).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount), days: t0 - dayNumber(e.date.slice(0, 10)) })))
       .sort(byAmount);
     const out = { today: recAt(today).concat(entAt(today)).sort(byAmount), tomorrow: recAt(tomorrow).concat(entAt(tomorrow)).sort(byAmount), overdue };
