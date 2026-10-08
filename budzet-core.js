@@ -609,7 +609,7 @@
   }
   // ---------- Skrivene pretplate: rashodi koji se ponavljaju svakog meseca, a nisu u Ponavljajucim ----------
   // Kljuc opisa: bez reci sa ciframa (SPOTIFY P1A2 = Spotify), bez dijakritika i interpunkcije
-  const subscriptionKey = desc => foldText(desc).split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+  const subscriptionKey = desc => foldText([...String(desc == null ? '' : desc)].map(ch => CYR[ch] || ch).join('')).split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
   function findHiddenSubscriptions(o){
     const cur = String(o.today).slice(0, 7), prev = addMonths(cur, -1);
     const known = new Set((o.recurring || []).map(r => subscriptionKey(r.desc)).filter(Boolean));
@@ -632,7 +632,7 @@
       if(!lastM) return;
       const run = [];
       for(let m = lastM; byMonth.has(m); m = addMonths(m, -1)) run.push(m);
-      if(run.length < 3 || run.some(m => byMonth.get(m).length > 1)) return;   // jednom mesecno
+      if(run.length < 3 || run.slice(0, 3).some(m => byMonth.get(m).length > 1)) return;   // jednom mesecno (poslednja 3 meseca; stari dupli mesec ne blokira)
       const last3 = run.slice(0, 3).map(m => byMonth.get(m)[0].amount);
       if(Math.max(...last3) > Math.min(...last3) * 1.15) return;
       const latest = byMonth.get(run[0])[0];
@@ -861,6 +861,7 @@
   // bez rata koje su vec u expense — zasebno, jer se dug ne vraca nuzno ovog meseca.
   function pendingForMonth(o){
     const { entries = [], recurring = [], applied, skipped, debts = [], mKey, currentMonth } = o;
+    const amountOf = o.amountOf || (r => r.amount);   // stranica: danasnji kurs za stavke u stranoj valuti
     const isCur = mKey === currentMonth;
     const direct = entries.filter(e => e.type === 'expense' && e.paid === false && (isCur ? e.date.slice(0, 7) <= mKey : e.date.slice(0, 7) === mKey));
     const recItems = pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonth);
@@ -869,8 +870,8 @@
     const left = {};
     if(isCur) debts.filter(d => d.direction === 'i_owe').forEach(d => { left[d.id] = round2(Math.max(0, d.amount - debtPaid(d, entries))); });
     const recAmount = r => {
-      if(!(r.debtId in left)) return r.amount;
-      const a = Math.min(r.amount, left[r.debtId]);
+      if(!(r.debtId in left)) return amountOf(r);
+      const a = Math.min(amountOf(r), left[r.debtId]);
       left[r.debtId] = round2(left[r.debtId] - a);
       return a;
     };
@@ -960,7 +961,7 @@
 
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
   // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
-  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d[^()]*\))+\s*$/, '').replace(/\s+/g, ' ').trim();
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d+(?:[.,]\d+)?\s*(?:kom|kos|kg|g|gr|l|lit|ml|pak)\.?\))+\s*$/i, '').replace(/\s+/g, ' ').trim();
   const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
   // Preimenovana stavka liste (aliases = stara imena): kupovine pod starim imenom pripadaju njoj; stavka koja se bas tako zove ima prednost
   function aliasOwners(shoppingItems, keyFn){
@@ -1789,6 +1790,7 @@
     const items = entry && Array.isArray(entry.items) ? entry.items : [];
     const prices = Array.isArray(entry && entry.itemPrices) && entry.itemPrices.length === items.length ? entry.itemPrices : [];
     const qty = Array.isArray(entry && entry.itemQty) && entry.itemQty.length === items.length ? entry.itemQty : [];
+    if(!items.length) return [];
     const have = new Set((documents || []).filter(d => d && d.entryId === entry.id).map(d => foldText(d.title)));
     return items.map((label, i) => {
       const name = purchasedItemName(label), price = typeof prices[i] === 'number' ? prices[i] : null;

@@ -4506,7 +4506,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!applied[mKey].includes(r.id)) applied[mKey].push(r.id);
     if(skipped[mKey] && skipped[mKey].includes(r.id)){ skipped[mKey] = skipped[mKey].filter(id => id !== r.id); saveSkipped(); }
     const entryId = recurringEntryId(r, mKey);
-    if(!entries.some(e => e.id === entryId)) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
+    const existing = entries.find(e => e.id === entryId);
+    if(!existing) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
+    else if(existing.paid === false){ existing.paid = true; if(typeof amount === 'number' && amount > 0) existing.amount = amount; }
     if(linkedBill && linkedBill.entryId !== entryId){ linkedBill.entryId = entryId; saveBillsState(); }
     return entryId;
   }
@@ -5708,7 +5710,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!res.ok){ rEl('receiptSave').disabled = false; if(res.error) rEl('receiptStatus').textContent = res.error; return; }
     closeReceipt(true);
     const sug = warrantySuggestions(res.ids);
-    if(sug.length) openWarrantyPicker(sug, { title: t('Dodati garanciju?'), checked: true });
+    if(sug.length){
+      // poruka o neuspelom cuvanju slike (ako je otvorena) ide prva
+      const dlg = document.getElementById('dialogOverlay');
+      while(dlg && dlg.classList.contains('show')) await new Promise(r=> setTimeout(r, 150));
+      openWarrantyPicker(sug, { title: t('Dodati garanciju?'), checked: true });
+    }
   }
   rEl('receiptSave').addEventListener('click', saveReceipt);
   if(IS_TEST) window.__saveReceipt = saveReceipt;
@@ -5777,7 +5784,11 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
     if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = Math.max(0, C.round2((d.paidAmount || 0) - a.amount)); saveDebts(); syncDebtInstallments(); } }
     if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = Math.max(0, C.round2(g.current - a.amount)); saveGoals(); } }
-    if(a && a.kind === 'doc'){ documents = documents.filter(d=> d.id !== a.id); saveDocuments(); }
+    if(a && a.kind === 'doc'){
+      const d = documents.find(x=> x.id === a.id);
+      if(d && a.snap && JSON.stringify(d) !== a.snap) item.label += ' — ' + t('garancija je u međuvremenu menjana, ostala je u Dokumentima');
+      else { documents = documents.filter(x=> x.id !== a.id); saveDocuments(); }
+    }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
     if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id) && !log.some(l=> l.undone && (l.ids || []).includes(a.entry.id))){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
@@ -6053,7 +6064,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!item || item.has) return { already: true };
       const d = addWarrantyDocs([{ entry, item }], 24)[0];
       if(!d) return { already: true };
-      return { text: t('Garancija: {0}, do {1}', d.title, fmtDocDate(C.documentExpiry(d))), ids: [], act: { kind: 'doc', id: d.id } };
+      return { text: t('Garancija: {0}, do {1}', d.title, fmtDocDate(C.documentExpiry(d))), ids: [], act: { kind: 'doc', id: d.id, snap: JSON.stringify(d) } };
     }
     if(x.kind === 'deleteLast'){
       const e = entries.find(y=> y.id === x.targetId);
@@ -6884,7 +6895,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const items = C.warrantyItems(e, documents);
     if(items.length > 1) return openWarrantyPicker(items.map(item=> ({ entry: e, item })), { title: t('Garancija za artikle'), checked: false });
     const first = items[0] ? items[0].name : '';
-    openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id, fiscalUrl: e.fiscalUrl } });
+    const open = ()=> openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).filter(n=> !isSlipAttachment(n)), entryId: e.id, fiscalUrl: e.fiscalUrl } });
+    if(items[0] && items[0].has) return appConfirm(t('Za ovaj artikal već postoji garancija. Napraviti još jednu?')).then(ok=>{ if(ok) open(); });
+    open();
   }
   // garancije za izabrane artikle (jedna po artiklu): naziv artikla, datum racuna, prodavnica, link racuna, slika racuna
   function addWarrantyDocs(pairs, months){
@@ -7174,7 +7187,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return C.pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonthKey());
   }
   function pendingForMonth(mKey){
-    return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: currentMonthKey() });
+    return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: currentMonthKey(), amountOf: recurringAmountNow });
   }
   if(IS_TEST) window.__pendingForMonth = pendingForMonth;
   function renderSummary(){
@@ -11187,7 +11200,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, payday, shopping, locations, billTypes, bills, documents, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, payday, shopping, locations, billTypes, bills, documents, hiddenSubsDismissed: hiddenSubsDismissed(), exportedAt: new Date().toISOString() };
   }
   // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
   function downloadBackupJson(){
@@ -11307,6 +11320,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       payday: cleanPayday(data.payday),
       shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
       ...(Array.isArray(data.documents) ? { documents: C.cleanDocuments(data.documents) } : {}),
+      ...(Array.isArray(data.hiddenSubsDismissed) ? { hiddenSubsDismissed: data.hiddenSubsDismissed.filter(x=> typeof x === 'string').slice(0, 500) } : {}),
       ...(()=>{ // kucni racuni: vrste zavise od lokacija, racuni od vrsta
         if(!('locations' in data)) return {};
         const locs = C.cleanLocations(data.locations, CURRENCIES), types = C.cleanBillTypes(data.billTypes, locs.map(l=> l.id));
@@ -11315,6 +11329,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     };
   }
   if(IS_TEST) window.__sanitizeImportedBackup = sanitizeImportedBackup;
+  if(IS_TEST) window.__buildBackupData = () => buildBackupData();
   if(IS_TEST) window.__itemArraysFromCells = itemArraysFromCells;
   if(IS_TEST) window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
 
@@ -11360,6 +11375,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         if(data.shopping) shopping = data.shopping;
         if(data.locations){ locations = data.locations; billTypes = data.billTypes; bills = data.bills; saveBillsState(); }
         if(data.documents){ documents = data.documents; saveDocuments(); }
+        if(data.hiddenSubsDismissed) localStorage.setItem(HIDDEN_SUBS_KEY, JSON.stringify(data.hiddenSubsDismissed));
         saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';

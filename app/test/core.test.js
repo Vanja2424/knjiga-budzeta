@@ -2435,3 +2435,18 @@ test('sitnice B: podsetnik bez automatskog placanja za danas/sutra; korpa: jedin
   const hist = C.priceHistory(entries);
   assert.deepEqual(C.basketInflation(entries, '2026-10-07', 3, hist), k);
 });
+
+test('sitnice C: Za placanje po danasnjem kursu, naziv artikla cuva specifikaciju, cirilica u pretplatama, jedan dupli mesec ne blokira', () => {
+  const recurring = [{ id: 'e', desc: 'Kirija EUR', amount: 1000, type: 'expense', frequency: 'monthly', currency: 'EUR', origAmount: 10 }];
+  const p = C.pendingForMonth({ entries: [], recurring, applied: {}, skipped: {}, debts: [], mKey: '2026-10', currentMonth: '2026-10', amountOf: r => r.origAmount * 117 });
+  assert.equal(p.expense, 1170); assert.equal(p.items[0].amount, 1170);
+  assert.equal(C.purchasedItemName('Punjač (65W)'), 'Punjač (65W)');
+  assert.equal(C.purchasedItemName('Mleko (2 kom)'), 'Mleko');
+  assert.equal(C.purchasedItemName('Sir (0,5 kg)'), 'Sir');
+  assert.equal(C.subscriptionKey('Спотифај премијум'), 'spotifaj premijum');
+  let n = 0;
+  const ex = (date, desc, amount) => ({ id: 'y' + (n++), type: 'expense', desc, amount, date, category: 'Zabava', paid: true });
+  const entries = [ex('2026-06-05', 'Deezer', 500), ex('2026-06-20', 'Deezer', 500), ex('2026-07-05', 'Deezer', 500), ex('2026-08-05', 'Deezer', 500), ex('2026-09-05', 'Deezer', 500), ex('2026-10-05', 'Deezer', 500)];
+  assert.deepEqual(C.findHiddenSubscriptions({ entries, recurring: [], today: '2026-10-20', dismissed: [] }).map(x => x.key), ['deezer']);
+  assert.deepEqual(C.warrantyItems(null, [{ id: 'd', entryId: 'x', title: 'a' }]), []);
+});

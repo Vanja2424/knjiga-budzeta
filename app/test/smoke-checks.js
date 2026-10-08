@@ -1318,6 +1318,16 @@
         if (wd) window.__deleteDocument(wd.id, { confirm: false });
       }
       window.__deleteEntriesById(['smoke-w-1']);
+      window.__addEntriesRaw([{ id: 'smoke-w-2', type: 'expense', desc: 'Smoke W2', amount: 9000, category: 'Ostalo', date: today, paid: true, tags: [], items: ['Smoke W2 pegla'], itemPrices: [9000] }]);
+      window.__saveDocumentRaw({ kind: 'garancija', title: 'Smoke W2 pegla', group: 'Tehnika', entryId: 'smoke-w-2', issued: today, warrantyMonths: 24 });
+      go('rashodi'); await sleep(60); setVal('filterCategory', ''); await sleep(120);
+      const wb2 = document.querySelector('.warranty-btn[data-id="smoke-w-2"]');
+      if (wb2) { wb2.click(); await sleep(150); }
+      check('sitnice: jedan artikal koji već ima garanciju — prvo pita', $('dialogOverlay').classList.contains('show') && /već postoji garancija/.test($('dialogBody').textContent), $('dialogBody').textContent);
+      if ($('dialogOverlay').classList.contains('show')) { $('dialogCancel') ? $('dialogCancel').click() : $('dialogOk').click(); await sleep(100); }
+      if ($('docOverlay').classList.contains('show')) { $('docCancel') && $('docCancel').click(); await sleep(100); }
+      docs().filter(d => d.entryId === 'smoke-w-2').forEach(d => window.__deleteDocument(d.id, { confirm: false }));
+      window.__deleteEntriesById(['smoke-w-2']);
       // predlog posle cuvanja racuna u aplikaciji (samo artikli od 5.000 po komadu)
       if (typeof window.__addReceiptFiles === 'function') {
         window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke W prodavnica', date: today, total: 13299, items: [{ name: 'Smoke W frižider', price: 12999, category: 'Ostalo' }, { name: 'Smoke W baterije', price: 300, category: 'Ostalo' }] }) });
@@ -1356,8 +1366,10 @@
           if (rb) await B.handle({ update_id: 902005, kind: 'callback', data: rb.data, messageId: 71 });
           check('garancija (bot): Poništi računa ne briše sliku koju koristi garancija', !!wd3 && wd3.files.length === 1 && (await window.desktop.bills.openFile(wd3.files[0])).ok === true, JSON.stringify(wd3 && wd3.files));
           const ub = (b3.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
+          window.__saveDocumentRaw(Object.assign({}, wd3, { notes: 'Smoke izmenjeno' }));
           if (ub) await B.handle({ update_id: 902004, kind: 'callback', data: ub.data, messageId: 73 });
-          check('garancija (bot): Poništi briše garanciju', !docs().some(d => d.title === 'Smoke W mikser'));
+          check('sitnice: Poništi ne briše garanciju koja je u međuvremenu menjana', docs().some(d => d.title === 'Smoke W mikser'));
+          const wd4 = docs().find(d => d.title === 'Smoke W mikser'); if (wd4) window.__deleteDocument(wd4.id, { confirm: false });
         }
         window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke W bot').map(e => e.id));
         window.__fakeReceiptReading = null;
@@ -1420,6 +1432,19 @@
       check('pretplate: Nije sakriva predlog i pamti odluku', !rowOf('Smokeradio') && JSON.parse(localStorage.getItem('budzet-pretplate-odbijene-v1') || '[]').includes('smokeradio'));
       if (rec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === rec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== rec.id); R.save(); }
       window.__deleteEntriesById(subEnt.map(e => e.id).concat(rec ? ['rec-' + rec.id + '-' + curS] : []));
+      // neplacen ovomesecni rashod postaje uplata pretplate; stikliranje ga oznacava placenim
+      const unp = ms.map((m, i) => Object.assign(mk(m, 'Smoketv', 799), i === 2 ? { paid: false } : {}));
+      window.__addEntriesRaw(unp); window.__recurringRaw.save(); go('ponavljajuce'); await sleep(150);   // save -> renderAll (aktivni ekran se ne osvezava sam)
+      const tvAdd = rowOf('Smoketv') && rowOf('Smoketv').querySelector('.hidden-sub-add');
+      if (tvAdd) { tvAdd.click(); await sleep(150); }
+      const tvRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoketv');
+      if (tvRec) window.__markRecurringPaid(tvRec.id);
+      const tvE = tvRec && JSON.parse(localStorage.getItem('budzet-stavke-v2')).find(e => e.id === 'rec-' + tvRec.id + '-' + curS);
+      check('sitnice: štikliranje pretplate označava i postojeći neplaćen rashod plaćenim', !!tvE && tvE.paid !== false, JSON.stringify({ tvE, tvRec: !!tvRec, row: !!rowOf('Smoketv'), btn: !!tvAdd, panel: panel() && panel().textContent.replace(/\s+/g, ' ').slice(0, 150), core: window.BudzetCore.findHiddenSubscriptions({ entries: JSON.parse(localStorage.getItem('budzet-stavke-v2')), recurring: JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')), today: todayS, dismissed: [] }).map(x => x.key), tv: JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => e.desc === 'Smoketv').map(e => e.date + ':' + e.paid) }));
+      if (tvRec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === tvRec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== tvRec.id); R.save(); }
+      window.__deleteEntriesById(unp.map(e => e.id).concat(tvRec ? ['rec-' + tvRec.id + '-' + curS] : []));
+      const sb = window.__sanitizeImportedBackup({ entries: [], hiddenSubsDismissed: ['smokeradio', 5] });
+      check('sitnice: JSON kopija nosi odbijene pretplate', JSON.stringify(sb.hiddenSubsDismissed) === '["smokeradio"]' && (window.__buildBackupData ? window.__buildBackupData().hiddenSubsDismissed.includes('smokeradio') : false));
     }
 
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
