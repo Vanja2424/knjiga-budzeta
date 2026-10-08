@@ -362,3 +362,15 @@ test('telegram: bez formata se ponavlja samo kad Telegram odbije HTML (ne na 429
   assert.equal(edits[0].parse_mode, 'HTML'); assert.equal(edits[1].parse_mode, undefined);
   assert.equal(edits[1].text, 'B 2'); assert.equal(edits[1].reply_markup.inline_keyboard[0][0].callback_data, 'u:1');
 });
+
+test('telegram: meni komandi se salje ponovo kad se promeni jezik', async () => {
+  let lang = 'sr';
+  const { api, calls } = setup({ extra: { T: s => lang === 'en' ? 'EN ' + s : s } });
+  await api.setToken(TOKEN);
+  await api.pollOnce(); await api.pollOnce();
+  lang = 'en';
+  await api.pollOnce();
+  const sent = calls.filter(c => c.method === 'setMyCommands');
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].body.commands[0].description, /^EN /);
+});

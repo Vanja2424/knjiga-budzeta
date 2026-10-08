@@ -5773,13 +5773,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(a.wasSkipped){ if(!skipped[a.mKey]) skipped[a.mKey] = []; if(!skipped[a.mKey].includes(a.id)) skipped[a.mKey].push(a.id); }
       entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
     }
-    if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; saveEntries(); } }
+    if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; if(a.round){ unapplyRoundUpSaving(a.round.to); applyRoundUpSaving(a.round.from); } saveEntries(); } }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
     if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = Math.max(0, C.round2((d.paidAmount || 0) - a.amount)); saveDebts(); syncDebtInstallments(); } }
     if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = Math.max(0, C.round2(g.current - a.amount)); saveGoals(); } }
     if(a && a.kind === 'doc'){ documents = documents.filter(d=> d.id !== a.id); saveDocuments(); }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
-    if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id)){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
+    if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id) && !log.some(l=> l.undone && (l.ids || []).includes(a.entry.id))){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
       if(!entries.some(e=> (e.attachments || []).includes(name)) && !documents.some(d=> (d.files || []).includes(name))) await window.desktop.bills.deleteFile(name);
     }
@@ -5824,7 +5824,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(wait){
       tgAwait = null;
       if(wait.kind === 'entry') return tgEntry(text, p);
-      if(wait.kind === 'amount'){ const n = C.parseAmount(text); if(n > 0) return tgProposalAmount(wait.proposalId, n, p); }
+      if(wait.kind === 'amount' && /^\s*\d[\d.,\s]*\s*(rsd|din\.?|dinara)?\s*$/i.test(text)){ const n = C.parseAmount(text); if(n > 0 && n < 1e8) return tgProposalAmount(wait.proposalId, n, p); }
     }
     return tgAsk(text, p);
   }
@@ -5832,8 +5832,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   async function tgEntry(text, p){
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
-      rules: data.rules, history: data.history, expenseCats, incomeCats, group: !!(p && p.group) });
-    if(d.error && p && p.group) return { replies: [] }; // u grupi: obicno caskanje ("vidimo se u 8") — bez odgovora
+      rules: data.rules, history: data.history, expenseCats, incomeCats, group: false });   // /nov je izricit unos i u grupi
     if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
@@ -5849,7 +5848,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey });
     const bal = accounts.length ? accountBalances() : null;
     let fc = null;
-    try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
+    try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, beforePayday: f.beforePayday ? { date: f.beforePayday.date, balance: f.beforePayday.balance } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
     return {
       // poredjano od najveceg; total su samo stavke, dugovi su posebno (debtsTotal) i ne sabiraju se sa total
       toPay: { total: pend.expense, count: pend.count, expectedIncome: pend.income, debtsTotal: pend.debt, napomena: 'total = samo stavke za plaćanje; dugovi (debtsTotal) su posebno i NE ulaze u total',
@@ -5868,7 +5867,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const today = toISODateLocal(new Date()), history = tgRecentHistory();
     const { first, last } = C.askMonthRange(entries, currentMonthKey());
     const r1 = await askCall({ images: [], text: '', prompt: C.askPlanPrompt({ question: text, today, first, last, expenseCats, incomeCats, history, actions: true }) }, 1);
-    if(!r1 || !r1.ok) return tgReply('✕ ' + askErr(r1) + ' ' + TG_NOV_HINT());
+    const tgAskErr = r => r && r.kind === 'nokey' ? t('AI nije podešen (Podešavanja → AI čitanje računa).') : '✕ ' + askErr(r);
+    if(!r1 || !r1.ok) return tgReply(tgAskErr(r1) + ' ' + TG_NOV_HINT());
     const plan = C.cleanAskPlan(r1.content, { first, last, categories: expenseCats.concat(incomeCats) });
     if(!plan) return tgReply(t('Nisam razumeo — probaj drugačije.'));
     if(plan.action) return tgPropose(plan.action, text, p);
@@ -5876,7 +5876,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!plan.calls.length) return tgReply(t('Za ovo pitanje nema podataka u knjizi.'));
     const results = C.runAskTools(plan.calls, { entries, recurring, today, snapshot: tgSnapshot() });
     const r2 = await askCall({ images: [], text: '', prompt: C.askAnswerPrompt({ question: text, today, results, history, lang: askLangOverride || I18N.lang, style: 'telegram' }) }, 2);
-    if(!r2 || !r2.ok) return tgReply('✕ ' + askErr(r2) + ' ' + TG_NOV_HINT());
+    if(!r2 || !r2.ok) return tgReply(tgAskErr(r2) + ' ' + TG_NOV_HINT());
     const answer = C.cleanAskAnswer(r2.content).slice(0, 3000);
     tgHistory = tgRecentHistory().concat({ q: String(text).slice(0, 300), a: answer, at: Date.now() }).slice(-4);
     return tgReply(answer);
@@ -5904,7 +5904,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return [];
   }
   // ime i iznos u predlogu su **podebljani** (Telegram bold)
-  const tgB = v => '**' + v + '**';
+  const tgB = v => '**' + String(v).replace(/\*/g, '∗') + '**';
   function tgProposalText(x){
     switch(x.kind){
       case 'add': return t('Upisati: {0} · {1} · {2}?', (x.draft.type === 'income' ? t('Prihod') + ': ' : '') + tgB(x.draft.desc), tgB(fmt(x.draft.amount)), x.draft.category || '—');
@@ -5914,7 +5914,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       case 'goalPay': return t('Uplatiti {0} u cilj {1}?', tgB(fmt(x.amount)), tgB(x.label));
       case 'shopAdd': return t('Dodati na spisak: {0}?', tgB(x.items.join(', ')));
       case 'shopDone': return t('Štiklirati: {0}?', tgB(x.items.join(', '))) + (x.missing && x.missing.length ? '\n' + t('Nisam našao: {0}', x.missing.join(', ')) : '');
-      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', tgB(x.label), fmt(x.oldAmount), tgB(x.amount != null ? fmt(x.amount) : x.newDesc));
+      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', tgB(x.label), fmt(x.oldAmount), tgB(fmt(x.amount)));
       case 'deleteLast': return t('Obrisati: {0} ({1})?', tgB(x.label), fmt(x.amount));
     }
     return '';
@@ -5925,7 +5925,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'paid' || x.kind === 'skip'){ x.userAmount = x.kind === 'paid' && !!a.amount; x.amount = x.userAmount ? a.amount : rec ? suggestedPayAmount(rec) : c.amount; }
     if(x.kind === 'debtPay'){ x.rest = c.amount; if(a.amount) x.amount = Math.min(a.amount, c.amount); else x.needAmount = true; }
     if(x.kind === 'goalPay' && !a.amount) x.needAmount = true;
-    if(x.kind === 'editLast'){ x.oldAmount = c.amount; if(a.amount) x.amount = a.amount; else { x.amount = null; x.newDesc = a.target; } }
+    if(x.kind === 'editLast'){ x.oldAmount = c.amount; if(a.amount) x.amount = a.amount; else x.needAmount = true; }
     if(x.kind === 'deleteLast') x.amount = c.amount;
   }
   async function tgPropose(a, text, p){
@@ -5949,12 +5949,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       let cands = tgCandidates(a.kind);
       const last = a.kind === 'editLast' || a.kind === 'deleteLast';
       let m;
-      if(last && !(a.kind === 'deleteLast' && a.target) && !(a.kind === 'editLast' && a.amount && a.target)) m = cands.length ? { match: cands[cands.length - 1] } : { none: true };
+      if(last && !a.target) m = cands.length ? { match: cands[cands.length - 1] } : { none: true };
       else m = C.matchActionTarget(a.target, cands);
       // "poslednji": medju jednako dobrim pogocima uzmi najnoviji
       if(last && m.choices){ const ids = m.choices.map(c=> c.id); m = { match: cands.filter(c=> ids.includes(c.id)).pop() }; }
       if(a.kind === 'paid'){ const ids = new Set(cands.map(c=> c.id)); cands = cands.concat(tgCandidates('paidAll').filter(c=> !ids.has(c.id))); m = C.matchActionTarget(a.target, cands); }
-      if(m.none) return tgReply(last ? t('Nema unosa iz bota u poslednja 24 sata.') : t('Nisam našao „{0}“.', a.target));
+      if(m.none) return tgReply(last && !a.target ? t('Nema unosa iz bota u poslednja 24 sata.') : last ? t('Nisam našao „{0}“ među unosima iz bota (poslednja 24 sata).', a.target) : t('Nisam našao „{0}“.', a.target));
       if(m.choices){
         x.choices = m.choices.map(c=> cands.find(k=> k.id === c.id)); x.req = { amount: a.amount, target: a.target };
         tgPropPut(x);
@@ -6038,10 +6038,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'editLast'){
       const e = entries.find(y=> y.id === x.targetId);
       if(!e) return { already: true };
-      const prev = { amount: e.amount, desc: e.desc };
-      if(x.amount != null) e.amount = x.amount; else e.desc = x.newDesc;
+      if(!(x.amount > 0)) return { already: true };
+      const prev = { amount: e.amount, desc: e.desc }, round = e.type === 'expense' ? { from: e.amount, to: x.amount } : null;
+      if(e.origAmount && e.currency && e.currency !== 'RSD' && e.amount > 0){ prev.origAmount = e.origAmount; e.origAmount = C.round2(e.origAmount * x.amount / e.amount); }
+      if(round){ unapplyRoundUpSaving(round.from); applyRoundUpSaving(round.to); }
+      e.amount = x.amount;
       saveEntries();
-      return { text: t('Izmenjeno: {0} · {1}', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev } };
+      return { text: t('Izmenjeno: {0} · {1}', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev, round } };
     }
     if(x.kind === 'warranty'){
       const entry = entries.find(y=> y.id === x.targetId);
@@ -6151,7 +6154,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!r.income && !r.expense) return { replies: [] };
     const [y, mo] = prev.split('-').map(Number);
     const name = new Date(y, mo - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
-    const B = v => '**' + v + '**';
+    const B = tgB;
     const head = [`📊 ${B(name.charAt(0).toUpperCase() + name.slice(1))}`, t('Prihodi: {0}', fmt(r.income))];
     const pct = r.expensePct != null && Math.abs(r.expensePct) >= 5 ? ' (' + t(r.expensePct > 0 ? '{0}% više od proseka' : '{0}% manje od proseka', Math.abs(r.expensePct)) + ')' : '';
     head.push(t('Rashodi: {0}', fmt(r.expense)) + pct);

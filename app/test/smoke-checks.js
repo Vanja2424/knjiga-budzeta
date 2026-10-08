@@ -2164,7 +2164,7 @@
       check('telegram grupa: odgovor kaže ko je poslao', /^✓ Ana: /.test(g1.replies[0].text), g1.replies[0].text);
       const n0 = ents().length;
       const g2 = await B.handle({ update_id: 900302, kind: 'text', text: '/nov idemo večeras u bioskop?', group: true, from: ana });
-      check('telegram grupa: ćaskanje bez iznosa se ignoriše', g2.replies.length === 0 && ents().length === n0, JSON.stringify(g2));
+      check('telegram grupa: /nov bez iznosa i u grupi kaže šta fali', /iznos/i.test((g2.replies[0] || {}).text || '') && ents().length === n0, JSON.stringify(g2));
       const g3 = await B.handle({ update_id: 900303, kind: 'text', text: '/nov idemo večeras u bioskop?', group: false, from: ana });
       check('telegram privatno: bez iznosa i dalje objašnjava', /iznos/i.test((g3.replies[0] || {}).text || ''));
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
@@ -2276,10 +2276,8 @@
       const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
       const ana = { id: 5, name: 'Ana' };
       const n0 = ents().length;
-      const k1 = await B.handle({ update_id: 900701, kind: 'text', text: '/nov vidimo se u 8', group: true, from: ana });
-      check('telegram fix: u grupi „vidimo se u 8“ nije rashod i bot ćuti', k1.replies.length === 0 && ents().length === n0, JSON.stringify(k1));
       const k2 = await B.handle({ update_id: 900702, kind: 'text', text: '/nov 250', group: true, from: ana });
-      check('telegram fix: u grupi samo broj bez opisa — bot ćuti', k2.replies.length === 0 && ents().length === n0, JSON.stringify(k2));
+      check('telegram fix: u grupi /nov samo broj bez opisa — traži opis', /šta je/.test((k2.replies[0] || {}).text || '') && ents().length === n0, JSON.stringify(k2));
       const k3 = await B.handle({ update_id: 900703, kind: 'text', text: '/nov Smoke fix sok 8', group: false, from: ana });
       check('telegram fix: privatno „sok 8“ je i dalje rashod', ents().some(e => e.desc === 'Smoke fix sok' && e.amount === 8), JSON.stringify(k3));
       const k4 = await B.handle({ update_id: 900704, kind: 'text', text: '/nov plata za majstora smokefix 5000' });
@@ -2764,6 +2762,37 @@
       const grc = await click(btn(gr, /^c:/).data, { group: true, from: { id: 6, name: 'Vanja' } });
       check('naredba: grupa — rezultat nosi ime potvrđivača', /Vanja/.test(txt(grc)), txt(grc));
       await click(btn(grc, /^u:/).data);
+      // talas A: "Koliko?" prihvata samo broj; izmena bez iznosa pita koliko (ne preimenuje); nepoznata meta; poništeno brisanje ne vaskrsava
+      act({ kind: 'debtPay', target: 'smoke rale' });
+      await send('vratila sam raletu');
+      window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: null, offTopic: true }) });
+      const ka = await send('koliko smo potrošili u maju 2025?');
+      check('sitnice: posle „Koliko?“ pitanje sa godinom nije iznos', !/Uplata/.test(txt(ka)) && !debt('Smoke Rale')[0].paidAmount, txt(ka));
+      act({ kind: 'add', target: 'Smoke sit čaj 120' });
+      await click(btn(await send('Smoke sit čaj 120'), /^c:/).data);
+      const caj = () => L('budzet-stavke-v2').find(e => /^Smoke sit čaj/.test(e.desc));
+      act({ kind: 'editLast', target: 'čaj' });
+      const ea = await send('promeni čaj');
+      check('sitnice: izmena bez iznosa pita koliko', /Koliko/.test(txt(ea)), txt(ea));
+      const eb = await send('150');
+      await click(btn(eb, /^c:/).data);
+      check('sitnice: izmena menja iznos, ne opis', !!caj() && caj().amount === 150 && caj().desc === 'Smoke sit čaj', JSON.stringify(caj()));
+      act({ kind: 'deleteLast', target: 'nepostojece xyz' });
+      const dn = await send('obriši xyz');
+      check('sitnice: nepoznata meta za brisanje kaže šta nije nađeno', /xyz/.test(txt(dn)) && !/Nema unosa/.test(txt(dn)), txt(dn));
+      const addMsg = await send('/nov Smoke sit sok 90');
+      act({ kind: 'deleteLast' });
+      const delMsg = await click(btn(await send('obriši poslednji'), /^c:/).data);
+      await click(btn(addMsg, /^u:/).data);
+      await click(btn(delMsg, /^u:/).data);
+      check('sitnice: poništeno brisanje ne vraća unos koji je u međuvremenu poništen', !L('budzet-stavke-v2').some(e => e.desc === 'Smoke sit sok'));
+      act({ kind: 'add', target: 'Smoke*zvezda 100' });
+      const zv = await send('Smoke*zvezda 100');
+      check('sitnice: zvezdica u imenu ne kvari podebljano', /\*\*Smoke∗zvezda\*\*/.test(txt(zv)), txt(zv));
+      window.__fakeAsk = async () => ({ ok: false, kind: 'nokey' });
+      const nk = await send('šta treba da platimo?');
+      check('sitnice: bez AI ključa bot kaže da AI nije podešen (ne poruku za račune)', /AI nije podešen/.test(txt(nk)) && !/Popuni podatke/.test(txt(nk)), txt(nk));
+      window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke sit/.test(e.desc)).map(e => e.id));
       // nije nadjeno
       act({ kind: 'paid', target: 'nepostojeca stavka xyz' });
       const nf = await send('platila sam xyz');

@@ -26,7 +26,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   };
   let state = 'off';        // off | notoken | running | offline | conflict | badToken
   let pair = null;          // { code, until }
-  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0, commandsSet = false;
+  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0, commandsSet = '';
   const attempts = new Map(); // update_id -> broj neuspelih obrada
   // Obrada sa rokom: stranica koja se osvezi/padne usred obrade ne sme da zaustavi petlju zauvek
   const withTimeout = (promise, ms) => new Promise((res, rej) => {
@@ -80,7 +80,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     s().telegramTokenLast4 = token.slice(-4);
     if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; delete s().telegramOffset; delete s().telegramBotName; }
     saveSettings();
-    meAt = 0; commandsSet = false;
+    meAt = 0; commandsSet = '';
     try { const me = await api('getMe'); s().telegramBotName = String(me && me.username || ''); saveSettings(); lastError = ''; state = 'off'; }
     catch (e) {
       lastError = scrub(e.message);
@@ -241,12 +241,13 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       if (me && me.username) { s().telegramBotName = String(me.username); saveSettings(); onStatus(status()); }
     }
     // meni komandi u Telegramu ("/"): jednom po pokretanju; greska ne smeta
-    if (!commandsSet) {
-      commandsSet = true;
-      await safe(() => api('setMyCommands', { commands: [
-        { command: 'nov', description: T('Nov unos: /nov kafa 250') },
-        { command: 'ponisti', description: T('Poništi poslednji unos') },
-        { command: 'pomoc', description: T('Uputstvo') }] }));
+    const commands = [
+      { command: 'nov', description: T('Nov unos: /nov kafa 250') },
+      { command: 'ponisti', description: T('Poništi poslednji unos') },
+      { command: 'pomoc', description: T('Uputstvo') }];
+    if (commandsSet !== JSON.stringify(commands)) {   // jednom, i ponovo kad se promeni jezik
+      commandsSet = JSON.stringify(commands);
+      await safe(() => api('setMyCommands', { commands }));
     }
     for (const u of updates || []) {
       try { await processUpdate(u); attempts.delete(u.update_id); }

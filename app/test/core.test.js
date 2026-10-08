@@ -2295,6 +2295,7 @@ test('matchActionTarget posle pregleda: kratke reci (na, za, u) se ne broje', ()
 test('askAnswerPrompt: izgled za Telegram (spisak, podebljan zbir) samo za bota', () => {
   const tg = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [], style: 'telegram' });
   assert.match(tg, /•/); assert.match(tg, /\*\*/); assert.match(tg, /jedna stavka po redu/);
+  assert.doesNotMatch(tg, /od najvećeg ka najmanjem/);   // redosled je vec u rezultatu (jedno pravilo, ne dva)
   const app = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [] });
   assert.doesNotMatch(app, /\*\*/); assert.match(app, /do 8 rečenica/);
 });

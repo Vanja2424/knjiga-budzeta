@@ -1862,7 +1862,7 @@
       'Ako pitanje nije o budžetu korisnika, vrati {"calls":[],"offTopic":true}.',
       ...(o.actions ? [
         'Ako korisnik traži IZMENU (ne pitanje), vrati "action" umesto proračuna: {"calls":[],"action":{"kind":"","target":"","amount":null,"items":[]}}. Inače "action": null.',
-        'kind: add (upiši rashod/prihod, target = ceo opis sa iznosom), paid (označi plaćeno), skip (preskoči ovaj mesec), debtPay (uplata na dug, target = osoba), goalPay (uplata u cilj), shopAdd (dodaj na spisak, items), shopDone (kupljeno, items), editLast (izmeni poslednji unos: amount ili target = novi opis), deleteLast (obriši poslednji unos).',
+        'kind: add (upiši rashod/prihod, target = ceo opis sa iznosom), paid (označi plaćeno), skip (preskoči ovaj mesec), debtPay (uplata na dug, target = osoba), goalPay (uplata u cilj), shopAdd (dodaj na spisak, items), shopDone (kupljeno, items), editLast (izmeni iznos unosa: target = koji unos, ako je naveden; amount = novi iznos), deleteLast (obriši poslednji unos).',
         'target je ime iz poruke, onako kako je napisano. Ne izmišljaj iznos.'] : []),
       ...askHistoryLines(o.history),
       'Pitanje: ' + String(o.question || '').slice(0, 500)].join('\n');
@@ -1962,10 +1962,10 @@
     // Telegram: pregledna poruka (spisak, prazan red izmedju celina, **podebljan** zbir -> bold u Telegramu)
     const look = o.style === 'telegram' ? [
       'Izgled poruke (Telegram, čitljivo na telefonu): prvi red je kratak zaključak sa ukupnim iznosom, sa jednim emoji na početku (npr. 💳, 🤝, 📊, 🎯).',
-      'Zatim spisak: jedna stavka po redu, u obliku "• naziv — 12.345 RSD", od najvećeg ka najmanjem. Bez dugih rečenica i bez ponavljanja brojeva u tekstu.',
+      'Zatim spisak: jedna stavka po redu, u obliku "• naziv — 12.345 RSD", redosledom iz rezultata (već su poređani). Bez dugih rečenica i bez ponavljanja brojeva u tekstu.',
       'Različite celine (npr. stavke za plaćanje i dugovi) odvoji praznim redom i kratkim naslovom sa emoji i zbirom.',
       'Ukupne iznose i naslove označi sa **dve zvezdice** (npr. **77.660 RSD**). Najviše oko 15 redova; ako je stavki više, navedi najveće i napiši koliko ih je još.',
-      'Zbirove NE računaj sam — prepiši ih iz rezultata (npr. total, debtsTotal) i poštuj napomene u rezultatu. Spiskove zadrži redosledom iz rezultata. Bez zaključnog reda na kraju i bez kurziva (jedna zvezdica).'] : [];
+      'Zbirove NE računaj sam — prepiši ih iz rezultata (npr. total, debtsTotal) i poštuj napomene u rezultatu. Bez zaključnog reda na kraju i bez kurziva (jedna zvezdica).'] : [];
     return ['Ti si pomoćnik za lični budžet. ' + lang + (o.style === 'telegram' ? ', pregledno' : ', kratko (do 8 rečenica)') + ', na osnovu REZULTATA ispod.',
       ...look,
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
