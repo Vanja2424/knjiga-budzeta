@@ -45,3 +45,14 @@ test('build: test kuke glavnog prozora samo u test pokretanju', () => {
   assert.deepEqual(ungated, []);
   assert.ok((html.match(/if\(IS_TEST\) (?:window\.__|Object\.defineProperty\(window, '__)/g) || []).length > 60);
 });
+
+test('build: budzet-tracker.html u korenu je tacan spoj iz src/ (izvor se menja u src/)', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const { buildWeb, ROOT } = require('../scripts/build-web.js');
+  const built = buildWeb();
+  assert.equal(fs.readFileSync(path.join(ROOT, 'budzet-tracker.html'), 'utf8') === built, true, 'budzet-tracker.html nije spoj iz src/ — pokreni npm run copy-web');
+  assert.match(built, /GENERISANO iz src\//);
+  assert.doesNotMatch(built, /<!--@include /);
+  const js = fs.readdirSync(path.join(ROOT, 'src', 'js'));
+  assert.ok(js.length >= 20 && js.every(f => fs.statSync(path.join(ROOT, 'src', 'js', f)).size > 0));
+});
