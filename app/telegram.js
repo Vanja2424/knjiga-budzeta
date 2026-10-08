@@ -15,7 +15,7 @@ const LINKABLE = ['private', 'group', 'supergroup']; // kanal se ne povezuje
 const FISCAL_URL_RE = /https:\/\/suf\.purs\.gov\.rs\/v\/\?vl=[A-Za-z0-9%+\/=_-]+/; // QR fiskalnog racuna (Poreska uprava)
 const MIME_EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
-function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, onStatus = () => {}, T = s => s,
+function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle, tick, nack, onStatus = () => {}, T = s => s,
   now = () => Date.now(), sleep = ms => new Promise(r => setTimeout(r, ms)), random = Math.random, autoStart = true, handleTimeoutMs = HANDLE_TIMEOUT_MS, decodeQr = async () => null }) {
   const s = () => getSettings();
   const encryption = () => { try { return !!safeStorage.isEncryptionAvailable(); } catch { return false; } };
@@ -26,7 +26,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   };
   let state = 'off';        // off | notoken | running | offline | conflict | badToken
   let pair = null;          // { code, until }
-  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0, commandsSet = false;
+  let lastError = '', errors = 0, lastTick = 0, stopFlag = false, running = false, pollCtrl = null, abortedByStop = false, wake = null, meAt = 0, commandsSet = '';
   const attempts = new Map(); // update_id -> broj neuspelih obrada
   // Obrada sa rokom: stranica koja se osvezi/padne usred obrade ne sme da zaustavi petlju zauvek
   const withTimeout = (promise, ms) => new Promise((res, rej) => {
@@ -80,7 +80,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     s().telegramTokenLast4 = token.slice(-4);
     if (changed) { delete s().telegramChatId; delete s().telegramUserId; delete s().telegramChatTitle; delete s().telegramOffset; delete s().telegramBotName; }
     saveSettings();
-    meAt = 0; commandsSet = false;
+    meAt = 0; commandsSet = '';
     try { const me = await api('getMe'); s().telegramBotName = String(me && me.username || ''); saveSettings(); lastError = ''; state = 'off'; }
     catch (e) {
       lastError = scrub(e.message);
@@ -137,6 +137,7 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
   const escHtml = t => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   async function deliver(replies, chatId) {
     chatId = chatId || s().telegramChatId;
+    const failed = [];
     for (const r of replies || []) {
       if (!r || !r.text) continue;
       const raw = String(r.text);
@@ -148,13 +149,17 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       const attempt = async (method, base) => {
         for (const v of variants) {
           try { await api(method, Object.assign({}, base, v)); return 'ok'; }
-          catch (e) { if (!(v.parse_mode && e && e.kind === 'http' && e.status === 400 && /entit|pars/i.test(e.message || ''))) return 'fail'; }
+          catch (e) {
+            if (v.parse_mode && e && e.kind === 'http' && e.status === 400 && /entit|pars/i.test(e.message || '')) continue;
+            return e && (e.kind === 'network' || e.kind === 'limit' || (e.kind === 'http' && e.status >= 500)) ? 'fail' : 'permanent';
+          }
         }
         return 'fail';
       };
       if (r.editMessageId && await attempt('editMessageText', { chat_id: chatId, message_id: r.editMessageId, reply_markup: markup(r.buttons) }) === 'ok') continue;
-      await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined });
+      if (await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined }) === 'fail') failed.push(r);   // samo prolazna greska ide nazad u red
     }
+    return failed;
   }
 
   // "@ime_bota 482100" / "kafa 250 @ime_bota" -> bez pominjanja bota (u grupi se botu tako pise; "/komanda@bot" ostaje)
@@ -241,12 +246,13 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       if (me && me.username) { s().telegramBotName = String(me.username); saveSettings(); onStatus(status()); }
     }
     // meni komandi u Telegramu ("/"): jednom po pokretanju; greska ne smeta
-    if (!commandsSet) {
-      commandsSet = true;
-      await safe(() => api('setMyCommands', { commands: [
-        { command: 'nov', description: T('Nov unos: /nov kafa 250') },
-        { command: 'ponisti', description: T('Poništi poslednji unos') },
-        { command: 'pomoc', description: T('Uputstvo') }] }));
+    const commands = [
+      { command: 'nov', description: T('Nov unos: /nov kafa 250') },
+      { command: 'ponisti', description: T('Poništi poslednji unos') },
+      { command: 'pomoc', description: T('Uputstvo') }];
+    if (commandsSet !== JSON.stringify(commands)) {   // jednom, i ponovo kad se promeni jezik
+      commandsSet = JSON.stringify(commands);
+      await safe(() => api('setMyCommands', { commands }));
     }
     for (const u of updates || []) {
       try { await processUpdate(u); attempts.delete(u.update_id); }
@@ -263,7 +269,11 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
     if (s().telegramChatId && now() - lastTick >= TICK_MS) {
       lastTick = now();
       const out = await safe(() => withTimeout(tick(), handleTimeoutMs));
-      if (out && out.replies && out.replies.length) await deliver(out.replies);
+      if (out && out.replies && out.replies.length) {
+        // neisporucen podsetnik/rezime: stranica ga vraca u red, pa ide ponovo pri sledecem otkucaju
+        const keys = (await deliver(out.replies)).map(r => r.nackKey).filter(Boolean);
+        if (keys.length && nack) await safe(() => nack(keys));
+      }
     }
     return 0;
   }

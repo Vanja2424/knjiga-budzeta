@@ -1318,6 +1318,16 @@
         if (wd) window.__deleteDocument(wd.id, { confirm: false });
       }
       window.__deleteEntriesById(['smoke-w-1']);
+      window.__addEntriesRaw([{ id: 'smoke-w-2', type: 'expense', desc: 'Smoke W2', amount: 9000, category: 'Ostalo', date: today, paid: true, tags: [], items: ['Smoke W2 pegla'], itemPrices: [9000] }]);
+      window.__saveDocumentRaw({ kind: 'garancija', title: 'Smoke W2 pegla', group: 'Tehnika', entryId: 'smoke-w-2', issued: today, warrantyMonths: 24 });
+      go('rashodi'); await sleep(60); setVal('filterCategory', ''); await sleep(120);
+      const wb2 = document.querySelector('.warranty-btn[data-id="smoke-w-2"]');
+      if (wb2) { wb2.click(); await sleep(150); }
+      check('sitnice: jedan artikal koji već ima garanciju — prvo pita', $('dialogOverlay').classList.contains('show') && /već postoji garancija/.test($('dialogBody').textContent), $('dialogBody').textContent);
+      if ($('dialogOverlay').classList.contains('show')) { $('dialogCancel') ? $('dialogCancel').click() : $('dialogOk').click(); await sleep(100); }
+      if ($('docOverlay').classList.contains('show')) { $('docCancel') && $('docCancel').click(); await sleep(100); }
+      docs().filter(d => d.entryId === 'smoke-w-2').forEach(d => window.__deleteDocument(d.id, { confirm: false }));
+      window.__deleteEntriesById(['smoke-w-2']);
       // predlog posle cuvanja racuna u aplikaciji (samo artikli od 5.000 po komadu)
       if (typeof window.__addReceiptFiles === 'function') {
         window.__fakeReceiptReading = () => ({ ok: true, content: JSON.stringify({ store: 'Smoke W prodavnica', date: today, total: 13299, items: [{ name: 'Smoke W frižider', price: 12999, category: 'Ostalo' }, { name: 'Smoke W baterije', price: 300, category: 'Ostalo' }] }) });
@@ -1356,8 +1366,10 @@
           if (rb) await B.handle({ update_id: 902005, kind: 'callback', data: rb.data, messageId: 71 });
           check('garancija (bot): Poništi računa ne briše sliku koju koristi garancija', !!wd3 && wd3.files.length === 1 && (await window.desktop.bills.openFile(wd3.files[0])).ok === true, JSON.stringify(wd3 && wd3.files));
           const ub = (b3.replies[0].buttons || []).flat().find(b => /^u:/.test(b.data));
+          window.__saveDocumentRaw(Object.assign({}, wd3, { notes: 'Smoke izmenjeno' }));
           if (ub) await B.handle({ update_id: 902004, kind: 'callback', data: ub.data, messageId: 73 });
-          check('garancija (bot): Poništi briše garanciju', !docs().some(d => d.title === 'Smoke W mikser'));
+          check('sitnice: Poništi ne briše garanciju koja je u međuvremenu menjana', docs().some(d => d.title === 'Smoke W mikser'));
+          const wd4 = docs().find(d => d.title === 'Smoke W mikser'); if (wd4) window.__deleteDocument(wd4.id, { confirm: false });
         }
         window.__deleteEntriesById(ents().filter(e => e.desc === 'Smoke W bot').map(e => e.id));
         window.__fakeReceiptReading = null;
@@ -1366,13 +1378,14 @@
 
     // v1.39: licna inflacija (kartica u Nabavka -> Cene, red u mesecnom rezimeu)
     {
-      const C2 = window.BudzetCore, todayI = C2.toISODate(new Date());
-      const back = C2.addMonthsToDate(todayI, -3), recent = (() => { const d = new Date(); d.setDate(d.getDate() - 2); return C2.toISODate(d); })();
+      const C2 = window.BudzetCore, todayI = C2.toISODate(new Date()), refI = todayI.slice(0, 7) + '-05';
+      const back = C2.addMonthsToDate(refI, -3), recent = todayI.slice(0, 7) + '-01';
       const buy = (id, date, name, price) => ({ id, type: 'expense', receiptId: 'smoke-inf-' + id, desc: 'Smoke INF prodavnica', category: 'Hrana', amount: price, paid: true, tags: [], date, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: 'kom' }] });
-      const infIds = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6'].map(x => 'smoke-inf-' + x);
+      const infIds = ['i1', 'i2', 'i3', 'i4', 'i5', 'i6', 'i7'].map(x => 'smoke-inf-' + x);
       window.__addEntriesRaw([buy(infIds[0], back, 'Smoke INF mleko', 100), buy(infIds[1], recent, 'Smoke INF mleko', 110),
         buy(infIds[2], back, 'Smoke INF kafa', 200), buy(infIds[3], recent, 'Smoke INF kafa', 180),
-        buy(infIds[4], back, 'Smoke INF hleb', 50), buy(infIds[5], recent, 'Smoke INF hleb', 50)]);
+        buy(infIds[4], back, 'Smoke INF hleb', 50), buy(infIds[5], recent, 'Smoke INF hleb', 50),
+        { id: infIds[6], type: 'expense', desc: 'Smoke INF prošli mesec', category: 'Ostalo', amount: 100, paid: true, tags: [], date: C2.addMonths(todayI.slice(0, 7), -1) + '-15' }]);
       go('nabavka'); await sleep(80);
       const pb = document.querySelector('.shop-show-btn[data-show="prices"]'); if (pb) pb.click(); await sleep(150);
       const card = () => document.querySelector('#shopPrices .basket-card');
@@ -1382,9 +1395,13 @@
       const m12 = card() && card().querySelector('.basket-m[data-m="12"]'); if (m12) { m12.click(); await sleep(100); }
       check('inflacija: period bez dovoljno podataka', !!card() && /[Pp]remalo podataka/.test(card().textContent), card() && card().textContent.replace(/\s+/g, ' ').slice(0, 200));
       localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
-      const mr = window.__tgMonthly ? await window.__tgMonthly(todayI + 'T23:00') : { replies: [] };
+      const mr = await window.__tgMonthly(refI + 'T23:00');
       const mt = (mr.replies[0] || {}).text || '';
-      check('inflacija: red u mesečnom rezimeu', !mt || /🛒/.test(mt), mt.slice(-200));
+      check('inflacija: red u mesečnom rezimeu', /🛒/.test(mt), mt.slice(-200));
+      check('sitnice: rezime nosi oznaku za ponovno slanje', (mr.replies[0] || {}).nackKey === 'monthly');
+      await window.__telegramBridge.nack(['monthly']);
+      const mr2 = await window.__tgMonthly(refI + 'T23:30');
+      check('sitnice: neisporučen rezime se šalje ponovo', !!mr2.replies.length);
       localStorage.setItem('budzet-telegram-rezime-v1', JSON.stringify({ on: true, last: '' }));
       window.__deleteEntriesById(infIds);
     }
@@ -1415,6 +1432,22 @@
       check('pretplate: Nije sakriva predlog i pamti odluku', !rowOf('Smokeradio') && JSON.parse(localStorage.getItem('budzet-pretplate-odbijene-v1') || '[]').includes('smokeradio'));
       if (rec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === rec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== rec.id); R.save(); }
       window.__deleteEntriesById(subEnt.map(e => e.id).concat(rec ? ['rec-' + rec.id + '-' + curS] : []));
+      // neplacen ovomesecni rashod postaje uplata pretplate; stikliranje ga oznacava placenim
+      const unp = ms.map((m, i) => Object.assign(mk(m, 'Smoketv', 799), i === 2 ? { paid: false } : {}));
+      window.__addEntriesRaw(unp); window.__recurringRaw.save(); go('ponavljajuce'); await sleep(150);   // save -> renderAll (aktivni ekran se ne osvezava sam)
+      const tvAdd = rowOf('Smoketv') && rowOf('Smoketv').querySelector('.hidden-sub-add');
+      if (tvAdd) { tvAdd.click(); await sleep(150); }
+      const tvRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoketv');
+      if (tvRec) window.__markRecurringPaid(tvRec.id);
+      const tvE = tvRec && JSON.parse(localStorage.getItem('budzet-stavke-v2')).find(e => e.id === 'rec-' + tvRec.id + '-' + curS);
+      if (tvRec) window.__togglePaid(tvRec.id, false);
+      const tvE2 = tvRec && JSON.parse(localStorage.getItem('budzet-stavke-v2')).find(e => e.id === 'rec-' + tvRec.id + '-' + curS);
+      check('sitnice: odštikliranje vraća postojeći rashod na neplaćen (ne briše ga)', !!tvE2 && tvE2.paid === false && tvE2.amount === 799, JSON.stringify(tvE2));
+      check('sitnice: štikliranje pretplate označava i postojeći neplaćen rashod plaćenim', !!tvE && tvE.paid !== false, JSON.stringify({ tvE, tvRec: !!tvRec, row: !!rowOf('Smoketv'), btn: !!tvAdd, panel: panel() && panel().textContent.replace(/\s+/g, ' ').slice(0, 150), core: window.BudzetCore.findHiddenSubscriptions({ entries: JSON.parse(localStorage.getItem('budzet-stavke-v2')), recurring: JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')), today: todayS, dismissed: [] }).map(x => x.key), tv: JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => e.desc === 'Smoketv').map(e => e.date + ':' + e.paid) }));
+      if (tvRec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === tvRec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== tvRec.id); R.save(); }
+      window.__deleteEntriesById(unp.map(e => e.id).concat(tvRec ? ['rec-' + tvRec.id + '-' + curS] : []));
+      const sb = window.__sanitizeImportedBackup({ entries: [], hiddenSubsDismissed: ['smokeradio', 5] });
+      check('sitnice: JSON kopija nosi odbijene pretplate', JSON.stringify(sb.hiddenSubsDismissed) === '["smokeradio"]' && (window.__buildBackupData ? window.__buildBackupData().hiddenSubsDismissed.includes('smokeradio') : false));
     }
 
     // Pitaj svoj budzet: plan bez iznosa, lokalni proracun, odgovor kao tekst, offTopic, greska, dupli klik
@@ -2164,7 +2197,14 @@
       check('telegram grupa: odgovor kaže ko je poslao', /^✓ Ana: /.test(g1.replies[0].text), g1.replies[0].text);
       const n0 = ents().length;
       const g2 = await B.handle({ update_id: 900302, kind: 'text', text: '/nov idemo večeras u bioskop?', group: true, from: ana });
-      check('telegram grupa: ćaskanje bez iznosa se ignoriše', g2.replies.length === 0 && ents().length === n0, JSON.stringify(g2));
+      check('telegram grupa: /nov bez iznosa i u grupi kaže šta fali', /iznos/i.test((g2.replies[0] || {}).text || '') && ents().length === n0, JSON.stringify(g2));
+      await B.handle({ update_id: 900310, kind: 'text', text: '/nov', group: true, from: ana });
+      const nG = ents().length;
+      window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: null, offTopic: true }) });
+      await B.handle({ update_id: 900311, kind: 'text', text: 'vidimo se u 8', group: true, from: { id: 6, name: 'Vanja' } });
+      await B.handle({ update_id: 900312, kind: 'text', text: 'vidimo se u 8', group: true, from: ana });
+      window.__fakeAsk = null;
+      check('sitnice: posle praznog /nov ćaskanje u grupi ne postaje rashod', ents().length === nG, JSON.stringify(ents().slice(-1)));
       const g3 = await B.handle({ update_id: 900303, kind: 'text', text: '/nov idemo večeras u bioskop?', group: false, from: ana });
       check('telegram privatno: bez iznosa i dalje objašnjava', /iznos/i.test((g3.replies[0] || {}).text || ''));
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
@@ -2276,10 +2316,8 @@
       const pend = () => JSON.parse(localStorage.getItem('budzet-telegram-cekanje-v1') || '[]');
       const ana = { id: 5, name: 'Ana' };
       const n0 = ents().length;
-      const k1 = await B.handle({ update_id: 900701, kind: 'text', text: '/nov vidimo se u 8', group: true, from: ana });
-      check('telegram fix: u grupi „vidimo se u 8“ nije rashod i bot ćuti', k1.replies.length === 0 && ents().length === n0, JSON.stringify(k1));
       const k2 = await B.handle({ update_id: 900702, kind: 'text', text: '/nov 250', group: true, from: ana });
-      check('telegram fix: u grupi samo broj bez opisa — bot ćuti', k2.replies.length === 0 && ents().length === n0, JSON.stringify(k2));
+      check('telegram fix: u grupi /nov samo broj bez opisa — traži opis', /šta je/.test((k2.replies[0] || {}).text || '') && ents().length === n0, JSON.stringify(k2));
       const k3 = await B.handle({ update_id: 900703, kind: 'text', text: '/nov Smoke fix sok 8', group: false, from: ana });
       check('telegram fix: privatno „sok 8“ je i dalje rashod', ents().some(e => e.desc === 'Smoke fix sok' && e.amount === 8), JSON.stringify(k3));
       const k4 = await B.handle({ update_id: 900704, kind: 'text', text: '/nov plata za majstora smokefix 5000' });
@@ -2764,6 +2802,37 @@
       const grc = await click(btn(gr, /^c:/).data, { group: true, from: { id: 6, name: 'Vanja' } });
       check('naredba: grupa — rezultat nosi ime potvrđivača', /Vanja/.test(txt(grc)), txt(grc));
       await click(btn(grc, /^u:/).data);
+      // talas A: "Koliko?" prihvata samo broj; izmena bez iznosa pita koliko (ne preimenuje); nepoznata meta; poništeno brisanje ne vaskrsava
+      act({ kind: 'debtPay', target: 'smoke rale' });
+      await send('vratila sam raletu');
+      window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: null, offTopic: true }) });
+      const ka = await send('koliko smo potrošili u maju 2025?');
+      check('sitnice: posle „Koliko?“ pitanje sa godinom nije iznos', !/Uplata/.test(txt(ka)) && !debt('Smoke Rale')[0].paidAmount, txt(ka));
+      act({ kind: 'add', target: 'Smoke sit čaj 120' });
+      await click(btn(await send('Smoke sit čaj 120'), /^c:/).data);
+      const caj = () => L('budzet-stavke-v2').find(e => /^Smoke sit čaj/.test(e.desc));
+      act({ kind: 'editLast', target: 'čaj' });
+      const ea = await send('promeni čaj');
+      check('sitnice: izmena bez iznosa pita koliko', /Koliko/.test(txt(ea)), txt(ea));
+      const eb = await send('150');
+      await click(btn(eb, /^c:/).data);
+      check('sitnice: izmena menja iznos, ne opis', !!caj() && caj().amount === 150 && caj().desc === 'Smoke sit čaj', JSON.stringify(caj()));
+      act({ kind: 'deleteLast', target: 'nepostojece xyz' });
+      const dn = await send('obriši xyz');
+      check('sitnice: nepoznata meta za brisanje kaže šta nije nađeno', /xyz/.test(txt(dn)) && !/Nema unosa/.test(txt(dn)), txt(dn));
+      const addMsg = await send('/nov Smoke sit sok 90');
+      act({ kind: 'deleteLast' });
+      const delMsg = await click(btn(await send('obriši poslednji'), /^c:/).data);
+      await click(btn(addMsg, /^u:/).data);
+      await click(btn(delMsg, /^u:/).data);
+      check('sitnice: poništeno brisanje ne vraća unos koji je u međuvremenu poništen', !L('budzet-stavke-v2').some(e => e.desc === 'Smoke sit sok'));
+      act({ kind: 'add', target: 'Smoke*zvezda 100' });
+      const zv = await send('Smoke*zvezda 100');
+      check('sitnice: zvezdica u imenu ne kvari podebljano', /\*\*Smoke∗zvezda\*\*/.test(txt(zv)), txt(zv));
+      window.__fakeAsk = async () => ({ ok: false, kind: 'nokey' });
+      const nk = await send('šta treba da platimo?');
+      check('sitnice: bez AI ključa bot kaže da AI nije podešen (ne poruku za račune)', /AI nije podešen/.test(txt(nk)) && !/Popuni podatke/.test(txt(nk)), txt(nk));
+      window.__deleteEntriesById(L('budzet-stavke-v2').filter(e => /^Smoke sit/.test(e.desc)).map(e => e.id));
       // nije nadjeno
       act({ kind: 'paid', target: 'nepostojeca stavka xyz' });
       const nf = await send('platila sam xyz');
@@ -2847,6 +2916,8 @@
       const m1 = await window.__tgMorning(todayIso + 'T09:05');
       const mb = ((m1.replies[0] || {}).buttons || []).flat().find(b => /Smoke jutro/.test(b.text));
       check('jutro: poruka sa stavkom koja danas dospeva i dugmetom', /🔔/.test(txt(m1)) && /Smoke jutro/.test(txt(m1)) && !!mb && /^c:/.test(mb.data), JSON.stringify(m1).slice(0, 400));
+      check('sitnice: dugme podsetnika nosi i iznos', / · 700/.test(mb.text), mb.text);
+      check('sitnice: podsetnik nosi oznaku za ponovno slanje', m1.replies[0].nackKey === 'morning');
       const m2 = await window.__tgMorning(todayIso + 'T11:00');
       check('jutro: samo jednom dnevno', !m2.replies.length);
       const pr = L('budzet-telegram-potvrde-v1'); pr.forEach(x => { x.created -= 2 * 3600 * 1000; }); localStorage.setItem('budzet-telegram-potvrde-v1', JSON.stringify(pr));
@@ -2865,6 +2936,10 @@
       const ej = L('budzet-stavke-v2').find(e => e.id === addJ.ids[0]);
       check('jutro: dugme ne vraća ispravljen iznos rashoda', !!bj && !!ej && ej.paid !== false && ej.amount === 550, JSON.stringify(ej));
       window.__deleteEntriesById(addJ.ids);
+      localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: true, time: '09:00', last: '' }));
+      let sentN = 0;
+      for (let i = 0; i < 8; i++) { const mm = await window.__tgMorning(todayIso + 'T09:4' + i); if (mm.replies.length) sentN++; await window.__telegramBridge.nack(['morning']); }
+      check('sitnice: neisporučen podsetnik se ponavlja najviše 5 puta dnevno', sentN === 6, String(sentN));
       localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: false, time: '09:00', last: '' }));
       const m3 = await window.__tgMorning(todayIso + 'T09:30');
       check('jutro: isključen prekidač — ništa', !m3.replies.length);

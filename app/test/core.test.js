@@ -2295,6 +2295,7 @@ test('matchActionTarget posle pregleda: kratke reci (na, za, u) se ne broje', ()
 test('askAnswerPrompt: izgled za Telegram (spisak, podebljan zbir) samo za bota', () => {
   const tg = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [], style: 'telegram' });
   assert.match(tg, /•/); assert.match(tg, /\*\*/); assert.match(tg, /jedna stavka po redu/);
+  assert.doesNotMatch(tg, /od najvećeg ka najmanjem/);   // redosled je vec u rezultatu (jedno pravilo, ne dva)
   const app = C.askAnswerPrompt({ question: 'šta treba da platimo?', today: '2026-10-07', results: [] });
   assert.doesNotMatch(app, /\*\*/); assert.match(app, /do 8 rečenica/);
 });
@@ -2414,4 +2415,49 @@ test('skrivene pretplate: 3+ meseca zaredom, jednom mesecno, slican iznos, nije 
   const e2 = [ex('2026-08-20', 'YOUTUBE PREMIUM X12', 699), ex('2026-09-20', 'YouTube Premium Q77', 699), ex('2026-10-20', 'YOUTUBE PREMIUM Z9', 699, { paid: false })];
   const r2 = C.findHiddenSubscriptions({ entries: e2, recurring: [], today: '2026-10-21', dismissed: [] });
   assert.deepEqual(r2.map(x => [x.key, x.months, x.thisMonthId, x.desc]), [['youtube premium', 3, e2[2].id, 'YOUTUBE PREMIUM']]);
+});
+
+test('sitnice B: podsetnik bez automatskog placanja za danas/sutra; korpa: jedinica bez buducih datuma, gotova istorija', () => {
+  const recurring = [
+    { id: 'a', desc: 'Auto', amount: 500, type: 'expense', frequency: 'monthly', day: 7, autoPay: true },
+    { id: 'b', desc: 'Auto kasni', amount: 600, type: 'expense', frequency: 'monthly', day: 3, autoPay: true },
+    { id: 'm', desc: 'Rucno', amount: 700, type: 'expense', frequency: 'monthly', day: 8 }
+  ];
+  const r = C.morningReminderItems({ recurring, entries: [], applied: {}, skipped: {}, documents: [], today: '2026-10-07', amountOf: (x, mKey) => mKey === '2026-10' ? x.amount : -1 });
+  assert.deepEqual(r.today.map(i => i.id), []);                 // automatski se placa sam
+  assert.deepEqual(r.tomorrow.map(i => [i.id, i.amount]), [['m', 700]]);
+  assert.deepEqual(r.overdue.map(i => i.id), ['b']);            // propusteno automatsko placanje se ipak javlja
+  const buy = (date, name, price, unit) => ({ id: 'e' + date + name, type: 'expense', receiptId: 'r' + date, desc: 'Maxi', date, items: [name], itemPrices: [price], itemQty: [{ qty: 1, unit: unit || 'kom' }] });
+  const entries = [buy('2026-07-01', 'Mleko', 100), buy('2026-10-01', 'Mleko', 110), buy('2027-01-01', 'Mleko', 900, 'kg'),
+    buy('2026-07-03', 'Kafa', 200), buy('2026-10-02', 'Kafa', 180), buy('2026-07-05', 'Hleb', 50), buy('2026-10-03', 'Hleb', 50)];
+  const k = C.basketInflation(entries, '2026-10-07', 3);
+  assert.equal(k.count, 3);                                     // pogresno buduci "kg" ne izbacuje mleko
+  const hist = C.priceHistory(entries);
+  assert.deepEqual(C.basketInflation(entries, '2026-10-07', 3, hist), k);
+});
+
+test('sitnice C: Za placanje po danasnjem kursu, naziv artikla cuva specifikaciju, cirilica u pretplatama, jedan dupli mesec ne blokira', () => {
+  const recurring = [{ id: 'e', desc: 'Kirija EUR', amount: 1000, type: 'expense', frequency: 'monthly', currency: 'EUR', origAmount: 10 }];
+  const p = C.pendingForMonth({ entries: [], recurring, applied: {}, skipped: {}, debts: [], mKey: '2026-10', currentMonth: '2026-10', amountOf: r => r.origAmount * 117 });
+  assert.equal(p.expense, 1170); assert.equal(p.items[0].amount, 1170);
+  assert.equal(C.purchasedItemName('Punjač (65W)'), 'Punjač (65W)');
+  assert.equal(C.purchasedItemName('Mleko (2 kom)'), 'Mleko');
+  assert.equal(C.purchasedItemName('Sir (0,5 kg)'), 'Sir');
+  assert.equal(C.subscriptionKey('Спотифај премијум'), 'spotifaj premijum');
+  let n = 0;
+  const ex = (date, desc, amount) => ({ id: 'y' + (n++), type: 'expense', desc, amount, date, category: 'Zabava', paid: true });
+  const entries = [ex('2026-06-05', 'Deezer', 500), ex('2026-06-20', 'Deezer', 500), ex('2026-07-05', 'Deezer', 500), ex('2026-08-05', 'Deezer', 500), ex('2026-09-05', 'Deezer', 500), ex('2026-10-05', 'Deezer', 500)];
+  assert.deepEqual(C.findHiddenSubscriptions({ entries, recurring: [], today: '2026-10-20', dismissed: [] }).map(x => x.key), ['deezer']);
+  assert.deepEqual(C.warrantyItems(null, [{ id: 'd', entryId: 'x', title: 'a' }]), []);
+});
+
+test('sitnice posle pregleda: naziv artikla skida svaku kolicinu koju aplikacija upise, ne (65W); prihod po danasnjem kursu', () => {
+  assert.equal(C.purchasedItemName('Čarape (2 PAR)'), 'Čarape');
+  assert.equal(C.purchasedItemName('Sok (3 FL)'), 'Sok');
+  assert.equal(C.purchasedItemName('Brašno (1.234,5 g)'), 'Brašno');
+  assert.equal(C.purchasedItemName('Mleko (2kom)'), 'Mleko');
+  assert.equal(C.purchasedItemName('Punjač (65W)'), 'Punjač (65W)');
+  assert.equal(C.purchasedItemName('Sok (narandža) (1 l)'), 'Sok (narandža)');
+  const p = C.pendingForMonth({ entries: [], recurring: [{ id: 'i', desc: 'Honorar', amount: 100, type: 'income', frequency: 'monthly', currency: 'EUR', origAmount: 1 }], applied: {}, skipped: {}, debts: [], mKey: '2026-10', currentMonth: '2026-10', amountOf: () => 117 });
+  assert.equal(p.income, 117);
 });

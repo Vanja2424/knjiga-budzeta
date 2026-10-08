@@ -4506,10 +4506,20 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!applied[mKey].includes(r.id)) applied[mKey].push(r.id);
     if(skipped[mKey] && skipped[mKey].includes(r.id)){ skipped[mKey] = skipped[mKey].filter(id => id !== r.id); saveSkipped(); }
     const entryId = recurringEntryId(r, mKey);
-    if(!entries.some(e => e.id === entryId)) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
+    const existing = entries.find(e => e.id === entryId);
+    if(!existing) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
+    else if(existing.paid === false){ existing.wasUnpaid = { amount: existing.amount }; existing.paid = true; if(typeof amount === 'number' && amount > 0) existing.amount = amount; }
     if(linkedBill && linkedBill.entryId !== entryId){ linkedBill.entryId = entryId; saveBillsState(); }
     return entryId;
   }
+  // rashod koji je postojao pre stikliranja (bio neplacen): vrati ga na neplacen umesto brisanja
+  function restoreWasUnpaid(entryId){
+    const e = entries.find(x=> x.id === entryId);
+    if(!e || !e.wasUnpaid) return false;
+    e.amount = e.wasUnpaid.amount; e.paid = false; delete e.wasUnpaid;
+    return true;
+  }
+  if(IS_TEST) window.__togglePaid = (rid, on) => { const r = recurring.find(x=> x.id === rid); if(r) togglePaid(r, on); };
   function togglePaid(r, checked, customAmount){
     const mKey = currentMonthKey();
     if(!applied[mKey]) applied[mKey] = [];
@@ -4519,7 +4529,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(id){ playPaidSound(); justPaidId = r.id; }
     } else {
       applied[mKey] = applied[mKey].filter(id => id !== r.id);
-      entries = entries.filter(e => e.id !== entryId);
+      if(!restoreWasUnpaid(entryId)) entries = entries.filter(e => e.id !== entryId);
       if(r.autoPay) optOutAutoPay(r.id, mKey);
       playUnpaidSound();
     }
@@ -5708,7 +5718,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!res.ok){ rEl('receiptSave').disabled = false; if(res.error) rEl('receiptStatus').textContent = res.error; return; }
     closeReceipt(true);
     const sug = warrantySuggestions(res.ids);
-    if(sug.length) openWarrantyPicker(sug, { title: t('Dodati garanciju?'), checked: true });
+    if(sug.length){
+      // poruka o neuspelom cuvanju slike (ako je otvorena) ide prva
+      const dlg = document.getElementById('dialogOverlay');
+      while(dlg && dlg.classList.contains('show')) await new Promise(r=> setTimeout(r, 150));
+      openWarrantyPicker(sug, { title: t('Dodati garanciju?'), checked: true });
+    }
   }
   rEl('receiptSave').addEventListener('click', saveReceipt);
   if(IS_TEST) window.__saveReceipt = saveReceipt;
@@ -5771,15 +5786,19 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(a && a.kind === 'recPaid'){
       applied[a.mKey] = (applied[a.mKey] || []).filter(id=> id !== a.id);
       if(a.wasSkipped){ if(!skipped[a.mKey]) skipped[a.mKey] = []; if(!skipped[a.mKey].includes(a.id)) skipped[a.mKey].push(a.id); }
-      entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
+      if(!restoreWasUnpaid(a.entryId)) entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
     }
-    if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; saveEntries(); } }
+    if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; if(a.round){ unapplyRoundUpSaving(a.round.to); applyRoundUpSaving(a.round.from); } saveEntries(); } }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
     if(a && a.kind === 'debt'){ const d = debts.find(x=> x.id === a.id); if(d){ d.paidAmount = Math.max(0, C.round2((d.paidAmount || 0) - a.amount)); saveDebts(); syncDebtInstallments(); } }
     if(a && a.kind === 'goal'){ const g = goals.find(x=> x.id === a.id); if(g){ g.current = Math.max(0, C.round2(g.current - a.amount)); saveGoals(); } }
-    if(a && a.kind === 'doc'){ documents = documents.filter(d=> d.id !== a.id); saveDocuments(); }
+    if(a && a.kind === 'doc'){
+      const d = documents.find(x=> x.id === a.id);
+      if(d && a.snap && JSON.stringify(d) !== a.snap) item.label += ' — ' + t('garancija je u međuvremenu menjana, ostala je u Dokumentima');
+      else { documents = documents.filter(x=> x.id !== a.id); saveDocuments(); }
+    }
     if(a && a.kind === 'shopAdd' && a.created.length){ shopping.items = shopping.items.filter(it=> !a.created.includes(it.id)); saveShopping(); }
-    if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id)){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
+    if(a && a.kind === 'restore' && !entries.some(e=> e.id === a.entry.id) && !log.some(l=> l.undone && (l.ids || []).includes(a.entry.id))){ entries.push(a.entry); if(a.entry.type === 'expense') applyRoundUpSaving(a.entry.amount); saveEntries(); }
     if(window.desktop && window.desktop.bills) for(const name of item.attachments || []){
       if(!entries.some(e=> (e.attachments || []).includes(name)) && !documents.some(d=> (d.files || []).includes(name))) await window.desktop.bills.deleteFile(name);
     }
@@ -5807,7 +5826,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const fiscalUrl = C.fiscalUrlFrom(text);
     if(fiscalUrl){ tgAwait = null; return tgFiscalLink(fiscalUrl, p); }
     const intent = C.telegramIntent(text);
-    const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS ? tgAwait : null;
+    const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS && (!tgAwait.from || !p || !p.from || tgAwait.from === p.from.id) ? tgAwait : null;
     if(intent.kind === 'command'){
       tgAwait = null;
       if(intent.command === 'ponisti'){
@@ -5815,7 +5834,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
       }
       if(intent.command === 'nov'){
-        if(!intent.rest){ tgAwait = { kind: 'entry', at: Date.now() }; return tgReply(t('Šta da upišem? Npr. „kafa 250“.')); }
+        if(!intent.rest){ tgAwait = { kind: 'entry', at: Date.now(), from: p && p.from ? p.from.id : null }; return tgReply(t('Šta da upišem? Npr. „kafa 250“.')); }
         return tgEntry(intent.rest, p);
       }
       return tgReply(TG_HELP());
@@ -5823,17 +5842,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(intent.kind !== 'question') return tgReply(TG_HELP());
     if(wait){
       tgAwait = null;
-      if(wait.kind === 'entry') return tgEntry(text, p);
-      if(wait.kind === 'amount'){ const n = C.parseAmount(text); if(n > 0) return tgProposalAmount(wait.proposalId, n, p); }
+      if(wait.kind === 'entry') return tgEntry(text, p, { chatRules: true });
+      if(wait.kind === 'amount' && /^\s*\d[\d.,\s]*\s*(rsd|din\.?|dinara)?\s*$/i.test(text)){ const n = C.parseAmount(text); if(n > 0 && n < 1e8) return tgProposalAmount(wait.proposalId, n, p); }
     }
     return tgAsk(text, p);
   }
   // Unos iz bota (/nov kafa 250): odmah upisuje, uz Ponisti
-  async function tgEntry(text, p){
+  async function tgEntry(text, p, opts){
+    const chat = !!(opts && opts.chatRules && p && p.group);   // poruka posle praznog /nov u grupi: caskanje se ne upisuje
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
-      rules: data.rules, history: data.history, expenseCats, incomeCats, group: !!(p && p.group) });
-    if(d.error && p && p.group) return { replies: [] }; // u grupi: obicno caskanje ("vidimo se u 8") — bez odgovora
+      rules: data.rules, history: data.history, expenseCats, incomeCats, group: chat });   // /nov tekst je izricit unos i u grupi
+    if(d.error && chat) return { replies: [] };
     if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
@@ -5846,10 +5866,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Brojke za proracune iz bota (toPay, debts, accounts, goals, forecast) — racuna stranica, AI dobija samo rezultat
   function tgSnapshot(){
     const mKey = currentMonthKey();
-    const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey });
+    const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey, amountOf: recurringAmountNow });
     const bal = accounts.length ? accountBalances() : null;
     let fc = null;
-    try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
+    try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, beforePayday: f.beforePayday ? { date: f.beforePayday.date, balance: f.beforePayday.balance } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
     return {
       // poredjano od najveceg; total su samo stavke, dugovi su posebno (debtsTotal) i ne sabiraju se sa total
       toPay: { total: pend.expense, count: pend.count, expectedIncome: pend.income, debtsTotal: pend.debt, napomena: 'total = samo stavke za plaćanje; dugovi (debtsTotal) su posebno i NE ulaze u total',
@@ -5868,7 +5888,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const today = toISODateLocal(new Date()), history = tgRecentHistory();
     const { first, last } = C.askMonthRange(entries, currentMonthKey());
     const r1 = await askCall({ images: [], text: '', prompt: C.askPlanPrompt({ question: text, today, first, last, expenseCats, incomeCats, history, actions: true }) }, 1);
-    if(!r1 || !r1.ok) return tgReply('✕ ' + askErr(r1) + ' ' + TG_NOV_HINT());
+    const tgAskErr = r => r && r.kind === 'nokey' ? t('AI nije podešen (Podešavanja → AI čitanje računa).') : '✕ ' + askErr(r);
+    if(!r1 || !r1.ok) return tgReply(tgAskErr(r1) + ' ' + TG_NOV_HINT());
     const plan = C.cleanAskPlan(r1.content, { first, last, categories: expenseCats.concat(incomeCats) });
     if(!plan) return tgReply(t('Nisam razumeo — probaj drugačije.'));
     if(plan.action) return tgPropose(plan.action, text, p);
@@ -5876,7 +5897,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!plan.calls.length) return tgReply(t('Za ovo pitanje nema podataka u knjizi.'));
     const results = C.runAskTools(plan.calls, { entries, recurring, today, snapshot: tgSnapshot() });
     const r2 = await askCall({ images: [], text: '', prompt: C.askAnswerPrompt({ question: text, today, results, history, lang: askLangOverride || I18N.lang, style: 'telegram' }) }, 2);
-    if(!r2 || !r2.ok) return tgReply('✕ ' + askErr(r2) + ' ' + TG_NOV_HINT());
+    if(!r2 || !r2.ok) return tgReply(tgAskErr(r2) + ' ' + TG_NOV_HINT());
     const answer = C.cleanAskAnswer(r2.content).slice(0, 3000);
     tgHistory = tgRecentHistory().concat({ q: String(text).slice(0, 300), a: answer, at: Date.now() }).slice(-4);
     return tgReply(answer);
@@ -5884,7 +5905,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // ---- Naredbe iz bota: predlog -> "✓ Potvrdi" -> izvrsenje istim funkcijama kao dugmad u aplikaciji -> "Poništi" ----
   const TG_PROP_KEY = 'budzet-telegram-potvrde-v1', TG_PROP_MS = 10 * 60 * 1000;
   const tgProps = () => tgLoad(TG_PROP_KEY).filter(x=> x && Date.now() - x.created < 864e5);
-  const tgPropPut = x => tgSave(TG_PROP_KEY, tgProps().filter(y=> y.id !== x.id).concat(x).slice(-50));
+  const tgPropPut = x => { const all = tgProps().filter(y=> y.id !== x.id).concat(x), live = y=> y.until && y.until > Date.now() && y.state === 'open';
+    const others = all.filter(y=> !live(y)).slice(-50); tgSave(TG_PROP_KEY, all.filter(y=> live(y) || others.includes(y))); };
   const tgConfirmButtons = x => [[{ text: '✓ ' + t('Potvrdi'), data: 'c:' + x.id }, { text: '✕ ' + t('Otkaži'), data: 'n:' + x.id }]];
   const tgMonthName = () => { const [y, m] = currentMonthKey().split('-').map(Number); return new Date(y, m - 1, 1).toLocaleDateString(LOCALE, { month: 'long' }); };
   // unosi iz bota u poslednja 24 h (isti dnevnik kao /ponisti), od najstarijeg ka najnovijem
@@ -5894,7 +5916,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function tgCandidates(kind){
     const mKey = currentMonthKey();
     if(kind === 'paid' || kind === 'skip')
-      return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey }).items
+      return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey, amountOf: recurringAmountNow }).items
         .filter(i=> kind === 'paid' || i.kind === 'recurring').map(i=> ({ id: i.id, name: i.desc, targetKind: i.kind, amount: i.amount }));
     if(kind === 'paidAll') return recurring.filter(r=> r.type === 'expense' && C.isDueInMonth(r, mKey) && !(r.until && r.until < mKey))
       .map(r=> ({ id: r.id, name: r.desc, targetKind: 'recurring', amount: recurringAmountNow(r) }));
@@ -5904,7 +5926,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return [];
   }
   // ime i iznos u predlogu su **podebljani** (Telegram bold)
-  const tgB = v => '**' + v + '**';
+  const tgB = v => '**' + String(v).replace(/\*/g, '∗') + '**';
   function tgProposalText(x){
     switch(x.kind){
       case 'add': return t('Upisati: {0} · {1} · {2}?', (x.draft.type === 'income' ? t('Prihod') + ': ' : '') + tgB(x.draft.desc), tgB(fmt(x.draft.amount)), x.draft.category || '—');
@@ -5914,7 +5936,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       case 'goalPay': return t('Uplatiti {0} u cilj {1}?', tgB(fmt(x.amount)), tgB(x.label));
       case 'shopAdd': return t('Dodati na spisak: {0}?', tgB(x.items.join(', ')));
       case 'shopDone': return t('Štiklirati: {0}?', tgB(x.items.join(', '))) + (x.missing && x.missing.length ? '\n' + t('Nisam našao: {0}', x.missing.join(', ')) : '');
-      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', tgB(x.label), fmt(x.oldAmount), tgB(x.amount != null ? fmt(x.amount) : x.newDesc));
+      case 'editLast': return t('Izmeniti {0}: {1} → {2}?', tgB(x.label), fmt(x.oldAmount), tgB(fmt(x.amount)));
       case 'deleteLast': return t('Obrisati: {0} ({1})?', tgB(x.label), fmt(x.amount));
     }
     return '';
@@ -5925,7 +5947,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'paid' || x.kind === 'skip'){ x.userAmount = x.kind === 'paid' && !!a.amount; x.amount = x.userAmount ? a.amount : rec ? suggestedPayAmount(rec) : c.amount; }
     if(x.kind === 'debtPay'){ x.rest = c.amount; if(a.amount) x.amount = Math.min(a.amount, c.amount); else x.needAmount = true; }
     if(x.kind === 'goalPay' && !a.amount) x.needAmount = true;
-    if(x.kind === 'editLast'){ x.oldAmount = c.amount; if(a.amount) x.amount = a.amount; else { x.amount = null; x.newDesc = a.target; } }
+    if(x.kind === 'editLast'){ x.oldAmount = c.amount; if(a.amount) x.amount = a.amount; else x.needAmount = true; }
     if(x.kind === 'deleteLast') x.amount = c.amount;
   }
   async function tgPropose(a, text, p){
@@ -5949,12 +5971,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       let cands = tgCandidates(a.kind);
       const last = a.kind === 'editLast' || a.kind === 'deleteLast';
       let m;
-      if(last && !(a.kind === 'deleteLast' && a.target) && !(a.kind === 'editLast' && a.amount && a.target)) m = cands.length ? { match: cands[cands.length - 1] } : { none: true };
+      if(last && !a.target) m = cands.length ? { match: cands[cands.length - 1] } : { none: true };
       else m = C.matchActionTarget(a.target, cands);
       // "poslednji": medju jednako dobrim pogocima uzmi najnoviji
       if(last && m.choices){ const ids = m.choices.map(c=> c.id); m = { match: cands.filter(c=> ids.includes(c.id)).pop() }; }
       if(a.kind === 'paid'){ const ids = new Set(cands.map(c=> c.id)); cands = cands.concat(tgCandidates('paidAll').filter(c=> !ids.has(c.id))); m = C.matchActionTarget(a.target, cands); }
-      if(m.none) return tgReply(last ? t('Nema unosa iz bota u poslednja 24 sata.') : t('Nisam našao „{0}“.', a.target));
+      if(m.none) return tgReply(last && !a.target ? t('Nema unosa iz bota u poslednja 24 sata.') : last ? t('Nisam našao „{0}“ među unosima iz bota (poslednja 24 sata).', a.target) : t('Nisam našao „{0}“.', a.target));
       if(m.choices){
         x.choices = m.choices.map(c=> cands.find(k=> k.id === c.id)); x.req = { amount: a.amount, target: a.target };
         tgPropPut(x);
@@ -6038,10 +6060,13 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(x.kind === 'editLast'){
       const e = entries.find(y=> y.id === x.targetId);
       if(!e) return { already: true };
-      const prev = { amount: e.amount, desc: e.desc };
-      if(x.amount != null) e.amount = x.amount; else e.desc = x.newDesc;
+      if(!(x.amount > 0)) return { already: true };
+      const prev = { amount: e.amount, desc: e.desc }, round = e.type === 'expense' ? { from: e.amount, to: x.amount } : null;
+      if(e.origAmount && e.currency && e.currency !== 'RSD' && e.amount > 0){ prev.origAmount = e.origAmount; e.origAmount = C.round2(e.origAmount * x.amount / e.amount); }
+      if(round){ unapplyRoundUpSaving(round.from); applyRoundUpSaving(round.to); }
+      e.amount = x.amount;
       saveEntries();
-      return { text: t('Izmenjeno: {0} · {1}', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev } };
+      return { text: t('Izmenjeno: {0} · {1}', e.desc, fmt(e.amount)), ids: [], act: { kind: 'entryEdit', id: e.id, prev, round } };
     }
     if(x.kind === 'warranty'){
       const entry = entries.find(y=> y.id === x.targetId);
@@ -6049,7 +6074,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(!item || item.has) return { already: true };
       const d = addWarrantyDocs([{ entry, item }], 24)[0];
       if(!d) return { already: true };
-      return { text: t('Garancija: {0}, do {1}', d.title, fmtDocDate(C.documentExpiry(d))), ids: [], act: { kind: 'doc', id: d.id } };
+      return { text: t('Garancija: {0}, do {1}', d.title, fmtDocDate(C.documentExpiry(d))), ids: [], act: { kind: 'doc', id: d.id, snap: JSON.stringify(d) } };
     }
     if(x.kind === 'deleteLast'){
       const e = entries.find(y=> y.id === x.targetId);
@@ -6118,7 +6143,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!C.morningDue(Object.assign({}, cfg, { now: nowIso }))) return { replies: [] };
     const today = nowIso.slice(0, 10);
     cfg.last = today; tgMorningSave(cfg);
-    const m = C.morningReminderItems({ recurring, entries, applied, skipped, documents, today, amountOf: r=> suggestedPayAmount(r) });
+    const m = C.morningReminderItems({ recurring, entries, applied, skipped, documents, today, amountOf: (r, mKey)=> suggestedPayAmount(r, mKey) });
     if(!C.morningHasItems(m)) return { replies: [] };
     const line = i => `• ${i.desc} — ${fmt(i.amount)}`;
     const head = (icon, txt) => `${icon} **${txt}**`;
@@ -6130,12 +6155,12 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(m.yearly.length) parts.push([head('📅', t('Uskoro (godišnji)'))].concat(m.yearly.map(y=> `• ${y.desc} — ${fmt(y.amount)}, ${fmtDocDate(y.date)}`)).join('\n'));
     // dugme po stavci koja se placa: klik odmah oznacava placeno (isti put kao naredba), vazi do kraja dana
     const until = new Date(); until.setHours(23, 59, 59, 999);
-    const buttons = m.today.concat(m.tomorrow, m.overdue).slice(0, 8).map(i=>{
+    const buttons = m.overdue.concat(m.today, m.tomorrow).slice(0, 8).map(i=>{
       const x = { id: newId(), created: Date.now(), until: until.getTime(), kind: 'paid', targetId: i.id, targetKind: i.kind, mKey: i.mKey, label: i.desc, amount: i.amount, userAmount: false, reminder: true, state: 'open' };
       tgPropPut(x);
-      return [{ text: '✓ ' + String(i.desc).slice(0, 40), data: 'c:' + x.id }];
+      return [{ text: '✓ ' + String(i.desc).slice(0, 32) + ' · ' + fmt(i.amount), data: 'c:' + x.id }];
     });
-    return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined }] };
+    return { replies: [{ text: parts.join('\n\n'), buttons: buttons.length ? buttons : undefined, nackKey: 'morning' }] };
   }
   if(IS_TEST) window.__tgMorning = iso => tgMorning(iso);
   // ---- Mesecni rezime: prethodni mesec, iz istih brojki kao Mesecni pregled (bez AI-ja) ----
@@ -6151,7 +6176,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(!r.income && !r.expense) return { replies: [] };
     const [y, mo] = prev.split('-').map(Number);
     const name = new Date(y, mo - 1, 1).toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' });
-    const B = v => '**' + v + '**';
+    const B = tgB;
     const head = [`📊 ${B(name.charAt(0).toUpperCase() + name.slice(1))}`, t('Prihodi: {0}', fmt(r.income))];
     const pct = r.expensePct != null && Math.abs(r.expensePct) >= 5 ? ' (' + t(r.expensePct > 0 ? '{0}% više od proseka' : '{0}% manje od proseka', Math.abs(r.expensePct)) + ')' : '';
     head.push(t('Rashodi: {0}', fmt(r.expense)) + pct);
@@ -6168,10 +6193,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(n) parts.push('⚠️ ' + t('Ostalo neplaćeno: {0}, {1}', t(n === 1 ? '{0} stavka' : '{0} stavki', n), fmt(r.unpaidTotal)));
     // korpa je dodatak: greska u njoj ne sme da obori ceo rezime
     try{
-      const basket = [3, 1].map(m=> C.basketInflation(entries, nowIso.slice(0, 10), m)).find(b=> b.enough);
+      const ph = C.priceHistory(entries);
+      const basket = [3, 1].map(m=> C.basketInflation(entries, nowIso.slice(0, 10), m, ph)).find(b=> b.enough);
       if(basket) parts.push('🛒 ' + t('Korpa: {0} za {1} ({2})', pctTxt(basket.pct), monthsTxt(basket.months), itemsTxt(basket.count)));
     } catch(e){ /* bez reda o korpi */ }
-    return { replies: [{ text: parts.join('\n\n') }] };
+    return { replies: [{ text: parts.join('\n\n'), nackKey: 'monthly' }] };
+  }
+  // Telegram nije primio podsetnik/rezime -> ponovo pri sledecem otkucaju
+  async function tgNack(keys){
+    const today = toISODateLocal(new Date());
+    const retry = (c, save)=>{ const n = c.retryDay === today ? (c.retries || 0) : 0; if(n >= 5) return; c.retryDay = today; c.retries = n + 1; c.last = ''; save(c); };   // najvise 5 puta dnevno
+    if((keys || []).includes('morning')) retry(tgMorningCfg(), tgMorningSave);
+    if((keys || []).includes('monthly')) retry(tgMonthlyCfg(), tgMonthlySave);
   }
   if(IS_TEST) window.__tgMonthly = iso => tgMonthly(iso);
   async function tgTick(){
@@ -6874,7 +6907,9 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const items = C.warrantyItems(e, documents);
     if(items.length > 1) return openWarrantyPicker(items.map(item=> ({ entry: e, item })), { title: t('Garancija za artikle'), checked: false });
     const first = items[0] ? items[0].name : '';
-    openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).slice(), entryId: e.id, fiscalUrl: e.fiscalUrl } });
+    const open = ()=> openDocReview({ prefill: { kind: 'garancija', title: first || e.desc, group: 'Tehnika', issued: e.date, warrantyMonths: 24, vendor: e.desc, files: (e.attachments || []).filter(n=> !isSlipAttachment(n)), entryId: e.id, fiscalUrl: e.fiscalUrl } });
+    if(items[0] && items[0].has) return appConfirm(t('Za ovaj artikal već postoji garancija. Napraviti još jednu?')).then(ok=>{ if(ok) open(); });
+    open();
   }
   // garancije za izabrane artikle (jedna po artiklu): naziv artikla, datum racuna, prodavnica, link racuna, slika racuna
   function addWarrantyDocs(pairs, months){
@@ -7107,8 +7142,8 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const a = b && b.amount > 0 ? billAmountRsd(b) : null;
     return a ? a.amount : null;
   };
-  const suggestedPayAmount = r => {
-    const fromBill = linkedBillAmount(r);
+  const suggestedPayAmount = (r, mKey) => {
+    const fromBill = linkedBillAmount(r, mKey);
     if(fromBill != null) return fromBill;
     if(!r.debtId) return recurringAmountNow(r);
     const d = debts.find(x=> x.id === r.debtId);
@@ -7164,7 +7199,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     return C.pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonthKey());
   }
   function pendingForMonth(mKey){
-    return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: currentMonthKey() });
+    return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: currentMonthKey(), amountOf: recurringAmountNow });
   }
   if(IS_TEST) window.__pendingForMonth = pendingForMonth;
   function renderSummary(){
@@ -8137,7 +8172,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   const pctTxt = v => (v > 0 ? '+' : v < 0 ? '−' : '') + fmtNum(Math.abs(v), 1) + '%';
   const itemsTxt = n => t(n % 10 === 1 && n % 100 !== 11 ? '{0} artikal' : (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 12 || n % 100 > 14)) ? '{0} artikla' : '{0} artikala', n);
   function basketCardHtml(){
-    const r = C.basketInflation(entries, toISODateLocal(new Date()), basketMonths);
+    const r = C.basketInflation(entries, toISODateLocal(new Date()), basketMonths, shopPriceHistory());
     const periods = [1, 3, 6, 12].map(m=> `<button class="btn-secondary basket-m${m === basketMonths ? ' active' : ''}" data-m="${m}">${m === 1 ? t('1m') : m + 'm'}</button>`).join('');
     const row = x => `<div class="basket-row"><span class="shop-name" translate="no">${escapeHtml(x.name)}</span><span class="muted">${unitPriceTxt(x.base, x.unit)} → ${unitPriceTxt(x.cur, x.unit)}</span><span class="shop-price-change ${x.pct > 0 ? 'up' : 'down'}">${pctTxt(x.pct)}</span></div>`;
     const body = !r.enough
@@ -11177,7 +11212,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     }
   }
   function buildBackupData(){
-    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, payday, shopping, locations, billTypes, bills, documents, exportedAt: new Date().toISOString() };
+    return { entries, accounts, expenseCats, incomeCats, limits, recurring, applied, goals, catColors, skipped, debts, monthlyBudget, healthHistory, envelopeState, catRules, savedScenarios, fixedCategories, payday, shopping, locations, billTypes, bills, documents, hiddenSubsDismissed: hiddenSubsDismissed(), exportedAt: new Date().toISOString() };
   }
   // Preuzimanje JSON rezervne kopije — koristi se i za dugme za izvoz i pre rizičnih radnji (npr. uvoz Excela u browseru).
   function downloadBackupJson(){
@@ -11297,6 +11332,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       payday: cleanPayday(data.payday),
       shopping: ('shopping' in data) ? C.normalizeShopping(data.shopping, newId) : null,
       ...(Array.isArray(data.documents) ? { documents: C.cleanDocuments(data.documents) } : {}),
+      ...(Array.isArray(data.hiddenSubsDismissed) ? { hiddenSubsDismissed: data.hiddenSubsDismissed.filter(x=> typeof x === 'string').slice(0, 500) } : {}),
       ...(()=>{ // kucni racuni: vrste zavise od lokacija, racuni od vrsta
         if(!('locations' in data)) return {};
         const locs = C.cleanLocations(data.locations, CURRENCIES), types = C.cleanBillTypes(data.billTypes, locs.map(l=> l.id));
@@ -11305,6 +11341,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     };
   }
   if(IS_TEST) window.__sanitizeImportedBackup = sanitizeImportedBackup;
+  if(IS_TEST) window.__buildBackupData = () => buildBackupData();
   if(IS_TEST) window.__itemArraysFromCells = itemArraysFromCells;
   if(IS_TEST) window.__addEntriesRaw = list => { entries.push(...list); saveEntries(); invalidate(); };
 
@@ -11350,6 +11387,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         if(data.shopping) shopping = data.shopping;
         if(data.locations){ locations = data.locations; billTypes = data.billTypes; bills = data.bills; saveBillsState(); }
         if(data.documents){ documents = data.documents; saveDocuments(); }
+        if(data.hiddenSubsDismissed) localStorage.setItem(HIDDEN_SUBS_KEY, JSON.stringify(data.hiddenSubsDismissed));
         saveEntries(); saveAccounts(); saveCats(); saveIncomeCats(); saveLimits(); saveRecurring(); saveApplied(); saveGoals(); saveCatColors(); saveSkipped(); saveDebts(); saveMonthlyBudget(); saveHealthHistory(); saveEnvelopeState(); saveCatRules(); saveSavedScenarios(); saveFixedCategories(); saveShopping();
         populateAccountSelects();
         document.getElementById('monthlyBudgetInput').value = monthlyBudget > 0 ? monthlyBudget : '';
@@ -12587,7 +12625,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       }
     };
     // Telegram bot: glavni proces prosledjuje poruke ovde (vidi app/telegram.js)
-    window.__telegramBridge = { handle: tgHandle, tick: tgTick };
+    window.__telegramBridge = { handle: tgHandle, tick: tgTick, nack: tgNack };
   }
 })();
 </script>

@@ -362,3 +362,33 @@ test('telegram: bez formata se ponavlja samo kad Telegram odbije HTML (ne na 429
   assert.equal(edits[0].parse_mode, 'HTML'); assert.equal(edits[1].parse_mode, undefined);
   assert.equal(edits[1].text, 'B 2'); assert.equal(edits[1].reply_markup.inline_keyboard[0][0].callback_data, 'u:1');
 });
+
+test('telegram: meni komandi se salje ponovo kad se promeni jezik', async () => {
+  let lang = 'sr';
+  const { api, calls } = setup({ extra: { T: s => lang === 'en' ? 'EN ' + s : s } });
+  await api.setToken(TOKEN);
+  await api.pollOnce(); await api.pollOnce();
+  lang = 'en';
+  await api.pollOnce();
+  const sent = calls.filter(c => c.method === 'setMyCommands');
+  assert.equal(sent.length, 2);
+  assert.match(sent[1].body.commands[0].description, /^EN /);
+});
+
+test('telegram: odgovor iz otkucaja koji nije isporucen javlja se nazad (nack), da se posalje ponovo', async () => {
+  const nacked = [];
+  const { api, settings, queue, reply } = setup({ settings: { telegramChatId: 77 }, tick: async () => ({ replies: [{ text: 'jutro', nackKey: 'morning' }, { text: 'ok', nackKey: 'monthly' }] }), extra: { nack: async keys => { nacked.push(...keys); } } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [{ ok: false, status: 429, json: async () => ({ ok: false, parameters: { retry_after: 1 } }) }, reply('sendMessage', { message_id: 5 })];
+  await api.pollOnce();
+  assert.deepEqual(nacked, ['morning']);
+});
+
+test('telegram: trajna greska slanja (403) ne vraca podsetnik u red — samo prolazne (mreza, 429, 5xx)', async () => {
+  const nacked = [];
+  const { api, settings, queue, reply } = setup({ settings: { telegramChatId: 77 }, tick: async () => ({ replies: [{ text: 'jutro', nackKey: 'morning' }] }), extra: { nack: async keys => { nacked.push(...keys); } } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [{ ok: false, status: 403, json: async () => ({ ok: false, description: 'Forbidden: bot was kicked' }) }];
+  await api.pollOnce();
+  assert.deepEqual(nacked, []);
+});

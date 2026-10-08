@@ -642,6 +642,8 @@
     'Korpa: {0} za {1} ({2})': 'Basket: {0} over {1} ({2})',
     'Možda su pretplate': 'Possible subscriptions', 'Ovi rashodi se ponavljaju svakog meseca, a nisu u ponavljajućim stavkama. Kad dodaš pretplatu, ubuduće je samo štikliraj ovde — nemoj je upisivati i ručno.': 'These expenses repeat every month but are not in your recurring items. Once you add a subscription, just tick it here from then on — don’t also enter it by hand.',
     '{0} mesečno, oko {1}. ({2})': '{0} monthly, around day {1} ({2})', 'Nije pretplata': 'Not a subscription', 'Pretplata dodata: {0}. Ubuduće je štikliraj u Ponavljajućim umesto ručnog unosa.': 'Subscription added: {0}. From now on, tick it in Recurring instead of entering it by hand.',
+    'AI nije podešen (Podešavanja → AI čitanje računa).': 'AI is not set up (Settings → AI receipt reading).', 'Nisam našao „{0}“ među unosima iz bota (poslednja 24 sata).': 'I couldn’t find “{0}” among the bot’s entries (last 24 hours).',
+    'garancija je u međuvremenu menjana, ostala je u Dokumentima': 'the warranty was edited meanwhile and stays in Documents', 'Za ovaj artikal već postoji garancija. Napraviti još jednu?': 'This item already has a warranty. Create another one?',
     'Sutra': 'Tomorrow', 'Kasni': 'Overdue', 'Uskoro (godišnji)': 'Coming up (yearly)', '{0} ističe danas': '{0} expires today', '{0} ističe za {1}': '{0} expires in {1}',
     'Token bota': 'Bot token',
     'Sačuvaj token': 'Save token',

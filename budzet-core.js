@@ -609,7 +609,7 @@
   }
   // ---------- Skrivene pretplate: rashodi koji se ponavljaju svakog meseca, a nisu u Ponavljajucim ----------
   // Kljuc opisa: bez reci sa ciframa (SPOTIFY P1A2 = Spotify), bez dijakritika i interpunkcije
-  const subscriptionKey = desc => foldText(desc).split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+  const subscriptionKey = desc => foldText([...String(desc == null ? '' : desc)].map(ch => CYR[ch] || ch).join('')).split(/\s+/).filter(w => w && !/\d/.test(w)).join(' ').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
   function findHiddenSubscriptions(o){
     const cur = String(o.today).slice(0, 7), prev = addMonths(cur, -1);
     const known = new Set((o.recurring || []).map(r => subscriptionKey(r.desc)).filter(Boolean));
@@ -632,7 +632,7 @@
       if(!lastM) return;
       const run = [];
       for(let m = lastM; byMonth.has(m); m = addMonths(m, -1)) run.push(m);
-      if(run.length < 3 || run.some(m => byMonth.get(m).length > 1)) return;   // jednom mesecno
+      if(run.length < 3 || run.slice(0, 3).some(m => byMonth.get(m).length > 1)) return;   // jednom mesecno (poslednja 3 meseca; stari dupli mesec ne blokira)
       const last3 = run.slice(0, 3).map(m => byMonth.get(m)[0].amount);
       if(Math.max(...last3) > Math.min(...last3) * 1.15) return;
       const latest = byMonth.get(run[0])[0];
@@ -861,6 +861,7 @@
   // bez rata koje su vec u expense — zasebno, jer se dug ne vraca nuzno ovog meseca.
   function pendingForMonth(o){
     const { entries = [], recurring = [], applied, skipped, debts = [], mKey, currentMonth } = o;
+    const amountOf = o.amountOf || (r => r.amount);   // stranica: danasnji kurs za stavke u stranoj valuti
     const isCur = mKey === currentMonth;
     const direct = entries.filter(e => e.type === 'expense' && e.paid === false && (isCur ? e.date.slice(0, 7) <= mKey : e.date.slice(0, 7) === mKey));
     const recItems = pendingRecurringItems(recurring, entries, applied, skipped, mKey, currentMonth);
@@ -869,8 +870,8 @@
     const left = {};
     if(isCur) debts.filter(d => d.direction === 'i_owe').forEach(d => { left[d.id] = round2(Math.max(0, d.amount - debtPaid(d, entries))); });
     const recAmount = r => {
-      if(!(r.debtId in left)) return r.amount;
-      const a = Math.min(r.amount, left[r.debtId]);
+      if(!(r.debtId in left)) return amountOf(r);
+      const a = Math.min(amountOf(r), left[r.debtId]);
       left[r.debtId] = round2(left[r.debtId] - a);
       return a;
     };
@@ -886,7 +887,7 @@
     return {
       items, debtItems,
       expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recSum),
-      income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0)),
+      income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + amountOf(r), 0)),
       count: direct.length + recExpense.length,
       debt: round2(debt), debtCount
     };
@@ -960,7 +961,7 @@
 
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
   // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
-  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d[^()]*\))+\s*$/, '').replace(/\s+/g, ' ').trim();
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d[\d.,]*(?:\s+[A-Za-zČĆŠŽĐčćšžđ]{1,6}|(?:kom|kos|kg|gr|g|lit|ml|l|pak))\.?\))+\s*$/i, '').replace(/\s+/g, ' ').trim();
   const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
   // Preimenovana stavka liste (aliases = stara imena): kupovine pod starim imenom pripadaju njoj; stavka koja se bas tako zove ima prednost
   function aliasOwners(shoppingItems, keyFn){
@@ -1789,6 +1790,7 @@
     const items = entry && Array.isArray(entry.items) ? entry.items : [];
     const prices = Array.isArray(entry && entry.itemPrices) && entry.itemPrices.length === items.length ? entry.itemPrices : [];
     const qty = Array.isArray(entry && entry.itemQty) && entry.itemQty.length === items.length ? entry.itemQty : [];
+    if(!items.length) return [];
     const have = new Set((documents || []).filter(d => d && d.entryId === entry.id).map(d => foldText(d.title)));
     return items.map((label, i) => {
       const name = purchasedItemName(label), price = typeof prices[i] === 'number' ? prices[i] : null;
@@ -1862,7 +1864,7 @@
       'Ako pitanje nije o budžetu korisnika, vrati {"calls":[],"offTopic":true}.',
       ...(o.actions ? [
         'Ako korisnik traži IZMENU (ne pitanje), vrati "action" umesto proračuna: {"calls":[],"action":{"kind":"","target":"","amount":null,"items":[]}}. Inače "action": null.',
-        'kind: add (upiši rashod/prihod, target = ceo opis sa iznosom), paid (označi plaćeno), skip (preskoči ovaj mesec), debtPay (uplata na dug, target = osoba), goalPay (uplata u cilj), shopAdd (dodaj na spisak, items), shopDone (kupljeno, items), editLast (izmeni poslednji unos: amount ili target = novi opis), deleteLast (obriši poslednji unos).',
+        'kind: add (upiši rashod/prihod, target = ceo opis sa iznosom), paid (označi plaćeno), skip (preskoči ovaj mesec), debtPay (uplata na dug, target = osoba), goalPay (uplata u cilj), shopAdd (dodaj na spisak, items), shopDone (kupljeno, items), editLast (izmeni iznos unosa: target = koji unos, ako je naveden; amount = novi iznos), deleteLast (obriši poslednji unos).',
         'target je ime iz poruke, onako kako je napisano. Ne izmišljaj iznos.'] : []),
       ...askHistoryLines(o.history),
       'Pitanje: ' + String(o.question || '').slice(0, 500)].join('\n');
@@ -1962,10 +1964,10 @@
     // Telegram: pregledna poruka (spisak, prazan red izmedju celina, **podebljan** zbir -> bold u Telegramu)
     const look = o.style === 'telegram' ? [
       'Izgled poruke (Telegram, čitljivo na telefonu): prvi red je kratak zaključak sa ukupnim iznosom, sa jednim emoji na početku (npr. 💳, 🤝, 📊, 🎯).',
-      'Zatim spisak: jedna stavka po redu, u obliku "• naziv — 12.345 RSD", od najvećeg ka najmanjem. Bez dugih rečenica i bez ponavljanja brojeva u tekstu.',
+      'Zatim spisak: jedna stavka po redu, u obliku "• naziv — 12.345 RSD", redosledom iz rezultata (već su poređani). Bez dugih rečenica i bez ponavljanja brojeva u tekstu.',
       'Različite celine (npr. stavke za plaćanje i dugovi) odvoji praznim redom i kratkim naslovom sa emoji i zbirom.',
       'Ukupne iznose i naslove označi sa **dve zvezdice** (npr. **77.660 RSD**). Najviše oko 15 redova; ako je stavki više, navedi najveće i napiši koliko ih je još.',
-      'Zbirove NE računaj sam — prepiši ih iz rezultata (npr. total, debtsTotal) i poštuj napomene u rezultatu. Spiskove zadrži redosledom iz rezultata. Bez zaključnog reda na kraju i bez kurziva (jedna zvezdica).'] : [];
+      'Zbirove NE računaj sam — prepiši ih iz rezultata (npr. total, debtsTotal) i poštuj napomene u rezultatu. Bez zaključnog reda na kraju i bez kurziva (jedna zvezdica).'] : [];
     return ['Ti si pomoćnik za lični budžet. ' + lang + (o.style === 'telegram' ? ', pregledno' : ', kratko (do 8 rečenica)') + ', na osnovu REZULTATA ispod.',
       ...look,
       'Koristi samo brojeve iz rezultata; ne izmišljaj brojeve ni stavke. Iznose piši kao "12.345 RSD". Ako rezultati ne odgovaraju na pitanje, reci to.',
@@ -2027,11 +2029,13 @@
   // Licna inflacija: koliko je poskupela korpa artikala kupljenih i pre `months` meseci i sada (ista jedinica).
   // Stara cena = prosek oko tog datuma, nova = prosek poslednjih dana (prozor do 45 dana, kraci za 1 mesec da se ne preklapaju);
   // indeks ponderisan potrosnjom na artikal u poslednjih 12 meseci. Manje od 3 artikla -> enough:false.
-  function basketInflation(entries, today, months){
+  function basketInflation(entries, today, months, hist){
     const t0 = dayNumber(today), cutoff = dayNumber(addMonthsToDate(today, -months)), W = Math.min(45, Math.floor(months * 15));
     const yearAgo = t0 - 365, rows = [];
-    priceHistory(entries).forEach(h => {
-      const unit = h.obs[h.obs.length - 1].unit;
+    (hist || priceHistory(entries)).forEach(h => {
+      const upToNow = h.obs.filter(o => dayNumber(o.date) <= t0);   // pogresan buduci datum ne odredjuje jedinicu
+      if(!upToNow.length) return;
+      const unit = upToNow[upToNow.length - 1].unit;
       const obs = h.obs.filter(o => o.unit === unit);
       const oldObs = obs.filter(o => { const d = dayNumber(o.date); return d >= cutoff - W && d < cutoff + W && d < t0 - W; });
       const newObs = obs.filter(o => { const d = dayNumber(o.date); return d >= t0 - W && d <= t0; });
@@ -2352,13 +2356,14 @@
     const open = (r, mKey) => r.type !== 'income' && isDueInMonth(r, mKey) && !isRecurringPaid(o.applied, r, mKey)
       && !isRecurringSkipped(o.skipped, r, mKey) && !ids.has(recurringEntryId(r, mKey));
     const recAt = iso => { const mKey = iso.slice(0, 7), d = +iso.slice(8, 10);
-      return recurring.filter(r => open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, mKey, desc: r.desc || '', amount: round2(amountOf(r)) })); };
+      // automatsko placanje (autoPay) se samo upise na dan dospeca — ne javlja se za danas/sutra, samo ako je propusteno (kasni)
+      return recurring.filter(r => !r.autoPay && open(r, mKey) && effectiveDay(r.day, mKey) === d).map(r => ({ kind: 'recurring', id: r.id, mKey, desc: r.desc || '', amount: round2(amountOf(r, mKey)) })); };
     const unpaid = entries.filter(e => e.type === 'expense' && e.paid === false && /^\d{4}-\d{2}-\d{2}/.test(String(e.date || '')));
     const entAt = iso => unpaid.filter(e => e.date.slice(0, 10) === iso).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount) }));
     const byAmount = (a, b) => b.amount - a.amount;
     const curM = today.slice(0, 7), todayDay = +today.slice(8, 10);
     const overdue = recurring.filter(r => open(r, curM) && effectiveDay(r.day, curM) < todayDay)
-      .map(r => ({ kind: 'recurring', id: r.id, mKey: curM, desc: r.desc || '', amount: round2(amountOf(r)), days: todayDay - effectiveDay(r.day, curM) }))
+      .map(r => ({ kind: 'recurring', id: r.id, mKey: curM, desc: r.desc || '', amount: round2(amountOf(r, curM)), days: todayDay - effectiveDay(r.day, curM) }))
       .concat(unpaid.filter(e => e.date.slice(0, 10) < today).map(e => ({ kind: 'expense', id: e.id, desc: e.desc || '', amount: round2(e.amount), days: t0 - dayNumber(e.date.slice(0, 10)) })))
       .sort(byAmount);
     const out = { today: recAt(today).concat(entAt(today)).sort(byAmount), tomorrow: recAt(tomorrow).concat(entAt(tomorrow)).sort(byAmount), overdue };
