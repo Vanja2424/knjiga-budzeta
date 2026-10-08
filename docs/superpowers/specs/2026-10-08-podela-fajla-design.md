@@ -23,7 +23,7 @@ Granice JS delova su postojeći naslovi sekcija (`// ---- … ----`). Delovi su 
 
 ## Spajanje
 
-`app/scripts/build-web.js` čita `src/budzet-tracker.html` i svaki red `<!--@include X-->` zamenjuje tačnim sadržajem `src/X` (bajt po bajt, CRLF ostaje). Rezultat se upisuje u `E:\Vanja\budzet-tracker.html`. `copy-web` prvo poziva spajanje, pa `start`, `test`, `smoke`, `dist`, `release` uvek koriste svež fajl. Pregledačka verzija (`pokreni-budzet.bat`) i dalje otvara isti fajl u korenu.
+`app/scripts/build-web.js` čita `src/budzet-tracker.html` i svaki red `<!--@include X-->` zamenjuje tačnim sadržajem `src/X` (bajt po bajt, CRLF ostaje). Rezultat se upisuje u `E:\Vanja\budzet-tracker.html`. `copy-web` prvo poziva spajanje, pa `start`, `smoke`, `dist` i `release` koriste svež fajl. `npm test` namerno ne spaja: test pada ako koren nije spoj iz `src/` (posle izmene u `src/` pokreni `npm run copy-web` pre testa i commit-a). Pregledačka verzija (`pokreni-budzet.bat`) i dalje otvara isti fajl u korenu.
 
 Generisani fajl ne dobija dodatni komentar u prvoj verziji, da bi prvi rezultat bio bajt-identičan originalu; komentar „GENERISANO — menjaj src/“ dodaje se u šablon odmah posle provere identičnosti.
 
