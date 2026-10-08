@@ -149,12 +149,15 @@ function createTelegram({ fetch, safeStorage, getSettings, saveSettings, handle,
       const attempt = async (method, base) => {
         for (const v of variants) {
           try { await api(method, Object.assign({}, base, v)); return 'ok'; }
-          catch (e) { if (!(v.parse_mode && e && e.kind === 'http' && e.status === 400 && /entit|pars/i.test(e.message || ''))) return 'fail'; }
+          catch (e) {
+            if (v.parse_mode && e && e.kind === 'http' && e.status === 400 && /entit|pars/i.test(e.message || '')) continue;
+            return e && (e.kind === 'network' || e.kind === 'limit' || (e.kind === 'http' && e.status >= 500)) ? 'fail' : 'permanent';
+          }
         }
         return 'fail';
       };
       if (r.editMessageId && await attempt('editMessageText', { chat_id: chatId, message_id: r.editMessageId, reply_markup: markup(r.buttons) }) === 'ok') continue;
-      if (await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined }) !== 'ok') failed.push(r);
+      if (await attempt('sendMessage', { chat_id: chatId, reply_markup: r.buttons ? markup(r.buttons) : undefined }) === 'fail') failed.push(r);   // samo prolazna greska ide nazad u red
     }
     return failed;
   }

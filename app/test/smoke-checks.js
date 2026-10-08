@@ -1440,6 +1440,9 @@
       const tvRec = JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1') || '[]').find(r => r.desc === 'Smoketv');
       if (tvRec) window.__markRecurringPaid(tvRec.id);
       const tvE = tvRec && JSON.parse(localStorage.getItem('budzet-stavke-v2')).find(e => e.id === 'rec-' + tvRec.id + '-' + curS);
+      if (tvRec) window.__togglePaid(tvRec.id, false);
+      const tvE2 = tvRec && JSON.parse(localStorage.getItem('budzet-stavke-v2')).find(e => e.id === 'rec-' + tvRec.id + '-' + curS);
+      check('sitnice: odštikliranje vraća postojeći rashod na neplaćen (ne briše ga)', !!tvE2 && tvE2.paid === false && tvE2.amount === 799, JSON.stringify(tvE2));
       check('sitnice: štikliranje pretplate označava i postojeći neplaćen rashod plaćenim', !!tvE && tvE.paid !== false, JSON.stringify({ tvE, tvRec: !!tvRec, row: !!rowOf('Smoketv'), btn: !!tvAdd, panel: panel() && panel().textContent.replace(/\s+/g, ' ').slice(0, 150), core: window.BudzetCore.findHiddenSubscriptions({ entries: JSON.parse(localStorage.getItem('budzet-stavke-v2')), recurring: JSON.parse(localStorage.getItem('budzet-ponavljajuce-v1')), today: todayS, dismissed: [] }).map(x => x.key), tv: JSON.parse(localStorage.getItem('budzet-stavke-v2')).filter(e => e.desc === 'Smoketv').map(e => e.date + ':' + e.paid) }));
       if (tvRec) { const R = window.__recurringRaw; const list = R.list(); const i = list.findIndex(r => r.id === tvRec.id); if (i >= 0) list.splice(i, 1); const a = R.applied(); if (a[curS]) a[curS] = a[curS].filter(x => x !== tvRec.id); R.save(); }
       window.__deleteEntriesById(unp.map(e => e.id).concat(tvRec ? ['rec-' + tvRec.id + '-' + curS] : []));
@@ -2195,6 +2198,13 @@
       const n0 = ents().length;
       const g2 = await B.handle({ update_id: 900302, kind: 'text', text: '/nov idemo večeras u bioskop?', group: true, from: ana });
       check('telegram grupa: /nov bez iznosa i u grupi kaže šta fali', /iznos/i.test((g2.replies[0] || {}).text || '') && ents().length === n0, JSON.stringify(g2));
+      await B.handle({ update_id: 900310, kind: 'text', text: '/nov', group: true, from: ana });
+      const nG = ents().length;
+      window.__fakeAsk = async () => ({ ok: true, content: JSON.stringify({ calls: [], action: null, offTopic: true }) });
+      await B.handle({ update_id: 900311, kind: 'text', text: 'vidimo se u 8', group: true, from: { id: 6, name: 'Vanja' } });
+      await B.handle({ update_id: 900312, kind: 'text', text: 'vidimo se u 8', group: true, from: ana });
+      window.__fakeAsk = null;
+      check('sitnice: posle praznog /nov ćaskanje u grupi ne postaje rashod', ents().length === nG, JSON.stringify(ents().slice(-1)));
       const g3 = await B.handle({ update_id: 900303, kind: 'text', text: '/nov idemo večeras u bioskop?', group: false, from: ana });
       check('telegram privatno: bez iznosa i dalje objašnjava', /iznos/i.test((g3.replies[0] || {}).text || ''));
       const png = await new Promise(r => { const c = document.createElement('canvas'); c.width = 40; c.height = 40; c.getContext('2d').fillRect(0, 0, 40, 40); c.toBlob(b => b.arrayBuffer().then(a => r(new Uint8Array(a))), 'image/png'); });
@@ -2926,6 +2936,10 @@
       const ej = L('budzet-stavke-v2').find(e => e.id === addJ.ids[0]);
       check('jutro: dugme ne vraća ispravljen iznos rashoda', !!bj && !!ej && ej.paid !== false && ej.amount === 550, JSON.stringify(ej));
       window.__deleteEntriesById(addJ.ids);
+      localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: true, time: '09:00', last: '' }));
+      let sentN = 0;
+      for (let i = 0; i < 8; i++) { const mm = await window.__tgMorning(todayIso + 'T09:4' + i); if (mm.replies.length) sentN++; await window.__telegramBridge.nack(['morning']); }
+      check('sitnice: neisporučen podsetnik se ponavlja najviše 5 puta dnevno', sentN === 6, String(sentN));
       localStorage.setItem('budzet-telegram-jutro-v1', JSON.stringify({ on: false, time: '09:00', last: '' }));
       const m3 = await window.__tgMorning(todayIso + 'T09:30');
       check('jutro: isključen prekidač — ništa', !m3.replies.length);

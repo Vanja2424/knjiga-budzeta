@@ -887,7 +887,7 @@
     return {
       items, debtItems,
       expense: round2(direct.reduce((s, e) => s + e.amount, 0) + recSum),
-      income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + r.amount, 0)),
+      income: round2(recItems.filter(r => r.type === 'income').reduce((s, r) => s + amountOf(r), 0)),
       count: direct.length + recExpense.length,
       debt: round2(debt), debtCount
     };
@@ -961,7 +961,7 @@
 
   // ---------- Kupljene stvari (Nabavka -> Analiza, predlozi) ----------
   // Skida samo zagradu sa kolicinom na kraju ("(2 kom)", "(1,5 kg)") — "Hleb (crni)" ostaje ceo naziv
-  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d+(?:[.,]\d+)?\s*(?:kom|kos|kg|g|gr|l|lit|ml|pak)\.?\))+\s*$/i, '').replace(/\s+/g, ' ').trim();
+  const purchasedItemName = label => String(label == null ? '' : label).replace(/(?:\s*\(\d[\d.,]*(?:\s+[A-Za-zČĆŠŽĐčćšžđ]{1,6}|(?:kom|kos|kg|gr|g|lit|ml|l|pak))\.?\))+\s*$/i, '').replace(/\s+/g, ' ').trim();
   const purchasedItemKey = label => normShoppingName(purchasedItemName(label));
   // Preimenovana stavka liste (aliases = stara imena): kupovine pod starim imenom pripadaju njoj; stavka koja se bas tako zove ima prednost
   function aliasOwners(shoppingItems, keyFn){

@@ -4508,10 +4508,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const entryId = recurringEntryId(r, mKey);
     const existing = entries.find(e => e.id === entryId);
     if(!existing) entries.push(recurringEntry(r, mKey, (typeof amount === 'number' && amount > 0) ? amount : undefined));
-    else if(existing.paid === false){ existing.paid = true; if(typeof amount === 'number' && amount > 0) existing.amount = amount; }
+    else if(existing.paid === false){ existing.wasUnpaid = { amount: existing.amount }; existing.paid = true; if(typeof amount === 'number' && amount > 0) existing.amount = amount; }
     if(linkedBill && linkedBill.entryId !== entryId){ linkedBill.entryId = entryId; saveBillsState(); }
     return entryId;
   }
+  // rashod koji je postojao pre stikliranja (bio neplacen): vrati ga na neplacen umesto brisanja
+  function restoreWasUnpaid(entryId){
+    const e = entries.find(x=> x.id === entryId);
+    if(!e || !e.wasUnpaid) return false;
+    e.amount = e.wasUnpaid.amount; e.paid = false; delete e.wasUnpaid;
+    return true;
+  }
+  if(IS_TEST) window.__togglePaid = (rid, on) => { const r = recurring.find(x=> x.id === rid); if(r) togglePaid(r, on); };
   function togglePaid(r, checked, customAmount){
     const mKey = currentMonthKey();
     if(!applied[mKey]) applied[mKey] = [];
@@ -4521,7 +4529,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
       if(id){ playPaidSound(); justPaidId = r.id; }
     } else {
       applied[mKey] = applied[mKey].filter(id => id !== r.id);
-      entries = entries.filter(e => e.id !== entryId);
+      if(!restoreWasUnpaid(entryId)) entries = entries.filter(e => e.id !== entryId);
       if(r.autoPay) optOutAutoPay(r.id, mKey);
       playUnpaidSound();
     }
@@ -5778,7 +5786,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(a && a.kind === 'recPaid'){
       applied[a.mKey] = (applied[a.mKey] || []).filter(id=> id !== a.id);
       if(a.wasSkipped){ if(!skipped[a.mKey]) skipped[a.mKey] = []; if(!skipped[a.mKey].includes(a.id)) skipped[a.mKey].push(a.id); }
-      entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
+      if(!restoreWasUnpaid(a.entryId)) entries = entries.filter(e=> e.id !== a.entryId); saveApplied(); saveSkipped(); saveEntries();
     }
     if(a && a.kind === 'entryEdit'){ const e = entries.find(x=> x.id === a.id); if(e){ Object.assign(e, a.prev); if('paid' in a.prev && a.prev.paid === undefined) delete e.paid; if(a.round){ unapplyRoundUpSaving(a.round.to); applyRoundUpSaving(a.round.from); } saveEntries(); } }
     if(a && a.kind === 'skip'){ skipped[a.mKey] = (skipped[a.mKey] || []).filter(id=> id !== a.id); saveSkipped(); }
@@ -5818,7 +5826,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     const fiscalUrl = C.fiscalUrlFrom(text);
     if(fiscalUrl){ tgAwait = null; return tgFiscalLink(fiscalUrl, p); }
     const intent = C.telegramIntent(text);
-    const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS ? tgAwait : null;
+    const wait = tgAwait && Date.now() - tgAwait.at < TG_AWAIT_MS && (!tgAwait.from || !p || !p.from || tgAwait.from === p.from.id) ? tgAwait : null;
     if(intent.kind === 'command'){
       tgAwait = null;
       if(intent.command === 'ponisti'){
@@ -5826,7 +5834,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
         return tgReply(it ? t('↩ Poništeno: {0}', it.label) : t('Nema unosa iz Telegrama za poništavanje (poslednja 24 sata).'));
       }
       if(intent.command === 'nov'){
-        if(!intent.rest){ tgAwait = { kind: 'entry', at: Date.now() }; return tgReply(t('Šta da upišem? Npr. „kafa 250“.')); }
+        if(!intent.rest){ tgAwait = { kind: 'entry', at: Date.now(), from: p && p.from ? p.from.id : null }; return tgReply(t('Šta da upišem? Npr. „kafa 250“.')); }
         return tgEntry(intent.rest, p);
       }
       return tgReply(TG_HELP());
@@ -5834,16 +5842,18 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
     if(intent.kind !== 'question') return tgReply(TG_HELP());
     if(wait){
       tgAwait = null;
-      if(wait.kind === 'entry') return tgEntry(text, p);
+      if(wait.kind === 'entry') return tgEntry(text, p, { chatRules: true });
       if(wait.kind === 'amount' && /^\s*\d[\d.,\s]*\s*(rsd|din\.?|dinara)?\s*$/i.test(text)){ const n = C.parseAmount(text); if(n > 0 && n < 1e8) return tgProposalAmount(wait.proposalId, n, p); }
     }
     return tgAsk(text, p);
   }
   // Unos iz bota (/nov kafa 250): odmah upisuje, uz Ponisti
-  async function tgEntry(text, p){
+  async function tgEntry(text, p, opts){
+    const chat = !!(opts && opts.chatRules && p && p.group);   // poruka posle praznog /nov u grupi: caskanje se ne upisuje
     const data = window.__desktopBridge.getQuickAddData();
     const d = C.telegramEntryDraft(text, { today: toISODateLocal(new Date()), accounts: data.accounts || [], currencies: CURRENCIES.filter(c=> c !== 'RSD'),
-      rules: data.rules, history: data.history, expenseCats, incomeCats, group: false });   // /nov je izricit unos i u grupi
+      rules: data.rules, history: data.history, expenseCats, incomeCats, group: chat });   // /nov tekst je izricit unos i u grupi
+    if(d.error && chat) return { replies: [] };
     if(d.error === 'noamount') return tgReply(t('Nisam našao iznos — pošalji npr. „kafa 250“.'));
     if(d.error) return tgReply(t('Napiši i šta je, npr. „kafa 250“.'));
     const category = d.category || (d.type === 'expense' ? await tgAiCategory(d.desc) : null) || '';
@@ -5856,7 +5866,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   // Brojke za proracune iz bota (toPay, debts, accounts, goals, forecast) — racuna stranica, AI dobija samo rezultat
   function tgSnapshot(){
     const mKey = currentMonthKey();
-    const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey });
+    const pend = C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey, amountOf: recurringAmountNow });
     const bal = accounts.length ? accountBalances() : null;
     let fc = null;
     try{ const f = forecastNow(); fc = { startBalance: f.startBalance, lowest: f.lowest ? { date: f.lowest.date, balance: f.lowest.balance } : null, payday: f.payday ? { date: f.payday.date } : null, beforePayday: f.beforePayday ? { date: f.beforePayday.date, balance: f.beforePayday.balance } : null, firstNegative: f.firstNegative || null }; } catch(e){ fc = null; }
@@ -5906,7 +5916,7 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   function tgCandidates(kind){
     const mKey = currentMonthKey();
     if(kind === 'paid' || kind === 'skip')
-      return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey }).items
+      return C.pendingForMonth({ entries, recurring, applied, skipped, debts, mKey, currentMonth: mKey, amountOf: recurringAmountNow }).items
         .filter(i=> kind === 'paid' || i.kind === 'recurring').map(i=> ({ id: i.id, name: i.desc, targetKind: i.kind, amount: i.amount }));
     if(kind === 'paidAll') return recurring.filter(r=> r.type === 'expense' && C.isDueInMonth(r, mKey) && !(r.until && r.until < mKey))
       .map(r=> ({ id: r.id, name: r.desc, targetKind: 'recurring', amount: recurringAmountNow(r) }));
@@ -6191,8 +6201,10 @@ footer{ display:flex; flex-wrap:wrap; justify-content:center; gap:0.4em 1.2em; }
   }
   // Telegram nije primio podsetnik/rezime -> ponovo pri sledecem otkucaju
   async function tgNack(keys){
-    if((keys || []).includes('morning')){ const c = tgMorningCfg(); c.last = ''; tgMorningSave(c); }
-    if((keys || []).includes('monthly')){ const c = tgMonthlyCfg(); c.last = ''; tgMonthlySave(c); }
+    const today = toISODateLocal(new Date());
+    const retry = (c, save)=>{ const n = c.retryDay === today ? (c.retries || 0) : 0; if(n >= 5) return; c.retryDay = today; c.retries = n + 1; c.last = ''; save(c); };   // najvise 5 puta dnevno
+    if((keys || []).includes('morning')) retry(tgMorningCfg(), tgMorningSave);
+    if((keys || []).includes('monthly')) retry(tgMonthlyCfg(), tgMonthlySave);
   }
   if(IS_TEST) window.__tgMonthly = iso => tgMonthly(iso);
   async function tgTick(){

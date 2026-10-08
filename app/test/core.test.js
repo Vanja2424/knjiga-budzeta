@@ -2450,3 +2450,14 @@ test('sitnice C: Za placanje po danasnjem kursu, naziv artikla cuva specifikacij
   assert.deepEqual(C.findHiddenSubscriptions({ entries, recurring: [], today: '2026-10-20', dismissed: [] }).map(x => x.key), ['deezer']);
   assert.deepEqual(C.warrantyItems(null, [{ id: 'd', entryId: 'x', title: 'a' }]), []);
 });
+
+test('sitnice posle pregleda: naziv artikla skida svaku kolicinu koju aplikacija upise, ne (65W); prihod po danasnjem kursu', () => {
+  assert.equal(C.purchasedItemName('Čarape (2 PAR)'), 'Čarape');
+  assert.equal(C.purchasedItemName('Sok (3 FL)'), 'Sok');
+  assert.equal(C.purchasedItemName('Brašno (1.234,5 g)'), 'Brašno');
+  assert.equal(C.purchasedItemName('Mleko (2kom)'), 'Mleko');
+  assert.equal(C.purchasedItemName('Punjač (65W)'), 'Punjač (65W)');
+  assert.equal(C.purchasedItemName('Sok (narandža) (1 l)'), 'Sok (narandža)');
+  const p = C.pendingForMonth({ entries: [], recurring: [{ id: 'i', desc: 'Honorar', amount: 100, type: 'income', frequency: 'monthly', currency: 'EUR', origAmount: 1 }], applied: {}, skipped: {}, debts: [], mKey: '2026-10', currentMonth: '2026-10', amountOf: () => 117 });
+  assert.equal(p.income, 117);
+});

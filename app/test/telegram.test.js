@@ -383,3 +383,12 @@ test('telegram: odgovor iz otkucaja koji nije isporucen javlja se nazad (nack), 
   await api.pollOnce();
   assert.deepEqual(nacked, ['morning']);
 });
+
+test('telegram: trajna greska slanja (403) ne vraca podsetnik u red — samo prolazne (mreza, 429, 5xx)', async () => {
+  const nacked = [];
+  const { api, settings, queue, reply } = setup({ settings: { telegramChatId: 77 }, tick: async () => ({ replies: [{ text: 'jutro', nackKey: 'morning' }] }), extra: { nack: async keys => { nacked.push(...keys); } } });
+  await api.setToken(TOKEN); settings.telegramChatId = 77;
+  queue.sendMessage = [{ ok: false, status: 403, json: async () => ({ ok: false, description: 'Forbidden: bot was kicked' }) }];
+  await api.pollOnce();
+  assert.deepEqual(nacked, []);
+});
