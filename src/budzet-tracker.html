@@ -1,0 +1,1422 @@
+<!DOCTYPE html>
+<!-- GENERISANO iz src/ (app/scripts/build-web.js) — menjaj fajlove u src/, ne ovaj fajl -->
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Knjiga budžeta</title>
+<meta name="theme-color" content="#6366F1">
+<script>
+<!--@include glava.js-->
+</script>
+<link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxOTIgMTkyIj48cmVjdCB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgcng9IjQwIiBmaWxsPSIjNjM2NkYxIi8+PHRleHQgeD0iOTYiIHk9IjEzNCIgZm9udC1mYW1pbHk9IkFyaWFsLCBIZWx2ZXRpY2EsIHNhbnMtc2VyaWYiIGZvbnQtc2l6ZT0iMTE4IiBmb250LXdlaWdodD0iNzAwIiBmaWxsPSIjZmZmZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5LPC90ZXh0Pjwvc3ZnPgo=">
+<link rel="manifest" href="data:application/manifest+json;base64,eyJuYW1lIjoiS25qaWdhIGJ1ZMW+ZXRhIiwic2hvcnRfbmFtZSI6IkJ1ZMW+ZXQiLCJzdGFydF91cmwiOiIuL2J1ZHpldC10cmFja2VyLmh0bWwiLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMEYxMTE1IiwidGhlbWVfY29sb3IiOiIjNjM2NkYxIiwiaWNvbnMiOlt7InNyYyI6ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIWnBaWGRDYjNnOUlqQWdNQ0F4T1RJZ01Ua3lJajQ4Y21WamRDQjNhV1IwYUQwaU1Ua3lJaUJvWldsbmFIUTlJakU1TWlJZ2NuZzlJalF3SWlCbWFXeHNQU0lqTmpNMk5rWXhJaTgrUEhSbGVIUWdlRDBpT1RZaUlIazlJakV6TkNJZ1ptOXVkQzFtWVcxcGJIazlJa0Z5YVdGc0xDQklaV3gyWlhScFkyRXNJSE5oYm5NdGMyVnlhV1lpSUdadmJuUXRjMmw2WlQwaU1URTRJaUJtYjI1MExYZGxhV2RvZEQwaU56QXdJaUJtYVd4c1BTSWpabVptWm1abUlpQjBaWGgwTFdGdVkyaHZjajBpYldsa1pHeGxJajVMUEM5MFpYaDBQand2YzNablBnbz0iLCJzaXplcyI6ImFueSIsInR5cGUiOiJpbWFnZS9zdmcreG1sIiwicHVycG9zZSI6ImFueSJ9XX0K">
+<style>
+<!--@include stil/osnova.css-->
+</style>
+<style id="apple-theme">
+<!--@include stil/tema.css-->
+</style>
+</head>
+<body>
+<div class="titlebar no-print" id="titlebar">
+  <button class="tb-btn" id="tbMenuBtn" title="Meni">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h11M2.5 12h11"/></svg>
+  </button>
+  <span class="tb-logo">K</span>
+  <span class="tb-title">Knjiga budžeta</span>
+  <span class="tb-sep"></span>
+  <button class="tb-status" id="tbStatus" title="Status čuvanja — klikni za detalje">
+    <span class="tb-dot" id="tbDot"></span><span class="tb-status-text" id="tbStatusText"></span>
+  </button>
+  <div class="tb-update" id="tbUpdate" style="display:none;" role="status" aria-live="polite">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M4.5 6.5 8 10l3.5-3.5M3 13.5h10"/></svg>
+    <span id="tbUpdateText">Nova verzija</span>
+    <button class="tb-update-btn" id="tbUpdateNow">Ažuriraj sada</button>
+    <button class="tb-update-btn ghost" id="tbUpdateLater">Kasnije</button>
+  </div>
+</div>
+<div class="app-scroll" id="appScroll">
+<div class="shell">
+<aside class="sidebar no-print">
+  <div class="sb-brand"><span class="sb-appicon" id="sbAppIcon" aria-hidden="true">K</span>
+    <span class="sb-titles"><span class="sb-name">Knjiga budžeta</span><button type="button" class="sb-version" id="sbVersion" style="display:none;"></button></span>
+    <button class="sb-toggle" id="sidebarToggle" type="button" aria-expanded="true" title="Skupi bočni meni"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/></svg></button>
+  </div>
+  <nav class="tabs" aria-label="Glavni meni">
+    <button data-group="pregled" class="active" title="Pregled"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg><span class="tab-label">Pregled</span></button>
+    <button data-group="transakcije" title="Transakcije"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11"/><circle cx="4.75" cy="6" r="1.1"/><circle cx="4.75" cy="12" r="1.1"/><circle cx="4.75" cy="18" r="1.1"/></svg><span class="tab-label">Transakcije</span><span class="tab-badge" id="rashodiBadge" style="display:none;"></span></button>
+    <button data-group="budzet" title="Budžet"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3.6a8.5 8.5 0 1 0 9.4 9.4H11z"/><path d="M14 3.3a8.5 8.5 0 0 1 6.7 6.7H14z"/></svg><span class="tab-label">Budžet</span></button>
+    <button data-group="ciljevi" title="Ciljevi i dugovi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 21V3.5"/><path d="M5.5 4h12l-2.6 4.5 2.6 4.5h-12"/></svg><span class="tab-label">Ciljevi i dugovi</span></button>
+    <button data-group="izvestaji" title="Izveštaji"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20v-6.5M10 20V5M15 20v-9.5M20 20v-4"/></svg><span class="tab-label">Izveštaji</span></button>
+    <button data-group="kursevi" title="Kursevi"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h13.5M14 4.5 17.5 8 14 11.5"/><path d="M20 16H6.5M10 12.5 6.5 16l3.5 3.5"/></svg><span class="tab-label">Kursevi</span></button>
+    <button data-group="nabavka" title="Nabavka"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 5h2.2l2.1 10.2h10.4l1.9-7.2H7"/><circle cx="9.5" cy="19" r="1.3"/><circle cx="17" cy="19" r="1.3"/></svg><span class="tab-label">Nabavka</span></button>
+    <button data-group="dokumenti" title="Dokumenti"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M9 12.5h6M9 16h6"/></svg><span class="tab-label">Dokumenti</span></button>
+    <span class="sb-spacer"></span>
+    <button data-group="podesavanja" title="Podešavanja"><svg class="tab-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.5M18.5 7H20M4 17h3.5M12.5 17H20"/><circle cx="16" cy="7" r="2.3"/><circle cx="10" cy="17" r="2.3"/></svg><span class="tab-label">Podešavanja</span></button>
+  </nav>
+</aside>
+<div class="wrap">
+
+  <header class="page-header no-print">
+    <div class="page-title-block">
+      <h1 id="screenTitle">Pregled</h1>
+      <div class="date-line" id="todayLine"></div>
+    </div>
+    <div class="header-right">
+      <button class="toolbar-add" id="newEntryBtn" title="Novi unos (Ctrl+N)"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg><span id="newEntryLabel">Novi rashod</span></button>
+      <div class="period-bar" role="group" aria-label="Mesec">
+        <button class="period-btn" id="periodPrev" title="Prethodni mesec (Alt+←)" aria-label="Prethodni mesec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+        <div class="period-label" id="periodLabel" aria-live="polite"></div>
+        <button class="period-btn" id="periodNext" title="Sledeći mesec (Alt+→)" aria-label="Sledeći mesec"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+      </div>
+      <button class="period-today" id="periodToday" style="visibility:hidden;">Tekući mesec</button>
+      <button class="theme-toggle" id="themeToggle" title="Svetla / tamna tema" aria-label="Promeni temu"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor" stroke="none"/></svg></button>
+    </div>
+  </header>
+
+  <div class="summary no-print">
+    <div class="cell"><div class="label">Prihodi</div><div class="value income" id="totalIncome">0 RSD</div><div class="sub" id="incomeSub"></div></div>
+    <div class="cell"><div class="label">Rashodi</div><div class="value expense" id="totalExpense">0 RSD</div><div class="sub" id="expenseSub"></div></div>
+    <div class="cell"><div class="label">Za plaćanje</div><div class="value pending" id="pendingTotal">0 RSD</div><div class="sub" id="pendingSub"></div></div>
+    <div class="cell"><div class="label">Saldo meseca</div><div class="value balance" id="totalBalance">0 RSD</div><div class="sub" id="balanceSub"></div></div>
+  </div>
+  <nav class="subtabs no-print" id="subtabs" aria-label="Podmeni" style="display:none;"></nav>
+
+  <!-- PREGLED -->
+  <div class="screen active" id="screen-pregled">
+    <div class="panel doc-reminders" id="docReminders" style="display:none; margin-bottom:1.8em;"></div>
+    <div class="panel forecast-card" id="forecastCard" style="display:none; margin-bottom:1.8em;" role="button" tabindex="0"></div>
+
+    <div class="panel month-review" id="monthReviewPanel" style="display:none; margin-bottom:1.8em;">
+      <div class="month-review-head">
+        <h2 id="monthReviewTitle">Mesec iza tebe</h2>
+        <button class="icon-btn month-review-close" id="monthReviewClose" title="Zatvori" aria-label="Zatvori">✕</button>
+      </div>
+      <div id="monthReviewBody"></div>
+      <div class="month-review-actions" id="monthReviewActions"></div>
+    </div>
+
+    <div class="panel pregled-start" id="pregledStart" style="display:none; margin-bottom:1.8em;">
+      <h2>Počni ovde</h2>
+      <p class="hint" style="margin:0;">Još nema nijednog prihoda ni rashoda. Upiši prvu stavku ili dodaj ponavljajuće (plata, kirija, računi) — grafikoni i analiza se pojavljuju čim ima podataka.</p>
+      <div class="actions">
+        <button class="submit-btn neutral" id="pregledStartExpense" style="width:auto; margin-top:0;">Novi rashod</button>
+        <button class="btn-secondary" id="pregledStartIncome">Novi prihod</button>
+        <button class="btn-secondary" id="pregledStartRecurring">Ponavljajuće stavke</button>
+      </div>
+    </div>
+
+    <div class="panel" id="accountsOverviewPanel" style="display:none; margin-bottom:1.8em;">
+      <h2>Stanje na računima</h2>
+      <div class="accounts-grid" id="accountsOverview"></div>
+    </div>
+
+    <div class="panel needs-data" style="margin-bottom:1.8em;">
+      <h2>Finansijsko zdravlje</h2>
+      <div class="health-score-row">
+        <div class="health-score-wrap">
+          <div class="health-score-ring" id="healthScoreRing" role="img" aria-label="Finansijsko zdravlje"></div>
+          <div class="health-score-center">
+            <span class="health-score-num" id="healthScoreNum">—</span>
+            <span class="health-score-label" id="healthScoreLabel"></span>
+          </div>
+        </div>
+        <div class="health-breakdown" id="healthBreakdown"></div>
+        <svg id="healthTrendSvg" class="health-trend-svg" width="150" height="50" viewBox="0 0 150 50"></svg>
+      </div>
+      <div class="hint" id="healthRecommendation" style="margin-top:1em;"></div>
+    </div>
+
+    <div class="panel" id="envelopesPanel" style="display:none; margin-bottom:1.8em;">
+      <h2 id="envelopesTitle">Budžet</h2>
+      <div id="envelopesList"></div>
+      <button class="btn-secondary" id="envelopeSweepBtn" style="display:none; margin-top:1em;">Prebaci višak u cilj</button>
+    </div>
+
+    <div class="layout needs-data" style="margin-bottom:1.8em;">
+      <div class="panel">
+        <h2 id="monthCalendarTitle">Kalendar</h2>
+        <div class="mcal-grid compact" id="monthCalendarGrid"></div>
+        <div class="mcal-legend">
+          <span><i class="mcal-dot income"></i>Prihod</span>
+          <span><i class="mcal-dot expense"></i>Rashod</span>
+          <span><i class="mcal-dot due"></i>Dospeva</span>
+        </div>
+        <div class="hint" style="margin-top:0.5em;">Jača boja = veća potrošnja. Klikni na dan za detalje i brzi unos.</div>
+      </div>
+
+      <div class="panel chart-panel">
+        <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.6em; border-bottom:1px solid var(--paper-line); padding-bottom:0.7em; margin-bottom:1.3em;">
+          <h2 style="border-bottom:none; padding-bottom:0; margin-bottom:0;">Trend</h2>
+          <div class="trend-range-toggle">
+            <button class="trend-range-btn" data-range="6">6 meseci</button>
+            <button class="trend-range-btn" data-range="12">12 meseci</button>
+          </div>
+        </div>
+        <svg id="trendChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="trend-legend">
+          <span><i class="swatch" style="background:var(--pos);"></i>Prihodi</span>
+          <span><i class="swatch" style="background:var(--rust);"></i>Rashodi</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel chart-panel needs-data" style="margin-top:1.5em;">
+      <h2>Kretanje salda</h2>
+      <svg id="balanceChart" class="trend-svg" viewBox="0 0 760 130" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <div class="layout needs-data">
+      <div class="panel">
+        <h2 id="breakdownTitle">Rashodi po kategorijama</h2>
+        <div class="donut-wrap">
+          <svg id="donutChart" class="donut-svg" width="150" height="150" viewBox="0 0 150 150"></svg>
+          <div class="donut-legend" id="donutLegend"></div>
+        </div>
+        <div id="breakdown"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Analiza</h2>
+        <div id="insights"></div>
+        <h2 style="margin-top:1.6em;">Upozorenja</h2>
+        <div id="warnings"></div>
+        <div id="recurringSuggestions"></div>
+      </div>
+    </div>
+
+    <div class="panel needs-data" style="margin-top:1.5em;">
+      <h2 id="recentTitle">Poslednje stavke</h2>
+      <div class="table-scroll"><table>
+        <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th></tr></thead>
+        <tbody id="recentBody"></tbody>
+      </table></div>
+      <div id="recentEmpty" class="empty" style="display:none;">Nema stavki u ovom mesecu.</div>
+    </div>
+    <div class="panel" id="tagBreakdownPanel" style="display:none; margin-top:1.5em;">
+      <h2>Rashodi po oznakama</h2>
+      <div id="tagBreakdown"></div>
+    </div>
+    <div class="panel" id="patternsPanel" style="display:none; margin-top:1.5em;">
+      <h2>Obrasci i anomalije</h2>
+      <div id="patternsForecast" style="margin-bottom:1em;"></div>
+      <div id="patternsList"></div>
+      <button class="analiza-link" id="patternsAnalizaLink" style="display:none;"></button>
+    </div>
+  </div>
+
+  <!-- PRIHODI -->
+  <div class="screen" id="screen-prihodi">
+    <div class="layout">
+      <div class="panel">
+        <h2>Novi prihod</h2>
+        <form id="incomeForm">
+          <label for="incDesc">Opis</label>
+          <input type="text" id="incDesc" placeholder="npr. Plata za avgust (ili Plata 50000)" required list="incDescList">
+          <datalist id="incDescList"></datalist>
+<label for="incAmount">Iznos</label>
+          <div class="amount-row"><input type="number" id="incAmount" step="any" min="0" placeholder="0"><select id="incCurrency" class="currency-select" aria-label="Valuta"></select></div>
+          <div class="import-status currency-hint" id="incCurrencyHint"></div>
+          <div class="account-field"><label for="incAccount">Račun</label><select id="incAccount" class="account-select"></select></div>
+          <label for="incCategory">Kategorija</label>
+          <select id="incCategory">
+            
+          </select>
+          <label for="incDate">Datum</label>
+          <input type="date" id="incDate" required>
+          <label class="paid-checkbox-label"><input type="checkbox" id="incSpreadToggle"><span>Uplata pokriva više meseci (npr. plata za tri meseca odjednom)</span></label>
+          <div id="incSpreadRow" class="spread-row" style="display:none;">
+            <div><label for="incSpreadMonths">Broj meseci</label><input type="number" id="incSpreadMonths" min="2" max="60" value="3"></div>
+            <div><label for="incSpreadStart">Od meseca</label><input type="month" id="incSpreadStart"></div>
+          </div>
+          <div class="import-status" id="incSpreadHint" style="margin-top:0.4em;"></div>
+          <label for="incTags">Oznake (odvojene zarezom, opciono)</label>
+          <input type="text" id="incTags" placeholder="npr. posao, honorar">
+          <button type="submit" class="submit-btn income">Dodaj prihod</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Svi prihodi</h2>
+        <div class="filter-row">
+          <select id="incFilterMonth" aria-label="Mesec"></select>
+        </div>
+        <div class="bulk-bar" id="incomeBulkBar" style="display:none;">
+          <span id="incomeBulkCount"></span>
+          <button class="btn-secondary" id="incomeBulkDeleteBtn">Obriši izabrano</button>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th><input type="checkbox" id="selectAllIncome" title="Izaberi sve"></th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th><span class="sr-only">Radnje</span></th></tr></thead>
+          <tbody id="incomeBody"></tbody>
+        </table></div>
+        <div id="incomeEmpty" class="empty" style="display:none;">Još nema unesenih prihoda.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RASHODI -->
+  <div class="screen" id="screen-rashodi">
+    <div class="layout">
+      <div class="panel">
+        <h2>Novi rashod</h2>
+        <form id="expenseForm">
+          <label for="expDesc">Opis</label>
+          <input type="text" id="expDesc" placeholder="npr. Namirnice (ili Namirnice 1500)" required list="expDescList">
+          <datalist id="expDescList"></datalist>
+<label for="expAmount">Iznos</label>
+          <div class="amount-row"><input type="number" id="expAmount" step="any" min="0" placeholder="0"><select id="expCurrency" class="currency-select" aria-label="Valuta"></select></div>
+          <div class="import-status currency-hint" id="expCurrencyHint"></div>
+          <div class="account-field"><label for="expAccount">Račun</label><select id="expAccount" class="account-select"></select></div>
+          <label for="expCategory">Kategorija</label>
+          <select id="expCategory"></select>
+          <label class="paid-checkbox-label">
+            <input type="checkbox" id="expSplitToggle">
+            <span>Podeli na više kategorija</span>
+          </label>
+          <div id="expSplitRows" style="display:none; margin-top:0.8em;">
+            <div id="expSplitRowsInner"></div>
+            <button type="button" class="btn-secondary" id="expSplitAddRow" style="margin-top:0.4em;">+ Dodaj kategoriju</button>
+            <div class="import-status" id="expSplitTotal"></div>
+          </div>
+          <label for="expDate">Datum</label>
+          <input type="date" id="expDate" required>
+          <label class="paid-checkbox-label"><input type="checkbox" id="expSpreadToggle"><span>Trošak pokriva više meseci (npr. godišnje osiguranje)</span></label>
+          <div id="expSpreadRow" class="spread-row" style="display:none;">
+            <div><label for="expSpreadMonths">Broj meseci</label><input type="number" id="expSpreadMonths" min="2" max="60" value="3"></div>
+            <div><label for="expSpreadStart">Od meseca</label><input type="month" id="expSpreadStart"></div>
+          </div>
+          <div class="import-status" id="expSpreadHint" style="margin-top:0.4em;"></div>
+          <label for="expTags">Oznake (odvojene zarezom, opciono)</label>
+          <input type="text" id="expTags" placeholder="npr. putovanje, posao">
+          <label class="paid-checkbox-label">
+            <input type="checkbox" id="expPaid" checked>
+            <span>Već plaćeno</span>
+          </label>
+          <button type="submit" class="submit-btn expense">Dodaj rashod</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Svi rashodi</h2>
+        <div class="ips-new-row"><button type="button" class="btn-secondary" id="expSlipBtn">Plati uplatnicu…</button><input type="file" id="expSlipInput" accept="application/pdf,image/*,.heic" hidden><span class="import-status">Slika ili PDF uplatnice → IPS QR kod za m-banking i rashod.</span></div>
+        <div class="filter-row">
+          <select id="filterMonth"></select>
+          <select id="filterCategory"><option value="">Sve kategorije</option></select>
+          <select id="filterPaid">
+            <option value="">Plaćeno i na čekanju</option>
+            <option value="pending">Samo na čekanju</option>
+            <option value="paid">Samo plaćeno</option>
+          </select>
+        </div>
+        <div class="file-row" style="margin-bottom:1.2em;">
+          <button class="btn-secondary" id="markVisiblePaidBtn">Obeleži sve vidljivo kao plaćeno</button>
+        </div>
+        <div class="bulk-bar" id="expenseBulkBar" style="display:none;">
+          <span id="expenseBulkCount"></span>
+          <button class="btn-secondary" id="expenseBulkDeleteBtn">Obriši izabrano</button>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th><input type="checkbox" id="selectAllExpenses" title="Izaberi sve"></th><th class="th-mini">Plaćeno</th><th>Datum</th><th>Opis</th><th>Kategorija</th><th style="text-align:right;">Iznos</th><th><span class="sr-only">Radnje</span></th></tr></thead>
+          <tbody id="expenseBody"></tbody>
+        </table></div>
+        <div id="expenseEmpty" class="empty" style="display:none;">Nema rashoda za prikaz.</div>
+        <div id="expenseUpcoming" class="upcoming" style="display:none;"></div>
+        <div class="hint">Plavi kružić znači da je rashod plaćen. Skini ga za planirane rashode koje tek treba da platiš (npr. za sledeći mesec) — dok nije označen, rashod ne ulazi u ukupne brojke, samo u "na čekanju". Kvadratić ispred služi za izbor više rashoda odjednom.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RACUNI I PRENOSI -->
+  <div class="screen" id="screen-racuni">
+    <div class="layout">
+      <div class="panel">
+        <h2>Novi račun</h2>
+        <form id="accountForm">
+          <label for="accName">Naziv</label>
+          <input type="text" id="accName" placeholder="npr. Tekući račun, Gotovina, Štednja" required>
+          <label for="accType">Vrsta</label>
+          <select id="accType">
+            <option value="tekuci">Tekući račun</option>
+            <option value="gotovina">Gotovina</option>
+            <option value="stednja">Štednja</option>
+            <option value="kartica">Kreditna kartica</option>
+          </select>
+          <label for="accOpening">Početno stanje (RSD)</label>
+          <input type="number" id="accOpening" step="1" placeholder="0">
+          <div class="hint" style="margin-top:0.5em;">Početno stanje = koliko je na računu bilo pre prve stavke u aplikaciji. Kasnije ga možeš ispraviti tako da se stanje poklopi sa bankom.</div>
+          <button type="submit" class="submit-btn neutral">Dodaj račun</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Računi</h2>
+        <ul class="cat-list" id="accountsList"></ul>
+        <div id="accountsEmpty" class="empty" style="display:none;">Još nema računa. Dodaj bar jedan (npr. „Tekući račun“) da vidiš stanje; sa dva ili više računa možeš da biraš račun za svaku stavku i da praviš prenose (npr. na štednju).</div>
+      </div>
+    </div>
+    <div class="layout" id="transferSection" style="margin-top:1.5em; display:none;">
+      <div class="panel">
+        <h2>Prenos između računa</h2>
+        <form id="transferForm">
+          <label for="trFrom">Sa računa</label>
+          <select id="trFrom" class="account-select"></select>
+          <label for="trTo">Na račun</label>
+          <select id="trTo" class="account-select"></select>
+          <label for="trAmount">Iznos (RSD)</label>
+          <input type="number" id="trAmount" step="1" min="1" placeholder="0" required>
+          <label for="trDate">Datum</label>
+          <input type="date" id="trDate" required>
+          <label for="trDesc">Opis (opciono)</label>
+          <input type="text" id="trDesc" placeholder="npr. Podizanje gotovine">
+          <button type="submit" class="submit-btn neutral">Prenesi</button>
+        </form>
+        <div class="hint">Prenos nije ni prihod ni rashod — samo menja stanje dva računa.</div>
+      </div>
+      <div class="panel">
+        <h2>Poslednji prenosi</h2>
+        <ul class="cat-list" id="transfersList"></ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- KATEGORIJE -->
+  <div class="screen" id="screen-kategorije">
+    <div class="panel" style="max-width: 760px;">
+      <h2>Budžet po kategorijama</h2>
+      <div class="file-row" style="margin-bottom:0.6em;">
+        <label for="monthlyBudgetInput" style="margin:0; font-size:0.92em;">Ukupan mesečni budžet (svi rashodi):</label>
+        <input type="number" id="monthlyBudgetInput" placeholder="bez limita" min="0" style="max-width:180px;">
+      </div>
+      <label class="paid-checkbox-label" style="margin-top:0.4em !important;"><input type="checkbox" id="rolloverToggle"> Prenosi ostatak u sledeći mesec (neiskorišćen budžet se dodaje, prekoračenje oduzima)</label>
+      <div class="import-status" id="budgetSummary" style="margin-bottom:1em;"></div>
+      <ul class="cat-list" id="catList"></ul>
+      <div class="add-cat-row">
+        <input type="text" id="newCatInput" placeholder="Nova kategorija...">
+        <button id="addCatBtn">Dodaj</button>
+      </div>
+      <div class="hint">
+        Upiši mesečni budžet (RSD) za kategorije koje želiš da pratiš — na Pregledu vidiš koliko je potrošeno i koliko je preostalo. 💡 predlaže iznos na osnovu proseka poslednja 3 meseca. Prazno = bez budžeta. Kategorija se ne može obrisati dok se koristi.
+      </div>
+    </div>
+    <div class="panel" style="max-width: 640px; margin-top:1.5em;">
+      <h2>Kategorije prihoda</h2>
+      <ul class="cat-list" id="incomeCatList"></ul>
+      <div class="add-cat-row">
+        <input type="text" id="newIncomeCatInput" placeholder="Nova kategorija prihoda...">
+        <button id="addIncomeCatBtn">Dodaj</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- PONAVLJAJUCE -->
+  <div class="screen" id="screen-ponavljajuce">
+    <div class="panel" id="hiddenSubsPanel" style="display:none; margin-bottom:1.5em;"></div>
+    <div class="layout">
+      <div class="panel">
+        <h2>Nova ponavljajuća stavka</h2>
+        <div class="ips-new-row"><button type="button" class="btn-secondary" id="recFromSlipBtn">Sa uplatnice…</button><input type="file" id="recSlipInput" accept="application/pdf,image/*,.heic" hidden><span class="import-status" id="recSlipStatus"></span></div>
+        <form id="recurringForm">
+          <div style="display:flex; gap:0.5em;">
+            <button type="button" data-rtype="expense" class="submit-btn expense" style="margin-top:0; flex:1;" id="recTypeExpense">Rashod</button>
+            <button type="button" data-rtype="income" class="submit-btn income" style="margin-top:0; flex:1; opacity:0.5;" id="recTypeIncome">Prihod</button>
+          </div>
+          <label for="recDesc">Opis</label>
+          <input type="text" id="recDesc" placeholder="npr. Stanarina (ili Stanarina 30000)" required>
+<label for="recAmount">Iznos</label>
+          <div class="amount-row"><input type="number" id="recAmount" step="any" min="0" placeholder="0"><select id="recCurrency" class="currency-select" aria-label="Valuta"></select></div>
+          <div class="import-status currency-hint" id="recCurrencyHint"></div>
+          <div class="account-field"><label for="recAccount">Račun</label><select id="recAccount" class="account-select"></select></div>
+          <label for="recCategory">Kategorija</label>
+          <select id="recCategory"></select>
+          <label for="recDay">Dan u mesecu (1–31; 31 = poslednji dan)</label>
+          <input type="number" id="recDay" min="1" max="31" value="1" required>
+          <label for="recFrequency">Učestalost</label>
+          <select id="recFrequency">
+            <option value="monthly">Mesečno</option>
+            <option value="quarterly">Kvartalno (svaka 3 meseca)</option>
+            <option value="yearly">Godišnje</option>
+          </select>
+          <div id="recAnchorMonthRow" style="display:none;">
+            <label for="recAnchorMonth">Mesec (za kvartalno/godišnje)</label>
+            <select id="recAnchorMonth">
+              <option value="1">Januar</option><option value="2">Februar</option><option value="3">Mart</option>
+              <option value="4">April</option><option value="5">Maj</option><option value="6">Jun</option>
+              <option value="7">Jul</option><option value="8">Avgust</option><option value="9">Septembar</option>
+              <option value="10">Oktobar</option><option value="11">Novembar</option><option value="12">Decembar</option>
+            </select>
+            <label class="paid-checkbox-label"><input type="checkbox" id="recSpreadPeriod"><span>Iznos pokriva ceo period (raspodeli na 3 odnosno 12 meseci)</span></label>
+          </div>
+          <label class="paid-checkbox-label" style="margin-top:1.15em;"><input type="checkbox" id="recIsSubscription"><span>Ovo je pretplata (Netflix, Spotify...)</span></label>
+          <label class="paid-checkbox-label"><input type="checkbox" id="recAutoPay"><span>Automatski upiši kao plaćeno na dan dospeća</span></label>
+          <button type="submit" class="submit-btn neutral">Dodaj ponavljajuću stavku</button>
+        </form>
+        <div class="hint">Stavka se upiše u knjigu kad je čekiraš (tada možeš i da promeniš iznos, npr. za račun za struju). Za stavke koje se uvek plaćaju isto i automatski (trajni nalog, pretplata na karticu) uključi "Automatski upiši" — tada se upisuju same na dan dospeća.</div>
+      </div>
+      <div class="panel">
+        <h2>Ovaj mesec</h2>
+        <button type="button" class="submit-btn neutral pay-overdue-btn" id="payOverdueBtn" style="display:none;"></button>
+        <div id="recurringList"></div>
+        <div id="recurringEmpty" class="empty" style="display:none;">Nema definisanih ponavljajućih stavki.</div>
+        <div class="pending-summary" id="pendingSummaryLine" style="display:none;"></div>
+        <div class="hint">Čekiraj stavku kad je platiš/naplatiš — tek tada ulazi u ukupne brojke. Dok je nečekirana, računa se kao "na čekanju" u vrhu stranice. Koristi "Plati unapred" ako želiš odmah da podmiriš dva ili više meseci (npr. stanarinu unapred).</div>
+      </div>
+    </div>
+    <div class="panel" id="subscriptionsPanel" style="display:none; margin-top:1.5em;">
+      <h2>Pretplate</h2>
+      <div style="display:flex; gap:2.4em; margin-bottom:1.2em; flex-wrap:wrap;">
+        <div>
+          <div style="font-size:0.78em; color:var(--ink-soft); letter-spacing:1px;">MESEČNO</div>
+          <div style="font-family:var(--font); font-variant-numeric:tabular-nums; font-weight:700; font-size:1.6em; margin-top:0.2em;" id="subMonthlyTotal">0 RSD</div>
+        </div>
+        <div>
+          <div style="font-size:0.78em; color:var(--ink-soft); letter-spacing:1px;">GODIŠNJE</div>
+          <div style="font-family:var(--font); font-variant-numeric:tabular-nums; font-weight:700; font-size:1.6em; margin-top:0.2em;" id="subYearlyTotal">0 RSD</div>
+        </div>
+      </div>
+      <ul id="subscriptionsList" class="cat-list"></ul>
+    </div>
+  </div>
+
+  <!-- CILJEVI -->
+  <div class="screen" id="screen-ciljevi">
+    <div class="layout">
+      <div class="panel">
+        <h2>Novi cilj štednje</h2>
+        <form id="goalForm">
+          <label for="goalName">Naziv cilja</label>
+          <input type="text" id="goalName" placeholder="npr. Putovanje na more" required>
+          <label for="goalTarget">Ciljani iznos (RSD)</label>
+          <input type="number" id="goalTarget" step="1" min="1" placeholder="0" required>
+          <label for="goalDeadline">Rok (opciono)</label>
+          <input type="date" id="goalDeadline">
+          <div class="account-field"><label for="goalAccount">Novac za cilj je na računu (opciono)</label><select id="goalAccount" class="account-select" data-allow-none="1"></select>
+          <div class="hint" style="margin-top:0.4em;">Ako izabereš račun (npr. Štednja), svaka uplata u cilj pravi i prenos na taj račun — pa se novac ne računa dvaput.</div></div>
+          <button type="submit" class="submit-btn neutral">Dodaj cilj</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Moji ciljevi</h2>
+        <div id="goalsList"></div>
+        <div id="goalsEmpty" class="empty" style="display:none;">Još nema definisanih ciljeva.</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;">
+      <h2>Zaokruži i uštedi</h2>
+      <p class="hint" style="margin:0 0 1em;">Svaki rashod se zaokruži na sledećih 100 RSD, a razlika automatski ide u izabrani cilj — pasivna štednja bez dodatnog razmišljanja.</p>
+      <label for="roundUpGoalSelect">Cilj za zaokruživanje</label>
+      <select id="roundUpGoalSelect"><option value="">Isključeno</option></select>
+    </div>
+  </div>
+
+  <!-- DUGOVI -->
+  <div class="screen" id="screen-dugovi">
+    <div class="layout">
+      <div class="panel">
+        <h2>Novi dug/pozajmica</h2>
+        <form id="debtForm">
+          <label for="debtPerson">Osoba</label>
+          <input type="text" id="debtPerson" placeholder="npr. Marko" required>
+          <label for="debtAmount">Iznos</label>
+          <div class="amount-row"><input type="number" id="debtAmount" step="any" min="0" placeholder="0" required><select id="debtCurrency" class="currency-select" aria-label="Valuta"></select></div>
+          <div class="import-status currency-hint" id="debtCurrencyHint"></div>
+          <label for="debtDirection">Smer</label>
+          <select id="debtDirection">
+            <option value="owed_to_me">Duguje mi</option>
+            <option value="i_owe">Dugujem</option>
+          </select>
+          <label for="debtDate">Datum</label>
+          <input type="date" id="debtDate" required>
+          <label for="debtDue">Rok (opciono)</label>
+          <input type="date" id="debtDue">
+          <label for="debtNote">Napomena (opciono)</label>
+          <input type="text" id="debtNote" placeholder="npr. za koncert">
+          <button type="submit" class="submit-btn neutral">Dodaj</button>
+        </form>
+      </div>
+      <div class="panel">
+        <h2>Dugovi i pozajmice</h2>
+        <div id="debtsList"></div>
+        <div id="debtsEmpty" class="empty" style="display:none;">Nema unetih dugova ni pozajmica.</div>
+      </div>
+    </div>
+    <div class="panel" id="debtPlanPanel" style="display:none; margin-top:1.5em;">
+      <h2>Plan otplate</h2>
+      <p class="hint" style="margin:0 0 1em;">Snowball metod — najmanji dug se otplaćuje prvi (brza pobeda), ostatak kapaciteta prelazi na sledeći. Odnosi se samo na ono što ti duguješ (ne na ono što tebi duguju).</p>
+      <label for="debtMonthlyCapacity">Mesečni kapacitet za otplatu (RSD)</label>
+      <input type="number" id="debtMonthlyCapacity" min="0" step="1" placeholder="npr. 20000" style="max-width:220px;">
+      <div id="debtPlanResult" style="margin-top:1em;"></div>
+    </div>
+  </div>
+
+  <!-- ANALIZA -->
+  <div class="screen" id="screen-analiza">
+    <div class="panel">
+      <div class="analiza-controls">
+        <select id="analizaMonth" aria-label="Mesec"></select>
+        <div class="trend-range-toggle" role="group" aria-label="Period">
+          <button class="analiza-period-btn" data-n="3">3 meseca</button>
+          <button class="analiza-period-btn" data-n="6">6 meseci</button>
+          <button class="analiza-period-btn" data-n="12">12 meseci</button>
+        </div>
+      </div>
+      <div id="analizaSummary" class="analiza-summary"></div>
+    </div>
+    <div class="panel" id="analizaWhere" style="margin-top:1.5em;">
+      <h2>Na šta ide novac</h2>
+      <div id="analizaWhereList"></div>
+    </div>
+    <div class="panel chart-panel" id="analizaTrend" style="margin-top:1.5em;">
+      <div class="analiza-head">
+        <h2>Kroz vreme</h2>
+        <select id="analizaTrendCat" aria-label="Kategorija"></select>
+      </div>
+      <svg id="analizaTrendChart" class="trend-svg" viewBox="0 0 760 200" preserveAspectRatio="xMidYMid meet"></svg>
+      <div id="analizaTrendNote" class="hint"></div>
+    </div>
+    <div class="panel" id="analizaFixed" style="margin-top:1.5em;">
+      <h2>Fiksno / promenljivo</h2>
+      <div id="analizaFixedBar"></div>
+      <div class="hint">Troškovi iz ponavljajućih stavki su uvek fiksni.</div>
+      <div id="analizaFixedCurrentHint" class="hint" style="display:none;">Neplaćene ponavljajuće stavke još nisu uračunate.</div>
+      <div id="analizaFixedCats" class="analiza-fixed-cats"></div>
+    </div>
+    <div class="panel" id="analizaSave" style="margin-top:1.5em;">
+      <h2>Gde mogu da uštedim</h2>
+      <div id="analizaSaveBody"></div>
+      <div class="analiza-whatif">
+        <label for="analizaWhatIf" id="analizaWhatIfLabel"></label>
+        <input type="range" id="analizaWhatIf" min="0" max="50" step="5" value="10">
+        <div id="analizaWhatIfResult"></div>
+        <div id="analizaWhatIfAction" class="analiza-whatif-action"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- UPOREDI -->
+  <div class="screen" id="screen-uporedi">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.6em; border-bottom:1px solid var(--paper-line); padding-bottom:0.7em; margin-bottom:1.3em;">
+        <h2 style="border-bottom:none; padding-bottom:0; margin-bottom:0;">Uporedi</h2>
+        <div class="trend-range-toggle">
+          <button class="compare-mode-btn active" data-mode="meseci">Meseci</button>
+          <button class="compare-mode-btn" data-mode="godina">Godina</button>
+        </div>
+      </div>
+
+      <div id="compareMonthsSection">
+        <div class="compare-select-row">
+          <select id="compareMonthA"></select>
+          <select id="compareMonthB"></select>
+        </div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>Kategorija</th><th style="text-align:right;">Mesec A</th><th style="text-align:right;">Mesec B</th><th style="text-align:right;">Razlika</th></tr></thead>
+          <tbody id="compareBody"></tbody>
+        </table></div>
+        <div id="compareEmpty" class="empty" style="display:none;">Izaberi dva meseca sa podacima za poređenje.</div>
+      </div>
+
+      <div id="compareYearSection" style="display:none;">
+        <div class="compare-select-row">
+          <select id="compareYearSelect"></select>
+        </div>
+        <svg id="yearBarChart" class="trend-svg" viewBox="0 0 760 260" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="trend-legend">
+          <span><i class="swatch" style="background:var(--pos);"></i>Prihodi</span>
+          <span><i class="swatch" style="background:var(--rust);"></i>Rashodi</span>
+        </div>
+        <div id="compareYearEmpty" class="empty" style="display:none;">Nema podataka za izabranu godinu.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRETRAGA -->
+  <div class="screen" id="screen-pretraga">
+    <div class="panel">
+      <h2>Pretraga stavki</h2>
+      <input type="text" id="searchInput" placeholder="Pretraži po opisu ili kategoriji...">
+      <div class="search-filters">
+        <div><label for="searchDateFrom">Od datuma</label><input type="date" id="searchDateFrom"></div>
+        <div><label for="searchDateTo">Do datuma</label><input type="date" id="searchDateTo"></div>
+        <div><label for="searchAmountMin">Min iznos (RSD)</label><input type="number" id="searchAmountMin" placeholder="0" min="0"></div>
+        <div><label for="searchAmountMax">Max iznos (RSD)</label><input type="number" id="searchAmountMax" placeholder="0" min="0"></div>
+      </div>
+      <div class="table-scroll"><table style="margin-top:1.2em;">
+        <thead><tr><th>Datum</th><th>Opis</th><th>Kategorija</th><th>Tip</th><th style="text-align:right;">Iznos</th></tr></thead>
+        <tbody id="searchBody"></tbody>
+      </table></div>
+      <div id="searchEmpty" class="empty" style="display:none;">Nema rezultata.</div>
+      <div id="searchRecurringSection" style="display:none;">
+        <div class="report-section-title">Ponavljajuće stavke</div>
+        <div id="searchRecurringList"></div>
+      </div>
+      <div id="searchGoalsSection" style="display:none;">
+        <div class="report-section-title">Ciljevi</div>
+        <div id="searchGoalsList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- IZVESTAJ -->
+  <div class="screen" id="screen-prognoza">
+    <div class="panel">
+      <h3 style="margin-top:0;">Prognoza stanja (60 dana)</h3>
+      <div id="forecastSummary" class="import-status" style="margin-top:0;"></div>
+      <svg id="forecastChart" class="trend-svg" viewBox="0 0 760 220" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Prognoza stanja"></svg>
+      <div class="table-scroll"><table class="forecast-table">
+        <thead><tr><th>Datum</th><th>Opis</th><th class="num">Iznos</th><th class="num">Stanje na kraju dana</th></tr></thead>
+        <tbody id="forecastBody"></tbody>
+      </table></div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-godisnji">
+    <div class="panel">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.6em;">
+        <h3 style="margin:0;">Veliki godišnji troškovi</h3>
+        <button class="btn-secondary" id="ycAdd">Dodaj godišnji trošak</button>
+      </div>
+      <div id="yearlySummary" class="yc-summary"></div>
+      <div id="yearlyStrip" class="yc-strip"></div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;">
+      <h3 style="margin-top:0;">Stavke</h3>
+      <div class="table-scroll"><table class="forecast-table">
+        <thead><tr><th>Naziv</th><th class="num">Iznos</th><th>Učestalost</th><th>Sledeći put</th><th class="num">Meseci do tada</th><th class="num">Odvoji mesečno</th><th></th></tr></thead>
+        <tbody id="yearlyBody"></tbody>
+      </table></div>
+    </div>
+    <div class="panel" style="margin-top:1.5em;" id="yearlyFundPanel"></div>
+  </div>
+
+  <div class="screen" id="screen-pitaj">
+    <div class="panel">
+      <h3 style="margin-top:0;">Pitaj svoj budžet</h3>
+      <div class="ask-row"><input type="text" id="askInput" maxlength="300" placeholder="npr. Zašto je septembar skuplji od avgusta?" aria-label="Pitanje"><button class="save-btn" id="askBtn">Pitaj</button></div>
+      <div class="ask-suggest-row">
+        <button type="button" class="btn-secondary ask-suggest">Zašto je ovaj mesec skuplji od prošlog?</button>
+        <button type="button" class="btn-secondary ask-suggest">Koliko trošim na hranu mesečno?</button>
+        <button type="button" class="btn-secondary ask-suggest">Šta me je najviše koštalo prošlog meseca?</button>
+        <button type="button" class="btn-secondary ask-suggest">Koliko godišnje plaćam pretplate?</button>
+      </div>
+      <div class="hint" id="askHint">Aplikacija sama računa brojeve; AI dobija samo pitanje i rezultate potrebnih proračuna (vidi „Šta je poslato AI-ju“ uz svaki odgovor).</div>
+      <div id="askList" class="ask-list"></div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-rezije">
+    <div class="panel">
+      <div class="rezije-toolbar">
+        <select id="rezijeYear" aria-label="Godina"></select>
+        <span class="rezije-spacer"></span>
+        <button class="btn-secondary" id="rezijeImportBtn">Uvezi iz Excela…</button><input type="file" id="rezijeImportInput" accept=".xlsx,.xls" hidden>
+        <button class="save-btn" id="rezijeAddBtn">Dodaj račun…</button><input type="file" id="rezijeFileInput" accept="application/pdf,image/*,.heic" multiple hidden>
+      </div>
+      <div class="hint" id="rezijeHint">Prevuci PDF ili sliku računa bilo gde u prozor, ili klikni „Dodaj račun…“. Klik na polje otvara račun.</div>
+      <div id="rezijeTable" class="rezije-table"></div>
+    </div>
+    <div class="panel">
+      <div class="rezije-toolbar"><h3 style="margin:0;">Potrošnja po mesecima</h3><span class="rezije-spacer"></span><select id="rezijeMetric" aria-label="Merenje"></select></div>
+      <svg id="rezijeChart" class="trend-svg" viewBox="0 0 760 190" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Potrošnja po mesecima"></svg>
+      <div class="hint" id="rezijeChartNote"></div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-izvestaj">
+    <div class="panel no-print">
+      <h2>Izveštaj za štampu</h2>
+      <div class="compare-select-row">
+        <select id="reportScope">
+          <option value="month">Jedan mesec</option>
+          <option value="year">Cela godina</option>
+        </select>
+        <select id="reportMonth"></select>
+        <select id="reportYear" style="display:none;"></select>
+      </div>
+      <div class="file-row">
+        <button class="btn-secondary" id="printReportBtn">Odštampaj izveštaj</button>
+        <button class="btn-secondary" id="savePdfReportBtn" style="display:none;">Sačuvaj kao PDF</button>
+      </div>
+      <div class="hint">Izveštaj se generiše iz stavki (rashodi računaju samo plaćene). Dugme otvara standardni dijalog za štampu/PDF — u dijalogu izaberi "Sačuvaj kao PDF" ako želiš fajl umesto papira.</div>
+    </div>
+    <div class="panel report-preview" id="reportPreview"></div>
+  </div>
+
+  <!-- SCENARIO -->
+  <div class="screen" id="screen-scenario">
+    <div class="panel" id="scenarioIntro">
+      <h2>Scenario planer</h2>
+      <p class="hint" style="margin:0 0 1em;">Isprobaj "šta ako" izmene (otkazivanje pretplate, novi trošak, promena budžeta) i vidi kako bi to uticalo na bilans u narednih 6 meseci — ništa se ne upisuje u prave podatke dok ne klikneš "Primeni".</p>
+      <button class="btn-secondary" id="scenarioStartBtn">Pokreni scenario</button>
+    </div>
+    <div class="panel no-print" id="savedScenariosPanel" style="display:none; margin-top:1.5em;">
+      <h2>Sačuvani scenariji</h2>
+      <ul id="savedScenariosList" class="cat-list"></ul>
+    </div>
+    <div class="panel chart-panel" id="scenarioChartPanel" style="display:none;">
+      <div class="no-print" style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.6em; border-bottom:1px solid var(--paper-line); padding-bottom:0.7em; margin-bottom:1.3em;">
+        <h2 style="border-bottom:none; padding-bottom:0; margin-bottom:0;">Projekcija bilansa (narednih 6 meseci)</h2>
+        <span style="display:flex; gap:0.6em; flex-wrap:wrap;">
+          <button class="btn-secondary" id="scenarioSaveBtn">Sačuvaj kao...</button>
+          <button class="btn-secondary" id="scenarioPrintBtn">Odštampaj scenario</button>
+          <button class="btn-secondary" id="scenarioDiscardBtn">Odbaci scenario</button>
+          <button class="submit-btn neutral" id="scenarioApplyBtn" style="width:auto; padding:0.6em 1.2em;">Primeni na stvarne podatke</button>
+        </span>
+      </div>
+      <h2 class="print-only">Projekcija bilansa (narednih 6 meseci)</h2>
+      <svg id="scenarioChart" class="trend-svg" viewBox="0 0 760 200" preserveAspectRatio="xMidYMid meet"></svg>
+      <div class="trend-legend">
+        <span><i class="swatch" style="background:var(--ink-soft);"></i>Bazna linija (bez izmena)</span>
+        <span><i class="swatch" style="background:var(--ledger);"></i>Scenario</span>
+      </div>
+      <div class="table-scroll print-only"><table>
+        <thead><tr><th>Mesec</th><th style="text-align:right;">Bazna linija</th><th style="text-align:right;">Scenario</th><th style="text-align:right;">Razlika</th></tr></thead>
+        <tbody id="scenarioPrintTableBody"></tbody>
+      </table></div>
+    </div>
+    <div class="layout no-print" id="scenarioControls" style="display:none;">
+      <div class="panel">
+        <h2>Hipotetičke ponavljajuće stavke</h2>
+        <ul id="scenarioRecurringList" class="cat-list"></ul>
+        <button class="btn-secondary" id="scenarioAddRecurringBtn" style="margin-top:1em;">+ Dodaj ponavljajuću stavku</button>
+      </div>
+      <div class="panel">
+        <h2>Jednokratne izmene</h2>
+        <ul id="scenarioOneTimeList" class="cat-list"></ul>
+        <button class="btn-secondary" id="scenarioAddOneTimeBtn" style="margin-top:1em;">+ Dodaj jednokratnu stavku</button>
+        <div style="margin-top:1.4em;">
+          <label for="scenarioMonthlyBudgetInput">Mesečni budžet u scenariju (RSD, 0 = bez limita)</label>
+          <input type="number" id="scenarioMonthlyBudgetInput" min="0" step="1">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NABAVKA -->
+  <div class="screen" id="screen-nabavka">
+    <div class="panel">
+      <div class="file-row shop-receipt-row"><button class="btn-secondary" id="shopReceiptBtn">Ubaci račun iz prodavnice…</button><button class="btn-secondary" id="shopFiscalLinkBtn">Nalepi link sa QR koda…</button><input type="file" id="shopReceiptInput" accept="application/pdf,image/*,.heic" multiple hidden><span class="hint">Slika ili PDF računa: stavke, cene i kategorije se popune same.</span></div>
+      <input type="text" id="shopQuickInput" class="shop-quick" placeholder="Dodaj stavku, npr. Mleko 2 kom 150" aria-label="Dodaj stavku" autocomplete="off">
+      <div class="shop-controls">
+        <div class="trend-range-toggle" role="group" aria-label="Grupiši po">
+          <button class="shop-by-btn" data-by="section">Deo prodavnice</button>
+          <button class="shop-by-btn" data-by="store">Prodavnica</button>
+          <button class="shop-by-btn" data-by="category">Kategorija</button>
+        </div>
+        <div class="trend-range-toggle" role="group" aria-label="Prikaži">
+          <button class="shop-show-btn" data-show="need">Za kupovinu</button>
+          <button class="shop-show-btn" data-show="all">Sve stavke</button>
+          <button class="shop-show-btn" data-show="prices">Cene</button>
+        </div>
+        <button class="btn-secondary" id="shopSectionsBtn">Delovi prodavnice</button>
+      </div>
+      <div id="shopSectionsPanel" class="shop-sections" style="display:none;"></div>
+    </div>
+    <div class="panel shop-suggest" id="shopSuggest" style="display:none; margin-top:1.5em;"></div>
+    <div class="panel" style="margin-top:1.5em;">
+      <div id="shopList"></div>
+      <div id="shopPrices" style="display:none;"></div>
+    </div>
+    <div class="panel shop-footer" id="shopFooter" style="display:none;"></div>
+  </div>
+
+  <!-- PODESAVANJA -->
+  <div class="screen" id="screen-kursevi">
+    <div class="rates-top">
+      <div class="panel">
+        <h2>Preračunavanje</h2>
+        <div class="fx-conv">
+          <div class="fx-conv-side">
+            <input type="number" id="fxConvAmount" step="any" min="0" value="100" aria-label="Iznos">
+            <select id="fxConvFrom" aria-label="Iz valute"></select>
+          </div>
+          <button class="btn-secondary fx-swap" id="fxConvSwap" title="Zameni smer" aria-label="Zameni smer">⇄</button>
+          <div class="fx-conv-side">
+            <output id="fxConvResult">—</output>
+            <select id="fxConvTo" aria-label="U valutu"></select>
+          </div>
+        </div>
+        <div class="hint" id="fxConvHint" style="margin-top:0.8em;"></div>
+      </div>
+      <div class="panel">
+        <h2>Izvor kursa</h2>
+        <div class="import-status" id="ratesInfo" style="margin-top:0;">Kursna lista još nije preuzeta.</div>
+        <div class="import-status" id="ratesSourceNote"></div>
+        <div class="file-row" style="margin-top:0.8em;" id="ratesRefreshRow">
+          <button class="btn-secondary" id="ratesRefreshBtn">Osveži kurs</button>
+        </div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="rates-head">
+        <h2>Kursna lista</h2>
+        <input type="search" id="ratesFilter" placeholder="Traži valutu…" aria-label="Traži valutu">
+      </div>
+      <div class="hint" style="margin:-0.4em 0 0.9em;">Zvezdicom biraš koje valute se nude pored iznosa pri unosu (prihodi, rashodi, ponavljajuće, prozor za unos).</div>
+      <div class="table-scroll">
+        <table class="rates-table">
+          <thead><tr><th class="c-star"><span class="sr-only">U unosu</span></th><th>Valuta</th><th class="num">Srednji kurs</th><th class="num">Kupovni</th><th class="num">Prodajni</th></tr></thead>
+          <tbody id="ratesTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-dokumenti">
+    <div class="panel">
+      <div class="rezije-toolbar">
+        <div class="trend-range-toggle" role="group" aria-label="Prikaži">
+          <button class="trend-range-btn doc-filter-btn" data-f="all">Sve</button><button class="trend-range-btn doc-filter-btn" data-f="garancija">Garancije</button><button class="trend-range-btn doc-filter-btn" data-f="dokument">Dokumenti</button>
+        </div>
+        <span class="rezije-spacer"></span>
+        <button class="save-btn" id="docAddBtn">Dodaj dokument…</button><input type="file" id="docAddInput" accept="application/pdf,image/*,.heic" multiple hidden>
+      </div>
+      <div class="hint">Garancije i dokumenti sa rokom (registracija, osiguranje, pasoš…). Podsetnik stiže pre isteka. Sliku ili PDF možeš i da prevučeš ovde.</div>
+      <div id="docList" class="doc-list"></div>
+    </div>
+  </div>
+
+  <div class="screen" id="screen-podesavanja">
+    <div class="panel" style="max-width: 560px;">
+      <div class="settings-group">
+        <h3>Izgled</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="settingsThemeToggle">Prebaci na tamnu/svetlu temu</button>
+        </div>
+        <label class="paid-checkbox-label"><input type="checkbox" id="soundToggle"> Zvučni efekti (plaćeno, brisanje, cilj ostvaren)</label>
+      </div>
+
+      <div class="settings-group">
+        <h3>Jezik / Language</h3>
+        <div class="lang-seg" role="radiogroup" aria-label="Jezik / Language" translate="no">
+          <button type="button" data-lang="sr" role="radio">Srpski</button>
+          <button type="button" data-lang="en" role="radio">English</button>
+        </div>
+      </div>
+
+      <div class="settings-group" id="billSettings">
+        <h3>Kućni računi i lokacije</h3>
+        <div class="import-status" style="margin-top:0;">Svaka lokacija ima svoju valutu i vrste računa. Merenja (npr. Skupa kWh) se prate u tabeli Kućni računi.</div>
+        <div id="billLocList"></div>
+        <div class="file-row"><button class="btn-secondary" id="billAddLoc">Dodaj lokaciju</button></div>
+      </div>
+
+      <div class="settings-group" id="paydaySettings">
+        <h3>Plata</h3>
+        <div class="import-status" style="margin-top:0;">Za prognozu do plate (Pregled i Izveštaji → Prognoza).</div>
+        <label class="paid-checkbox-label"><input type="radio" name="paydayMode" value="auto"> Automatski — najveći ponavljajući prihod</label>
+        <div class="import-status" id="paydayAutoInfo"></div>
+        <label class="paid-checkbox-label"><input type="radio" name="paydayMode" value="manual"> Ručno — sledeća plata:</label>
+        <div class="file-row"><input type="date" id="paydayDate" aria-label="Datum sledeće plate"><input type="number" id="paydayAmount" min="0" step="1" style="max-width:160px;" aria-label="Iznos plate (RSD)" placeholder="RSD"><button class="btn-secondary" id="paydaySave">Sačuvaj</button></div>
+        <div class="import-status" id="paydayStatus" aria-live="polite"></div>
+      </div>
+
+      <div class="settings-group" id="aiSettings" style="display:none;">
+        <h3>AI čitanje računa</h3>
+        <div class="import-status" style="margin-top:0;">Groq čita PDF i slike računa. Ključ napravi na console.groq.com/keys.</div>
+        <div class="file-row"><button type="button" class="btn-link" id="aiKeysLink">Otvori console.groq.com/keys</button></div>
+        <div class="import-status"><label for="aiKey">API ključ</label></div>
+        <div class="file-row"><input type="password" id="aiKey" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="aiKeySave">Sačuvaj ključ</button><button class="btn-link" id="aiKeyClear">Obriši ključ</button></div>
+        <div class="import-status"><label for="aiModel">Model (mora da čita slike)</label></div>
+        <div class="file-row"><input type="text" id="aiModel" translate="no" style="max-width:320px;"><button class="btn-secondary" id="aiTest">Proveri ključ</button></div>
+        <label class="paid-checkbox-label"><input type="checkbox" id="aiSendText"> Šalji tekst iz PDF-a uz slike (pouzdanije čitanje brojeva)</label>
+        <div class="import-status" id="aiStatus" aria-live="polite"></div>
+        <div class="import-status">Groq-u se šalju samo fajlovi računa, uplatnica i dokumenata koje ubaciš (dokumenti tek na „Pročitaj AI-jem“), pri uvozu izvoda opisi nepoznatih stavki (bez iznosa, datuma i brojeva kartica), a u brzom unosu opis novog troška radi predloga kategorije. U „Pitaj“ idu pitanje i rezultati proračuna koje aplikacija uradi (za najveće troškove i ponavljajuće stavke to su i njihovi opisi). Ostali podaci ostaju samo na ovom računaru.</div>
+      </div>
+      <div class="settings-group" id="tgSettings" style="display:none;">
+        <h3>Telegram bot</h3>
+        <div class="import-status" style="margin-top:0;">Pitaj bota o budžetu („šta treba da platimo?“), daj mu naredbe („platila sam porez“) ili šalji rashode („/nov kafa 250“) i slike računa sa telefona — upisuju se ovde. Napravi bota: u Telegramu otvori @BotFather, pošalji /newbot i nalepi token ovde.</div>
+        <div class="import-status">Za zajedničku grupu (npr. ti i partner): kod @BotFather pošalji /setprivacy, izaberi bota i Disable, pa dodaj bota u grupu i pošalji kod u grupu. Svaki rashod iz grupe dobija oznaku sa imenom onog ko ga je poslao.</div>
+        <div class="import-status"><label for="tgToken">Token bota</label></div>
+        <div class="file-row"><input type="password" id="tgToken" autocomplete="off" style="max-width:320px;"><button class="btn-secondary" id="tgTokenSave">Sačuvaj token</button><button class="btn-secondary" id="tgTokenClear">Obriši token</button></div>
+        <div class="file-row"><button class="btn-secondary" id="tgPair">Poveži Telegram</button><button class="btn-secondary" id="tgUnlink">Prekini vezu</button></div>
+        <label class="paid-checkbox-label"><input type="checkbox" id="tgOn"> Bot uključen</label>
+        <div id="tgMorningRow"><label class="paid-checkbox-label"><input type="checkbox" id="tgMorningOn"> Jutarnji podsetnik u Telegramu (šta danas i sutra dospeva, šta kasni, dokumenti i godišnji troškovi)</label>
+          <div class="file-row"><label for="tgMorningTime">Vreme</label><input type="time" id="tgMorningTime" value="09:00" style="max-width:120px;"></div></div>
+        <div id="tgMonthlyRow"><label class="paid-checkbox-label"><input type="checkbox" id="tgMonthlyOn"> Mesečni rezime u Telegramu (prvog u mesecu: prihodi, rashodi, ušteda, kategorije, limiti)</label></div>
+        <div class="import-status" id="tgStatus" aria-live="polite"></div>
+        <div class="import-status">Bot radi dok je aplikacija pokrenuta (i u traci pored sata). Telegram čuva poruke 24 sata — ako je računar duže ugašen, starije poruke se gube; poruka na koju bot nije odgovorio nije upisana. Poruke sa botom nisu šifrovane s kraja na kraj (Telegram ih vidi).</div>
+      </div>
+
+      <div id="desktopSettings" style="display:none;">
+        <div class="settings-group">
+          <h3>Desktop aplikacija</h3>
+          <label class="paid-checkbox-label" style="margin-top:0 !important;"><input type="checkbox" id="deskAutostart"> <span id="deskAutostartLabel">Pokreni automatski sa Windows-om (tiho, u pozadini)</span></label>
+          <label class="paid-checkbox-label"><input type="checkbox" id="deskCloseToTray"> Zatvaranje prozora ostavlja aplikaciju u system tray-u</label>
+          <div class="import-status">Dok aplikacija radi u pozadini, podsetnici za kasna plaćanja i dugove stižu i kad je prozor zatvoren, a ikonica na taskbaru pokazuje broj kasnih plaćanja.</div>
+          <div class="import-status" style="margin-top:1.2em;">Prečica za brzi unos (radi iz bilo kog programa):</div>
+          <div class="file-row" style="margin-top:0.4em;">
+            <select id="deskShortcut" style="max-width:260px;">
+              <option value="CommandOrControl+Alt+Shift+B">Ctrl + Alt + Shift + B</option>
+              <option value="CommandOrControl+Shift+Space">Ctrl + Shift + Razmak</option>
+              <option value="Super+Shift+B">Win + Shift + B</option>
+              <option value="">Isključeno</option>
+            </select>
+          </div>
+          <div class="import-status" id="deskShortcutStatus"></div>
+        </div>
+
+        <div class="settings-group" id="desktopData">
+          <h3>Podaci</h3>
+          <div class="import-status" style="margin-top:0;">Svi podaci (stavke, kategorije, ponavljajuće stavke, ciljevi, dugovi, pravila, scenariji, podešavanja) čuvaju se automatski u jednom fajlu:</div>
+          <div class="file-row" style="margin-top:0.5em;">
+            <code id="deskDataPath" style="font-size:0.86em; word-break:break-all;"></code>
+          </div>
+          <div class="file-row" style="margin-top:0.7em;">
+            <button class="btn-secondary" id="deskOpenDataBtn">Prikaži fajl u folderu</button>
+          </div>
+          <div class="import-status" id="deskDataStatus"></div>
+        </div>
+
+        <div class="settings-group">
+          <h3>Automatske rezervne kopije</h3>
+          <div class="file-row">
+            <button class="btn-secondary" id="deskBackupNowBtn">Napravi kopiju sada</button>
+            <button class="btn-secondary" id="deskOpenBackupsBtn">Otvori folder sa kopijama</button>
+          </div>
+          <div class="import-status">Svakog dana kad nešto izmeniš automatski se čuva kopija (poslednjih 30 dana), plus po jedna kopija za svaki mesec (poslednjih 12 meseci). Pre svakog vraćanja kopije pravi se i kopija trenutnog stanja, pa se ništa ne može izgubiti.</div>
+          <div class="import-status" id="deskBackupStatus"></div>
+          <ul class="cat-list" id="deskBackupList" style="margin-top:0.6em; max-height:260px; overflow:auto;"></ul>
+        </div>
+
+        <div class="settings-group" id="extraBackupGroup">
+          <h3>Kopija van računara (USB disk ili drugi folder)</h3>
+          <div class="import-status">Ako se ovaj računar pokvari, kopije iznad nestaju sa njim. Izaberi folder na USB disku (ili u drugom cloud-u) — jednom dnevno, čim je disk priključen, tamo se sama upiše kopija (čuva se poslednjih 60).</div>
+          <div class="file-row" style="margin-top:0.6em;">
+            <button class="btn-secondary" id="extraBackupChooseBtn">Izaberi folder…</button>
+            <button class="btn-secondary" id="extraBackupNowBtn" style="display:none;">Kopiraj sada</button>
+            <button class="btn-secondary" id="extraBackupOpenBtn" style="display:none;">Otvori folder</button>
+            <button class="btn-link" id="extraBackupClearBtn" style="display:none;">Isključi</button>
+          </div>
+          <div class="import-status" id="extraBackupStatus"></div>
+        </div>
+
+        <div class="settings-group" id="desktopUpdates">
+          <h3>Ažuriranja</h3>
+          <div class="file-row">
+            <button class="btn-secondary" id="deskUpdateCheckBtn">Proveri sada</button>
+            <button class="btn-secondary" id="deskUpdateInstallBtn" style="display:none;">Restartuj i ažuriraj</button>
+          </div>
+          <div class="import-status" id="deskVersion"></div>
+          <div class="import-status" id="deskUpdateStatus" style="margin-top:0.2em;"></div>
+          <div class="import-status" id="deskReleaseNotes" style="display:none; white-space:pre-line; margin-top:0.8em; padding:0.8em 1em; border:1px solid var(--paper-line); border-radius:var(--radius);"></div>
+        </div>
+
+        <div class="settings-group" id="desktopShortcuts">
+          <h3>Prečice na tastaturi</h3>
+          <div class="shortcut-grid">
+            <span><kbd>Ctrl</kbd> + <kbd>N</kbd></span><span>Novi rashod (prozor za unos)</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>N</kbd></span><span>Novi prihod</span>
+            <span id="deskShortcutKeys"></span><span>Brzi unos iz bilo kog programa</span>
+            <span><kbd>Ctrl</kbd> + <kbd>1</kbd> … <kbd>7</kbd></span><span>Prelazak na ekran (Pregled, Transakcije, Budžet…)</span>
+            <span><kbd>Alt</kbd> + <kbd>←</kbd> / <kbd>→</kbd></span><span>Prethodni / sledeći mesec u sažetku</span>
+            <span><kbd>Ctrl</kbd> + <kbd>,</kbd></span><span>Podešavanja</span>
+            <span><kbd>Ctrl</kbd> + <kbd>F</kbd></span><span>Pretraga stavki</span>
+            <span><kbd>/</kbd></span><span>Fokus na polje za unos na trenutnom ekranu</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Z</kbd></span><span>Poništi poslednju radnju (brisanje, plaćanje…)</span>
+            <span><kbd>Esc</kbd></span><span>Zatvori prozor ili poruku</span>
+            <span><kbd>?</kbd></span><span>Prikaži ove prečice</span>
+            <span><kbd>Ctrl</kbd> + <kbd>P</kbd></span><span>Odštampaj izveštaj</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>S</kbd></span><span>Sačuvaj izveštaj kao PDF</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Shift</kbd> + <kbd>L</kbd></span><span>Svetla / tamna tema</span>
+            <span><kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></span><span>Uvećaj / umanji / stvarna veličina</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>S</kbd></span><span>Skupi / proširi bočni meni</span>
+            <span><kbd>F11</kbd></span><span>Ceo ekran</span>
+            <span><kbd>Ctrl</kbd> + <kbd>W</kbd></span><span>Zatvori prozor (app ostaje u tray-u)</span>
+            <span><kbd>Ctrl</kbd> + <kbd>Q</kbd></span><span>Izađi iz aplikacije</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Vodič za podešavanje</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="startOnboardingBtn">Pokreni vodič</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Notifikacije</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="enableNotifBtn">Omogući notifikacije za kasna plaćanja</button>
+        </div>
+        <div class="import-status" id="notifStatus">Radi i offline — čim otvoriš app, provera se pokreće za dospele/kasnije ponavljajuće stavke i dugove sa prošlim rokom.</div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Excel fajl kao izvor podataka</h3>
+        <div id="excelFsSection" style="display:none;">
+          <div class="file-row">
+            <button class="btn-secondary" id="excelConnectNewBtn">Kreiraj novi Excel fajl</button>
+            <button class="btn-secondary" id="excelOpenExistingBtn">Otvori postojeći Excel fajl</button>
+            <button class="btn-secondary" id="excelReconnectBtn" style="display:none;">Ponovo poveži</button>
+          </div>
+          <div class="import-status" id="excelStatus">Nije povezan nijedan Excel fajl — podaci se čuvaju lokalno u browseru dok se ne poveže fajl.</div>
+          <div class="warning-item" id="excelConflictBanner" style="display:none; margin-top:1em;">
+            <span class="icon">⚠</span>
+            <span class="txt">
+              Fajl je promenjen na drugom uređaju/tabu OTKAD si ovde nešto izmenio/la — da ne bi jedna strana tiho prepisala drugu, izaberi šta da uradiš:
+              <div id="excelConflictDiff" style="margin-top:0.4em; font-size:0.92em; opacity:0.85;"></div>
+              <div class="file-row" style="margin-top:0.6em;">
+                <button class="btn-secondary" id="excelKeepMineBtn">Zadrži moje izmene (prepiši fajl)</button>
+                <button class="btn-secondary" id="excelTakeFileBtn">Preuzmi iz fajla (odbaci moje najnovije izmene)</button>
+              </div>
+            </span>
+          </div>
+        </div>
+        <div id="excelFallbackSection" style="display:none;">
+          <div class="file-row">
+            <button class="btn-secondary" id="excelManualExportBtn">Preuzmi Excel fajl</button>
+            <input type="file" id="excelManualImportInput" accept=".xlsx">
+          </div>
+          <div class="import-status">Ovaj browser ne podržava automatsko čuvanje direktno u fajl (ta opcija radi u Chrome i Edge). Ovde preuzmeš Excel fajl i kasnije ga ponovo učitaš da nastaviš.</div>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Uvoz izvoda banke (CSV, Excel, OFX, QIF)</h3>
+        <div class="account-field" style="margin-bottom:0.6em;"><label for="importAccount">Uvezi na račun</label><select id="importAccount" class="account-select" style="max-width:260px;"></select></div>
+        <div class="file-row">
+          <input type="file" id="csvImportInput" accept=".csv,.txt,.xlsx,.xls,.ofx,.qif,.qfx" multiple>
+        </div>
+        <div class="import-status" id="csvImportStatus">Izaberi izvod banke (CSV ili Excel sa kolonama datum/opis/iznos, ili odvojenim kolonama Isplata/Uplata), OFX/QFX ili QIF, ili CSV izvezen iz ove aplikacije. Srpski zapis brojeva (1.234,56) i fajlovi sa tačka-zarezom se prepoznaju automatski. Pre uvoza vidiš pregled, a stavke koje već postoje se preskaču. Za raniju istoriju možeš da izabereš više izvoda odjednom (npr. sve mesece jedne godine).</div>
+        <div class="import-status">Pravila ispod (ako opis sadrži reč → kategorija) imaju prioritet nad kolonom kategorije iz CSV-a.</div>
+        <ul id="catRulesList" class="cat-list" style="margin-top:0.6em;"></ul>
+        <div class="add-cat-row">
+          <input type="text" id="newRuleKeyword" placeholder="npr. Wolt">
+          <select id="newRuleCategory"></select>
+          <button class="btn-secondary" id="addCatRuleBtn">Dodaj pravilo</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Rezervna kopija (JSON, svi podaci)</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="backupExportBtn">Izvezi JSON rezervnu kopiju</button>
+          <input type="file" id="backupImportInput" accept=".json">
+        </div>
+        <div class="import-status">Izvoz čuva stavke, kategorije, limite, boje kategorija, ponavljajuće stavke, ciljeve, dugove i mesečni budžet. Uvoz zamenjuje trenutne podatke u ovom browseru.</div>
+        <div class="warning-item caution" id="backupReminder" style="display:none; margin-top:0.8em;"><span class="icon">💾</span><span class="txt" id="backupReminderText"></span></div>
+      </div>
+
+      <div class="settings-group">
+        <h3>CSV izvoz stavki</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="exportBtn">Izvezi kao CSV</button>
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Provera podataka</h3>
+        <div class="file-row">
+          <button class="btn-secondary" id="reconcileBtn">Proveri i popravi neusklađenosti</button>
+        </div>
+        <div class="import-status" id="reconcileStatus">Koristi ovo ako brojke u vrhu stranice deluju netačno (npr. posle plaćanja unapred) — dopunjuje stavke koje nedostaju za već obeležene plaćene mesece.</div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Arhiviranje starih stavki</h3>
+        <div class="file-row">
+          <span style="font-size:0.92em;">Ukloni stavke starije od</span>
+          <input type="number" id="archiveYears" value="3" min="1" max="20" style="width:70px;">
+          <span style="font-size:0.92em;">godina</span>
+          <button class="btn-secondary" id="archiveBtn">Arhiviraj i ukloni</button>
+        </div>
+        <div class="import-status" id="archiveStatus">Prvo preuzima JSON fajl sa svim stavkama koje se uklanjaju (kao rezervnu kopiju), pa ih tek onda briše iz aktivnog spiska — korisno da app ostane brz kad istorija naraste.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="no-print">
+    Podaci se čuvaju lokalno u ovom browseru (localStorage) — nikamo se ne šalju.
+  </footer>
+
+</div>
+</div>
+</div>
+
+<div class="desk-toast" id="deskToast" role="status" aria-live="polite"></div>
+
+<button class="mobile-fab no-print" id="mobileFab" title="Brzi unos">+</button>
+
+<div class="undo-toast" id="undoToast" role="status" aria-live="polite">
+  <span id="undoMessage"></span>
+  <button id="undoBtn">Opozovi</button>
+  <div class="undo-progress"><div class="undo-progress-fill" id="undoProgressFill"></div></div>
+</div>
+
+<div class="modal-overlay" id="editModalOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="editModalTitle" tabindex="-1">
+    <h3 id="editModalTitle">Uredi</h3>
+    <div id="editModalFields"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="editModalCancel">Otkaži</button>
+      <button class="save-btn" id="editModalSave">Sačuvaj</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="finishShopOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="finishShopTitle" tabindex="-1">
+    <h3 id="finishShopTitle">Završi kupovinu</h3>
+    <div class="modal-field"><label for="finishShopTotal">Iznos sa računa (RSD)</label><input type="number" id="finishShopTotal" min="0" step="1"></div>
+    <div class="modal-field"><label for="finishShopDate">Datum</label><input type="date" id="finishShopDate"></div>
+    <div class="modal-field" id="finishShopAccountField"><label for="finishShopAccount">Račun</label><select id="finishShopAccount"></select></div>
+    <div class="modal-field"><label for="finishShopStore">Prodavnica</label><input type="text" id="finishShopStore" list="finishShopStores" autocomplete="off"><datalist id="finishShopStores"></datalist></div>
+    <div id="finishShopSplit"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="finishShopCancel">Otkaži</button>
+      <button class="save-btn" id="finishShopSave">Dodaj rashod</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="payOverdueOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="payOverdueTitle" tabindex="-1">
+    <h3 id="payOverdueTitle">Plati zakasnele</h3>
+    <div id="payOverdueList" class="pay-overdue-list"></div>
+    <div class="hint" id="payOverdueTotal"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="payOverdueCancel">Otkaži</button>
+      <button class="save-btn" id="payOverdueSave">Plati izabrano</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="ipsOverlay">
+  <div class="modal-card ips-card" role="dialog" aria-modal="true" aria-labelledby="ipsTitle" tabindex="-1">
+    <h3 id="ipsTitle">Plati QR kodom</h3>
+    <div id="ipsPay">
+      <div class="ips-pay">
+        <div class="ips-qr" id="ipsQr"></div>
+        <div class="ips-info" id="ipsInfo"></div>
+      </div>
+      <div class="ips-amount-row"><label for="ipsAmount">Iznos (RSD)</label><input type="number" id="ipsAmount" step="0.01" min="0"></div>
+      <div id="ipsOneOff" style="display:none;">
+        <div class="ips-oneoff-row"><div><label for="ipsOneOffCat">Kategorija</label><select id="ipsOneOffCat"></select></div><div><label for="ipsOneOffDate">Datum</label><input type="date" id="ipsOneOffDate"></div></div>
+        <div><label class="paid-checkbox-label"><input type="checkbox" id="ipsMakeRec"> Sačuvaj i kao ponavljajuću (svakog meseca)</label></div>
+      </div>
+      <div class="hint" id="ipsPayHint">Otvori aplikaciju svoje banke, izaberi skeniranje IPS QR koda i usmeri telefon na ekran. Posle plaćanja klikni „Plaćeno“.</div>
+    </div>
+    <div id="ipsEdit">
+      <div class="file-row"><button type="button" class="btn-secondary" id="ipsFromImageBtn">Učitaj sa uplatnice…</button><input type="file" id="ipsImageInput" accept="application/pdf,image/*,.heic" hidden></div>
+      <div class="hint">Izaberi sliku ili PDF uplatnice, ili nalepi snimak ekrana sa Ctrl+V. Ako nema QR koda, podatke pročita AI — proveri ih pre plaćanja.</div>
+      <div class="import-status" id="ipsImageStatus"></div>
+      <div class="ips-fields">
+        <label for="ipsAccount">Račun primaoca</label><input type="text" id="ipsAccount" placeholder="npr. 160-0000000012345-67" autocomplete="off" translate="no">
+        <label for="ipsName">Naziv primaoca</label><input type="text" id="ipsName" maxlength="70" translate="no">
+        <div class="ips-row3">
+          <div><label for="ipsCode">Šifra plaćanja</label><input type="text" id="ipsCode" maxlength="3" value="189" inputmode="numeric"></div>
+          <div><label for="ipsModel">Model</label><input type="text" id="ipsModel" maxlength="2" placeholder="97" inputmode="numeric"></div>
+          <div><label for="ipsReference">Poziv na broj</label><input type="text" id="ipsReference" maxlength="33" translate="no"></div>
+        </div>
+        <label for="ipsPurpose">Svrha plaćanja</label><input type="text" id="ipsPurpose" maxlength="35" translate="no">
+      </div>
+      <div class="ips-problems" id="ipsProblems"></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-link" id="ipsRemoveBtn" style="margin-right:auto;">Ukloni podatke</button>
+      <button class="cancel-btn" id="ipsClose">Zatvori</button>
+      <button class="btn-secondary" id="ipsEditBtn">Podaci za plaćanje</button>
+      <button class="save-btn" id="ipsPrimary">Plaćeno</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="billOverlay">
+  <div class="modal-card bill-card" role="dialog" aria-modal="true" aria-labelledby="billTitle" tabindex="-1">
+    <h3 id="billTitle">Kućni račun</h3>
+    <div class="bill-layout">
+      <div class="bill-preview">
+        <div class="bill-preview-img" id="billPreview"></div>
+        <div class="bill-pages" id="billPages" style="display:none;"><button type="button" class="btn-link" id="billPrevPage" aria-label="Prethodna strana">‹</button><span id="billPageLabel"></span><button type="button" class="btn-link" id="billNextPage" aria-label="Sledeća strana">›</button></div>
+      </div>
+      <div class="bill-fields">
+        <div class="import-status" id="billStatus" aria-live="polite"></div>
+        <label for="billLocation">Lokacija</label><select id="billLocation"></select>
+        <label for="billType">Vrsta računa</label><select id="billType"></select>
+        <div class="bill-row2">
+          <div><label for="billMonth">Obračunski mesec</label><input type="month" id="billMonth"></div>
+          <div><label for="billExpMonth">Rashod ide u mesec</label><input type="month" id="billExpMonth"></div>
+        </div>
+        <label for="billAmount">Iznos <span id="billCurrency" translate="no"></span></label><input type="number" id="billAmount" step="0.01" min="0">
+        <div class="import-status" id="billCurWarn" aria-live="polite"></div>
+        <div id="billMetrics" class="bill-metrics"></div>
+        <details class="bill-more"><summary>Više podataka</summary>
+          <div class="bill-row2">
+            <div><label for="billFrom">Period od</label><input type="date" id="billFrom"></div>
+            <div><label for="billTo">Period do</label><input type="date" id="billTo"></div>
+          </div>
+          <label for="billDue">Rok plaćanja</label><input type="date" id="billDue">
+          <label for="billPayee">Primalac</label><input type="text" id="billPayee" maxlength="70" translate="no">
+        </details>
+        <div id="billRecRow" style="display:none;"><label class="paid-checkbox-label"><input type="checkbox" id="billLinkRec" checked> <span id="billRecLabel"></span></label></div>
+        <div class="bill-dup" id="billDupRow" style="display:none;">
+          <div id="billDupLabel"></div>
+          <label class="paid-checkbox-label"><input type="radio" name="billDup" value="replace" checked> Zameni postojeći</label>
+          <label class="paid-checkbox-label"><input type="radio" name="billDup" value="keep"> Zadrži oba</label>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-link bill-del-btn" id="billDelete" style="display:none;">Obriši kućni račun</button>
+      <button class="cancel-btn" id="billCancel">Otkaži</button>
+      <button class="btn-secondary" id="billSavePending">Sačuvaj za plaćanje</button>
+      <button class="save-btn" id="billSavePaid">Sačuvaj kao plaćen</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="receiptOverlay">
+  <div class="modal-card receipt-card" role="dialog" aria-modal="true" aria-labelledby="receiptTitle" tabindex="-1">
+    <h3 id="receiptTitle">Račun iz prodavnice</h3>
+    <div class="bill-layout">
+      <div class="bill-preview">
+        <div class="bill-preview-img" id="receiptPreview"></div>
+        <div class="bill-pages"><button type="button" class="btn-link" id="receiptPrev" aria-label="Prethodni deo">‹</button><span id="receiptPartLabel"></span><button type="button" class="btn-link" id="receiptNext" aria-label="Sledeći deo">›</button></div>
+        <div class="file-row receipt-part-row"><button type="button" class="btn-secondary" id="receiptAddPart">Dodaj još sliku</button><input type="file" id="receiptPartInput" accept="application/pdf,image/*,.heic" hidden>
+          <button type="button" class="btn-link" id="receiptRetry" style="display:none;">Pokušaj ponovo</button></div>
+      </div>
+      <div class="bill-fields">
+        <div class="import-status" id="receiptStatus" aria-live="polite"></div>
+        <div class="bill-row2">
+          <div><label for="receiptStore">Prodavnica</label><input type="text" id="receiptStore" maxlength="60" translate="no"></div>
+          <div><label for="receiptDate">Datum</label><input type="date" id="receiptDate"></div>
+        </div>
+        <label for="receiptTotal">Ukupno sa računa (RSD)</label><input type="number" id="receiptTotal" step="0.01" min="0">
+        <div class="receipt-items" id="receiptItems"></div>
+        <button type="button" class="btn-link" id="receiptAddItem">+ stavka</button>
+        <div class="receipt-sums" id="receiptSums"></div>
+        <div class="receipt-diff"><span id="receiptDiff"></span> <button type="button" class="btn-link" id="receiptAddDiff" style="display:none;">Dodaj razliku kao Ostalo</button></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="receiptCancel">Otkaži</button>
+      <button class="save-btn" id="receiptSave">Sačuvaj rashode</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="docOverlay">
+  <div class="modal-card bill-card" role="dialog" aria-modal="true" aria-labelledby="docDlgTitle" tabindex="-1">
+    <h3 id="docDlgTitle">Dokument</h3>
+    <div class="bill-layout">
+      <div class="bill-preview">
+        <div class="bill-preview-img" id="docPreview"></div>
+        <div class="doc-files" id="docFiles"></div>
+        <div class="file-row"><button type="button" class="btn-secondary" id="docAddFile">Dodaj prilog</button><input type="file" id="docFileInput" accept="application/pdf,image/*,.heic" hidden><button type="button" class="save-btn doc-read-ai" id="docReadAi" style="display:none;">Pročitaj AI-jem</button></div>
+        <div><label class="paid-checkbox-label"><input type="checkbox" id="docNoAi"> Ne šalji ovaj fajl AI-ju</label></div>
+        <div class="hint" id="docNoAiHint" style="display:none;">Za lična dokumenta (pasoš, lična karta) podatke je bolje uneti ručno.</div>
+      </div>
+      <div class="bill-fields">
+        <div class="import-status" id="docStatus" aria-live="polite"></div>
+        <div class="bill-row2">
+          <div><label for="docKind">Vrsta</label><select id="docKind"><option value="garancija">Garancija</option><option value="dokument">Dokument sa rokom</option></select></div>
+          <div><label for="docGroup">Grupa</label><input type="text" id="docGroup" list="docGroupList" maxlength="40" translate="no"><datalist id="docGroupList"></datalist></div>
+        </div>
+        <label for="docTitle">Naziv</label><input type="text" id="docTitle" maxlength="80" translate="no">
+        <div class="bill-row2">
+          <div><label for="docIssued">Kupljeno / izdato</label><input type="date" id="docIssued"></div>
+          <div><label for="docMonths">Garancija (meseci)</label><input type="number" id="docMonths" min="0" max="240" step="1"></div>
+        </div>
+        <div class="bill-row2">
+          <div><label for="docExpires">Ističe</label><input type="date" id="docExpires"></div>
+          <div><label for="docRemind">Podsetnik (dana pre)</label><input type="number" id="docRemind" min="0" max="365" step="1"></div>
+        </div>
+        <label for="docVendor">Prodavac / izdavalac</label><input type="text" id="docVendor" maxlength="60" translate="no">
+        <div id="docRenewBox">
+          <div class="bill-row2">
+            <div><label for="docRenewAmount">Cena obnove (RSD)</label><input type="number" id="docRenewAmount" min="0" step="1"></div>
+            <div><label for="docRenewCat">Kategorija obnove</label><select id="docRenewCat"></select></div>
+          </div>
+          <label for="docRenewMonths">Obnova važi (meseci)</label><input type="number" id="docRenewMonths" min="1" max="120" step="1">
+        </div>
+        <label for="docNotes">Napomena</label><input type="text" id="docNotes" maxlength="300">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-link bill-del-btn" id="docDelete" style="display:none;">Obriši zapis</button>
+      <button class="cancel-btn" id="docCancel">Otkaži</button>
+      <button class="save-btn" id="docSave">Sačuvaj</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dialogOverlay" style="z-index:1150;">
+  <div class="modal-card" role="alertdialog" aria-modal="true" aria-labelledby="dialogTitle" aria-describedby="dialogBody" tabindex="-1">
+    <h3 id="dialogTitle">Potvrda</h3>
+    <div id="dialogBody" style="line-height:1.6; white-space:pre-line;"></div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="dialogCancel">Otkaži</button>
+      <button class="save-btn" id="dialogOk">U redu</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="onboardingOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="onboardingTitle" tabindex="-1" style="width:min(560px, 100%);">
+    <div id="onboardingStepDots" style="display:flex; gap:0.4em; margin-bottom:1em;"></div>
+    <h3 id="onboardingTitle">Dobrodošao/la</h3>
+    <div id="onboardingBody"></div>
+    <div class="modal-actions" style="justify-content:space-between;">
+      <button class="cancel-btn" id="onboardingBackBtn" style="visibility:hidden;">Nazad</button>
+      <span style="display:flex; gap:0.6em;">
+        <button class="cancel-btn" id="onboardingSkipBtn">Preskoči vodič</button>
+        <button class="save-btn" id="onboardingNextBtn">Dalje</button>
+      </span>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="dayDetailOverlay">
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="dayDetailTitle" tabindex="-1">
+    <h3 id="dayDetailTitle">Dan</h3>
+    <ul id="dayDetailList" class="cat-list"></ul>
+    <div style="display:flex; gap:0.5em; flex-wrap:wrap; margin-top:1em;">
+      <input type="text" id="dayQuickDesc" placeholder="Opis (ili Opis 1500)" style="flex:1; min-width:120px;">
+      <input type="number" id="dayQuickAmount" placeholder="Iznos" style="width:100px;">
+      <select id="dayQuickType" style="width:auto;"><option value="expense">Rashod</option><option value="income">Prihod</option></select>
+      <button class="btn-secondary" id="dayQuickAddBtn">Dodaj</button>
+    </div>
+    <div class="modal-actions">
+      <button class="cancel-btn" id="dayDetailCloseBtn">Zatvori</button>
+    </div>
+  </div>
+</div>
+
+<script src="xlsx.core.min.js"></script>
+<script src="qrcode-generator.js"></script>
+<script src="jsQR.js"></script>
+<script src="budzet-core.js"></script>
+<script src="i18n.js"></script>
+<script>
+(function(){
+<!--@include js/00-osnova.js-->
+<!--@include js/01-ui-osnove.js-->
+<!--@include js/02-navigacija.js-->
+<!--@include js/03-budzet.js-->
+<!--@include js/04-ips.js-->
+<!--@include js/05-kucni-racuni.js-->
+<!--@include js/06-telegram-podesavanja.js-->
+<!--@include js/07-racun-prodavnice.js-->
+<!--@include js/08-telegram-bot.js-->
+<!--@include js/09-dokumenti.js-->
+<!--@include js/10-prognoza-godisnji.js-->
+<!--@include js/11-pitaj.js-->
+<!--@include js/12-sazetak-racuni-kursevi.js-->
+<!--@include js/13-ciljevi-pregled.js-->
+<!--@include js/14-analiza.js-->
+<!--@include js/15-nabavka.js-->
+<!--@include js/16-kalendar.js-->
+<!--@include js/17-scenario.js-->
+<!--@include js/18-zdravlje-obavestenja.js-->
+<!--@include js/19-prihodi-rashodi.js-->
+<!--@include js/20-kategorije-ponavljajuce.js-->
+<!--@include js/21-ciljevi-dugovi.js-->
+<!--@include js/22-uporedi-pretraga-izvestaj.js-->
+<!--@include js/23-uvoz.js-->
+<!--@include js/24-kopije.js-->
+<!--@include js/25-excel.js-->
+<!--@include js/26-vodic.js-->
+<!--@include js/27-desktop.js-->
+})();
+</script>
+</body>
+</html>
